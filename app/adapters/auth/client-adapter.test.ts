@@ -101,6 +101,102 @@ describe('browser password change', () => {
   });
 });
 
+describe('browser rate limit', () => {
+  it('carries the server retry delay of a rate-limited sign-in', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        ok: false,
+        error: { code: 'rate_limited', message: 'Too many requests', details: { retryAfterSeconds: 42 } },
+      }), {
+        status: 429,
+        headers: { 'content-type': 'application/json', 'retry-after': '42' },
+      }),
+    ));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    const result = await auth.signIn({ email: 'member@example.com', password: 'secret-password' });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'rate_limited', details: { retryAfterSeconds: 42 } } });
+  });
+
+  it('omits the retry delay when the limiter sends none', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: 'Too many requests. Please try again later.' }), {
+        status: 429,
+        headers: { 'content-type': 'application/json' },
+      }),
+    ));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.requestMagicLink({ email: 'member@example.com', callbackURL: 'https://studio.example/login' })).toEqual({
+      ok: false,
+      error: { code: 'rate_limited', message: 'Too many requests. Please try again later.' },
+    });
+  });
+
+  const limiterResponse = (status: number, retryAfter: string, body: unknown = {
+    message: 'Too many requests. Please try again later.',
+  }): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json', 'x-retry-after': retryAfter },
+    });
+
+  it('takes the retry delay from the limiter header when the body has none', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(limiterResponse(429, '37')));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.signIn({ email: 'member@example.com', password: 'secret-password' })).toEqual({
+      ok: false,
+      error: {
+        code: 'rate_limited',
+        message: 'Too many requests. Please try again later.',
+        details: { retryAfterSeconds: 37 },
+      },
+    });
+    expect(await auth.requestMagicLink({ email: 'member@example.com', callbackURL: 'https://studio.example/login' }))
+      .toMatchObject({ ok: false, error: { code: 'rate_limited', details: { retryAfterSeconds: 37 } } });
+  });
+
+  it('prefers the retry delay in the body over the limiter header', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(limiterResponse(429, '300', {
+      ok: false,
+      error: { code: 'rate_limited', message: 'Too many requests', details: { retryAfterSeconds: 42 } },
+    })));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.signIn({ email: 'member@example.com', password: 'secret-password' }))
+      .toMatchObject({ ok: false, error: { code: 'rate_limited', details: { retryAfterSeconds: 42 } } });
+  });
+
+  it.each(['abc', '0', '-5', '1.5'])('ignores the invalid limiter header %s', async (retryAfter) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(limiterResponse(429, retryAfter)));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.signIn({ email: 'member@example.com', password: 'secret-password' })).toEqual({
+      ok: false,
+      error: { code: 'rate_limited', message: 'Too many requests. Please try again later.' },
+    });
+  });
+
+  it('ignores the limiter header on a response that is not rate limited', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(limiterResponse(401, '37', {
+      code: 'INVALID_EMAIL_OR_PASSWORD',
+      message: 'Invalid email or password',
+    })));
+    const auth = createBetterAuthClientAdapter('https://api.example');
+
+    expect(await auth.signIn({ email: 'member@example.com', password: 'wrong-password' })).toEqual({
+      ok: false,
+      error: {
+        code: 'invalid_credentials',
+        message: 'Invalid email or password',
+        details: { providerCode: 'INVALID_EMAIL_OR_PASSWORD' },
+      },
+    });
+  });
+});
+
 describe('browser password reset request', () => {
   it('sends the absolute provider callback and language header', async () => {
     const fetch = vi.fn().mockResolvedValue(

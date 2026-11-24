@@ -372,16 +372,56 @@ Stripe coupons discount line items, never shipping rates.
 
 The webhook reads the address from `collected_information.shipping_details`,
 falling back to the top-level `shipping_details` of events in API versions
-before `2025-03-31.basil`, the phone number from `customer_details.phone` and the fee from
-`shipping_cost.amount_total`. It rejects a session whose fee differs from the
+from `2022-08-01` to before `2025-03-31.basil` and to `shipping` of events in
+versions before `2022-08-01`. It reads the phone number from
+`customer_details.phone`, falling back to the phone of that delivery hash, and
+the fee from `shipping_cost.amount_total`, falling back to
+`total_details.amount_shipping` (versions before `2022-08-01` carry only a
+`shipping_rate` id). It rejects a session whose fee differs from the
 snapshot's shipping line or whose address is missing or outside the allowed
-countries. A session whose coupon covered every product line but which charged
+countries. When the event carries no fee under any of these keys, it accepts
+the session only if `amount_total` plus `total_details.amount_discount` equals
+the sum of every snapshot line, the shipping line included; a session without
+`amount_total` is rejected. See [Webhook API version](#webhook-api-version). A session whose coupon covered every product line but which charged
 the delivery fee is recorded even when the coupon redemption claim loses a race
 at the redemption limit: the order keeps the coupon and Stripe's discount, no
 redemption row is written, so the coupon is over-redeemed by one shipped order,
 and the webhook logs `reason=coupon_over_redeemed`. Staff see the order on the
 Studio Orders page; nothing is refunded automatically. See [Shop](shop.md) for
 the delivery options and the stored order data.
+
+## Webhook API version
+
+A webhook endpoint registered with an `api_version` receives events rendered
+in that version; an endpoint registered without one receives events in the
+account's default API version at the time the event was created, and a retry
+delivers the same payload. The `api_version` of an endpoint cannot be changed
+after it is created. Registration in the payment configuration pins every
+endpoint it creates from this release on to the API version of the installed
+Stripe library. An endpoint registered before that has no `api_version` and
+keeps following the account default version, which on an older account can be
+years old. The webhook therefore still reads every known location of the fields
+it uses (delivery address, phone, shipping fee, invoice subscription and payment
+references, subscription period end) instead of trusting one version.
+
+To check an account, open Stripe Dashboard → Developers (Workbench) → Webhooks, select the
+Together endpoint (`/api/webhooks/stripe/<tenantId>`, `?mode=test` for the test
+slot) and read its API version. The account default version is shown in
+Workbench → Overview.
+
+Re-running the webhook registration of the payment configuration (saving the
+restricted key again in Studio → Integrations → Stripe, or the same call through
+a shop management key) deletes every endpoint of that tenant and slot and the
+endpoint at the same URL, creates a new endpoint with a new signing secret and
+stores that secret. Stripe stops retrying an event when its endpoint has been
+deleted at the time of the retry, and the new endpoint does not receive events
+created before it existed. A paid event that is still failing and retrying
+(Stripe retries a live event for up to three days) is therefore lost to
+automatic retries by a re-registration. Do not re-register while a paid event
+is still retrying; let the fixed handler record it first. An event lost this way
+can still be resent from the Dashboard (**Resend**, up to 15 days after the
+event) or with `stripe events resend <event_id> --webhook-endpoint=<endpoint_id>`
+(up to 30 days).
 
 ## Order campaign attribution
 
@@ -452,12 +492,9 @@ original event supplies the invoice amounts, currency and billing period.
 Payment-intent or charge IDs are stored on renewal orders so later refunds and
 disputes can find them. Lookup failures fail webhook processing for retry instead
 of acknowledging an event without its payment references. Existing pre-Clover
-top-level payment references remain supported for older events. Both Checkout
-Session delivery address locations are supported for the same reason: tenant
-webhook endpoints are registered without a pinned API version, so Stripe sends
-events in the account's default version, and versions before `2025-03-31.basil`
-carry the address in the top-level `shipping_details` instead of
-`collected_information.shipping_details`. Signature
+top-level payment references remain supported for older events, and every
+Checkout Session delivery address location is read for the same reason (see
+[Webhook API version](#webhook-api-version)). Signature
 verification and the signed mode check happen before any lookup.
 
 Checkout Sessions propagate `tenantId` to subscription metadata and, for one-time
@@ -648,13 +685,37 @@ A Stripe status code of 403, `permission_denied` code, or message containing
 failures are `error`, with Stripe's message. `allOk` is true only when every row is
 `ok`. Listing Webhook Endpoints alone does not prove create/delete access.
 
+## Staff refunds
+
+Owners and admins refund a paid order from Studio or `order refund` with the
+workspace's restricted key of the order's mode; see
+[the shop guide](shop.md#staff-refunds). The key needs Charges and Refunds
+(write), which the permission check above confirms. Without it a staff refund
+waits as `blocked_permission`, staff get an alert e-mail and the dispatcher
+retries hourly for 72 hours, as for the sold-out refund; staff refund alerts
+have wording of their own and are stored pre-rendered like the buyer notice. Stripe
+refund metadata carries `tenantId`, `orderId`, `reason: staff` and
+`refundJobId`; never personal data or the staff note. A refund made in the
+Stripe Dashboard still reaches the platform through `charge.refunded`, counts
+against the refundable remainder and makes waiting staff refunds of that order
+due at once. The buyer's refund notice and the staff refund alerts are stored
+pre-rendered as `m2m-transactional` messages with source `staff-refunds` (see
+[the shop guide](shop.md#staff-refunds)). Refund failure messages lose Stripe
+API keys and webhook secrets before they are stored or e-mailed. The refund list is read page by page
+(`starting_after`, 100 refunds a page, at most 10 pages); the refund dispatcher
+gives the read a deadline, and a page that could not end before it is not
+started. Sold-out and staff refund jobs both need the whole list; a list cut
+short is retried like any list that could not be read (see
+[the shop guide](shop.md#automatic-refund-of-a-cancelled-order)).
+
 ## Order and subscription e-mail subjects
 
 Order e-mails to buyers lead with the outcome and the workspace and carry a short
 order reference, the first eight characters of the order id upper-cased with a
 `#`: "Purchase confirmation — <workspace> (#AB12CD34)", "Order shipped —
 <workspace> (#AB12CD34)" and "Order cancelled, full refund on its way —
-<workspace> (#AB12CD34)" (or "nothing charged"), with Polish equivalents. The
+<workspace> (#AB12CD34)" (or "nothing charged") and "Refund of <amount> on its
+way — <workspace> (#AB12CD34)", with Polish equivalents. The
 body keeps the full order id on the order-number line so the seller can match
 it. The payment-failed, direct-message and community notification subjects end
 with " — <workspace>".

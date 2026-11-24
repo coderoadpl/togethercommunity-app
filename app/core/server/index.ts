@@ -78,6 +78,7 @@ export * from './usecases/dispatch-ksef-job.js';
 export * from './usecases/public-rate-limit.js';
 export * from './usecases/dispatch-auto-invoice-jobs.js';
 export * from './usecases/dispatch-order-refund-jobs.js';
+export * from './usecases/staff-refunds.js';
 export * from './usecases/member-billing-orders.js';
 export * from './usecases/member-data-export.js';
 export * from './usecases/member-erasure-requests.js';
@@ -173,6 +174,8 @@ export * from './order-change-ports.js';
 export * from './usecases/order-changes.js';
 export * from './usecases/order-fulfilment.js';
 export * from './shipx-ports.js';
+export * from './pickup-point-ports.js';
+export * from './usecases/pickup-points.js';
 export * from './usecases/shipx.js';
 export * from './usecases/public-order-qr.js';
 

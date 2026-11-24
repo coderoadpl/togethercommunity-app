@@ -1,3 +1,5 @@
+import { createHmac } from 'node:crypto';
+
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Stripe from 'stripe';
 import { err, ok, refundFailureOf, validation, type RefundFailureKind } from '#core/domain/index.js';
@@ -34,7 +36,9 @@ const providerOverFetch = (respond: (request: Request) => Response) => {
     }),
   });
   const { createRefund, getRefund, listRefunds, probeStripePermissions } = provider;
-  if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || probeStripePermissions === undefined) throw new Error('Refund methods missing');
+  if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || probeStripePermissions === undefined) {
+    throw new Error('Refund methods missing');
+  }
   return { createRefund, getRefund, listRefunds, probeStripePermissions, requests, keys };
 };
 
@@ -63,6 +67,27 @@ describe('Stripe createRefund', () => {
     expect(h.keys).toEqual(['stripe.restrictedKey']);
   });
 
+  it('tags a staff refund with its refund id and reads it back from the refund metadata', async () => {
+    const staffMetadata = { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7', tenantId: 'tenant-1' };
+    const h = providerOverFetch(() => stripeJson(refundObject({ amount: 1500, metadata: staffMetadata })));
+    expect(await h.createRefund({ ...refundInput, amountCents: 1500, idempotencyKey: 'staff-refund-refund-7', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7' } })).toEqual(ok({
+      refundId: 're_123', paymentIntentId: 'pi_paid', amountCents: 1500, status: 'succeeded', failureReason: null, orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7',
+    }));
+    const request = h.requests[0];
+    if (request === undefined) throw new Error('Refund request missing');
+    expect(Object.fromEntries(new URLSearchParams(await request.text()))).toEqual({
+      payment_intent: 'pi_paid', amount: '1500',
+      'metadata[tenantId]': 'tenant-1', 'metadata[orderId]': 'order-1', 'metadata[reason]': 'staff', 'metadata[refundJobId]': 'refund-7',
+    });
+  });
+
+  it('reads a refund without metadata, as an account on an old API version may return it', async () => {
+    const h = providerOverFetch(() => stripeJson({ data: [refundObject({ metadata: null }), refundObject({ id: 're_2', metadata: {} })], has_more: false, object: 'list', url: '/v1/refunds' }));
+    expect(await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })).toMatchObject({
+      ok: true, value: [{ refundId: 're_123', orderId: null, reason: null }, { refundId: 're_2', orderId: null, reason: null }],
+    });
+  });
+
   it('uses the test-mode key for a test order', async () => {
     const h = providerOverFetch(() => stripeJson(refundObject()));
     expect(await h.createRefund({ ...refundInput, mode: 'test' })).toMatchObject({ ok: true, value: { status: 'succeeded' } });
@@ -75,7 +100,7 @@ describe('Stripe createRefund', () => {
     const result = await h.createRefund({ ...refundInput, amountCents });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null, outcomeUnknown: false });
+    expect(refundFailureOf(result.error)).toEqual({ kind: 'refund_failed', providerCode: null, outcomeUnknown: false, providerServerError: false, diagnostic: 'refund_failed' });
     expect(h.requests).toHaveLength(0);
   });
 
@@ -118,6 +143,14 @@ describe('Stripe createRefund', () => {
     expect(result.error.message).toContain(error.message);
   });
 
+  it('keeps Stripe\'s own reason apart from the operation the adapter names, so only Stripe\'s words reach staff', async () => {
+    const h = providerOverFetch(() => stripeError(400, { code: 'charge_disputed', message: 'Charge ch_1 has been charged back; key rk_live_51SYNTHETICmarker44' }));
+    const result = await h.createRefund(refundInput);
+    if (result.ok) throw new Error('Expected a refusal');
+    expect(result.error.message).toBe('Stripe rejected the refund: Charge ch_1 has been charged back; key [credential]');
+    expect(refundFailureOf(result.error)?.diagnostic).toBe('Charge ch_1 has been charged back; key [credential]');
+  });
+
   it('maps a network failure to transient with an unknown outcome', async () => {
     const h = providerOverFetch(() => { throw new TypeError('fetch failed'); });
     const result = await h.createRefund(refundInput);
@@ -135,7 +168,21 @@ describe('Stripe createRefund', () => {
     const h = providerOverFetch(() => stripeError(status, error));
     const result = await h.createRefund(refundInput);
     if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)?.outcomeUnknown).toBe(outcomeUnknown);
+    expect(refundFailureOf(result.error)).toMatchObject({ outcomeUnknown, providerServerError: status >= 500 });
+  });
+
+  it.each([
+    ['createRefund', (h: ReturnType<typeof providerOverFetch>) => h.createRefund(refundInput)],
+    ['getRefund', (h: ReturnType<typeof providerOverFetch>) => h.getRefund({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' })],
+    ['listRefunds', (h: ReturnType<typeof providerOverFetch>) => h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' })],
+  ] as const)('%s keeps the provider object ids but hides API keys and webhook secrets in the error it returns', async (_name, call) => {
+    const h = providerOverFetch(() => stripeError(401, {
+      message: 'Invalid API Key provided: sk_live_51MARKERsecret00; restricted rk_test_51MARKERsecret01, publishable pk_live_MARKER02, webhook whsec_MARKERsecret03, payment pi_3MARKER04',
+    }));
+    const result = await call(h);
+    if (result.ok) throw new Error('Expected a refusal');
+    expect(result.error.message).not.toMatch(/sk_live_|rk_test_|pk_live_|whsec_|MARKERsecret|MARKER02/);
+    expect(result.error.message).toContain('payment pi_3MARKER04');
   });
 
   it('maps an unparseable refund response to transient', async () => {
@@ -217,6 +264,23 @@ describe('Stripe getRefund', () => {
   });
 });
 
+describe('provider failure reasons', () => {
+  it('replaces an API key in the failure reason of a refund Stripe returns before core sees it', async () => {
+    const failed = refundObject({ status: 'failed', failure_reason: 'declined, key rk_live_51SYNTHETICmarker55 for ch_3Visible03' });
+    const h = providerOverFetch((request) => stripeJson(new URL(request.url).pathname === '/v1/refunds' && request.method === 'GET'
+      ? { object: 'list', has_more: false, data: [failed] }
+      : failed));
+    const reasons = [
+      await h.getRefund({ mode: 'live', tenantId: 'tenant-1', refundId: 're_123' }),
+      await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' }),
+    ].map((result) => JSON.stringify(result));
+    for (const reason of reasons) {
+      expect(reason).toContain('declined, key [credential] for ch_3Visible03');
+      expect(reason).not.toMatch(/rk_live_|SYNTHETICmarker/);
+    }
+  });
+});
+
 describe('Stripe listRefunds', () => {
   it('lists the refunds of the payment intent with the order and reason a refund was issued for', async () => {
     const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [
@@ -235,11 +299,58 @@ describe('Stripe listRefunds', () => {
     expect(h.keys).toEqual(['stripe.testRestrictedKey']);
   });
 
-  it('refuses a payment with more refunds than one page', async () => {
-    const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: true, data: [refundObject()] }));
+  it('follows the next pages of a payment with more refunds than one page', async () => {
+    const h = providerOverFetch((request) => {
+      const after = new URL(request.url).searchParams.get('starting_after');
+      if (after === null) return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: 're_3' }), refundObject({ id: 're_2' })] });
+      if (after === 're_2') return stripeJson({ object: 'list', has_more: false, data: [refundObject({ id: 're_1', amount: 100 })] });
+      return stripeJson({ object: 'list', has_more: false, data: [] });
+    });
     const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
-    if (result.ok) throw new Error('Expected a refusal');
-    expect(refundFailureOf(result.error)?.kind).toBe('refund_failed');
+    expect(result.ok ? result.value.map((refund) => refund.refundId) : result.error.message).toEqual(['re_3', 're_2', 're_1']);
+    expect(h.requests.map((request) => new URL(request.url).searchParams.get('starting_after'))).toEqual([null, 're_2']);
+  });
+
+  it('reports a refund list longer than ten pages as a read failure, never as a refusal of the refund', async () => {
+    let page = 0;
+    const h = providerOverFetch(() => {
+      page += 1;
+      return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
+    });
+    const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
+    if (result.ok) throw new Error('Expected a read failure');
+    expect(refundFailureOf(result.error)?.kind).toBe('transient');
+    expect(result.error.message).toBe('The refund list of the payment is longer than 1000 refunds and could not be read in full');
+    expect(refundFailureOf(result.error)?.diagnostic).toBe('refund_list_incomplete');
+    expect(h.requests).toHaveLength(10);
+  });
+
+  it('reads the first page at once, starts no further page that could not finish before the deadline it is given and reports the list as unread, never as a refusal', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const startedAt = Date.now();
+      let page = 0;
+      const h = providerOverFetch(() => {
+        page += 1;
+        vi.setSystemTime(Date.now() + 4_000);
+        return stripeJson({ object: 'list', has_more: true, data: [refundObject({ id: `re_${String(page)}` })] });
+      });
+      const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid', deadlineAt: startedAt + 30_000 });
+      if (result.ok) throw new Error('Expected a read failure');
+      expect(refundFailureOf(result.error)).toMatchObject({ kind: 'transient', outcomeUnknown: false });
+      expect(result.error.message).toBe('The refund list of the payment could not be read in full before the run deadline');
+      expect(refundFailureOf(result.error)?.diagnostic).toBe('refund_list_incomplete');
+      expect(h.requests).toHaveLength(5);
+      expect(Date.now() - startedAt).toBeLessThanOrEqual(30_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads the first page even when the deadline it is given leaves no time for a worst-case request', async () => {
+    const h = providerOverFetch(() => stripeJson({ object: 'list', has_more: false, data: [refundObject()] }));
+    const result = await h.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid', deadlineAt: Date.now() });
+    expect(result.ok ? result.value.map((refund) => refund.refundId) : result.error.message).toStrictEqual(['re_123']);
   });
 
   it('maps a missing permission', async () => {
@@ -358,7 +469,7 @@ describe('fake payment provider refunds', () => {
   });
 
   it('never refunds a payment intent beyond its charge and saves that error under the key', async () => {
-    const f = fake();
+    const f = fake({ pi_paid: 4900 });
     const first = await f.createRefund(refundInput);
     if (!first.ok) throw new Error('Fake refund failed');
     const second = await f.createRefund({ ...refundInput, idempotencyKey: 'oos-refund-order-1-1' });
@@ -380,5 +491,36 @@ describe('fake payment provider refunds', () => {
     const listed = await f.listRefunds({ mode: 'live', tenantId: 'tenant-1', paymentIntentId: 'pi_paid' });
     expect(listed.ok ? listed.value.map((refund) => refund.amountCents) : []).toEqual([2900, 2000]);
     expect(await f.listRefunds({ mode: 'live', tenantId: 'tenant-2', paymentIntentId: 'pi_paid' })).toEqual(ok([]));
+  });
+
+  it('issues two partial refunds of a payment whose charge it was never told, as the composition builds it', async () => {
+    const f = fake();
+    const first = await f.createRefund({ ...refundInput, amountCents: 1000, idempotencyKey: 'staff-refund-refund-1', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-1' } });
+    const second = await f.createRefund({ ...refundInput, amountCents: 500, idempotencyKey: 'staff-refund-refund-2', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-2' } });
+    expect([first, second]).toMatchObject([{ ok: true, value: { amountCents: 1000 } }, { ok: true, value: { amountCents: 500 } }]);
+  });
+
+  it('caps refunds at the amount a verified checkout webhook reported for the payment intent', async () => {
+    const webhookSecret = 'whsec_fake_charge';
+    const provider = createFakePaymentProvider({ resolve: async () => ok('rk_test_fake') });
+    const payloadRaw = JSON.stringify({
+      id: 'evt_paid', livemode: false, type: 'checkout.session.completed',
+      data: { object: { id: 'cs_paid', payment_intent: 'pi_paid', amount_total: 4900, metadata: { tenantId: 'tenant-1' } } },
+    });
+    const timestamp = '1700000000';
+    const signatureHeader = `t=${timestamp},v1=${createHmac('sha256', webhookSecret).update(`${timestamp}.${payloadRaw}`).digest('hex')}`;
+    expect((await provider.verifyWebhookEvent({ tenantId: 'tenant-1', mode: 'live', payloadRaw, signatureHeader, webhookSecret })).ok).toBe(true);
+    const part = await provider.createRefund?.({ ...refundInput, amountCents: 4000, idempotencyKey: 'part' });
+    const tooMuch = await provider.createRefund?.({ ...refundInput, amountCents: 1000, idempotencyKey: 'too-much' });
+    expect(part).toMatchObject({ ok: true });
+    expect(tooMuch !== undefined && !tooMuch.ok ? refundFailureOf(tooMuch.error)?.kind : null).toBe('refund_failed');
+  });
+
+  it('lists a staff refund with the refund id it was tagged with', async () => {
+    const f = fake({ pi_paid: 4900 });
+    const staff = await f.createRefund({ ...refundInput, amountCents: 1500, idempotencyKey: 'staff-refund-refund-7', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-7' } });
+    expect(staff).toMatchObject({ ok: true, value: { amountCents: 1500, reason: 'staff', refundJobId: 'refund-7' } });
+    const tooMuch = await f.createRefund({ ...refundInput, amountCents: 3401, idempotencyKey: 'staff-refund-refund-8', metadata: { orderId: 'order-1', reason: 'staff', refundJobId: 'refund-8' } });
+    expect(tooMuch.ok ? null : refundFailureOf(tooMuch.error)?.kind).toBe('refund_failed');
   });
 });

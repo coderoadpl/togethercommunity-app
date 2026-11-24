@@ -8,6 +8,22 @@ export const formatPrice = (priceCents: number, currency: string, language: stri
     currency,
   }).format(priceCents / 100);
 
+export const currencyFractionDigits = (currency: string): number => {
+  try {
+    return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2;
+  } catch {
+    return 2;
+  }
+};
+
+export const formatMinorUnitsPrice = (amountMinor: number, currency: string, language: string) =>
+  new Intl.NumberFormat(localeFor(language), { style: 'currency', currency }).format(amountMinor / 10 ** currencyFractionDigits(currency));
+
+export const formatMinorUnitsDecimal = (amountMinor: number, currency: string, language: string) => {
+  const digits = currencyFractionDigits(currency);
+  return new Intl.NumberFormat(localeFor(language), { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping: false }).format(amountMinor / 10 ** digits);
+};
+
 export const formatOfferPrice = (
   priceCents: number,
   currency: string,

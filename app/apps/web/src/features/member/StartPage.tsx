@@ -10,7 +10,12 @@ import { actions } from '../../api.js';
 import { StatusView } from '../../components/layout/index.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
-import { CourseCardRoot, ProgressPercentText, RailProgressBar } from '../../theme.js';
+import {
+  CourseCardRoot,
+  ProgressPercentText,
+  RailProgressBar,
+  SHELL_ANCHOR_TARGET_STYLE,
+} from '../../theme.js';
 import { CourseCard } from './CourseCards.js';
 import { coursePercent, isCourseDone, type CourseLessonCounts } from './course-progress.js';
 import { LiveNowBanner } from './events/LiveNowBanner.js';
@@ -117,7 +122,13 @@ export const TileSection = ({
   testId: string;
   children: ReactNode;
 }) => (
-  <Box component="section" id={id} data-testid={testId}>
+  <Box
+    component="section"
+    id={id}
+    tabIndex={id === undefined ? undefined : -1}
+    data-testid={testId}
+    sx={id === undefined ? undefined : SHELL_ANCHOR_TARGET_STYLE}
+  >
     <Typography variant="h3" component="h2" sx={{ mb: '0.9rem' }}>
       {to === undefined ? title : (
         <SectionHeadingLink component={RouterLink} to={to} data-testid={`${testId}-link`}>

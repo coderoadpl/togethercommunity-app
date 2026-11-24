@@ -9,8 +9,8 @@ import {
   BETTER_AUTH_PASSWORD_RESET_PATH,
   BETTER_AUTH_SIGN_UP_PATH,
 } from '#adapters/auth/create-auth.js';
-import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
-import { err, isProductionEnvironment, type AppError } from '#core/domain/index.js';
+import { API_PATHS, HTTP_STATUS_BY_ERROR_CODE, TENANT_HEADER } from '#core/contract/index.js';
+import { err, isProductionEnvironment, marketingSignupFormSlugSchema, type AppError } from '#core/domain/index.js';
 import {
   claimRateLimitWindow,
   resolveTenant,
@@ -20,9 +20,11 @@ import {
   type ResolveTenantDeps,
 } from '#core/server/index.js';
 
+import type { AppVars } from './app-vars.js';
 import { trustedClientIp } from './auth-network.js';
 import { isPublicFormPath, isMarketingSignupSubmissionPath, isSurveySubmissionPath } from './body-limits.js';
 import { type Env } from './env.js';
+import { languageFromRequest, renderSignupRateLimitedPage } from './public-marketing-pages.js';
 import { respond } from './respond.js';
 
 export interface PublicRateLimitPolicies {
@@ -38,6 +40,10 @@ export interface PublicRateLimitPolicies {
   deepHealthPerIp: RateLimitWindow;
   signupsPerIp: RateLimitWindow;
   signupsPerEmail: RateLimitWindow;
+  parcelLockerLookupsPerIp: RateLimitWindow;
+  parcelLockerLookupsPerTenant: RateLimitWindow;
+  parcelLockerLookupsGlobal: RateLimitWindow;
+  parcelLockerLookupsPublic: RateLimitWindow;
 }
 
 export interface PublicRateLimitMiddlewareDeps extends ResolveTenantDeps {
@@ -63,6 +69,10 @@ const PRODUCTION_LIMITS = {
   deepHealthPerIp: 12,
   signupsPerIp: 10,
   signupsPerEmail: 3,
+  parcelLockerLookupsPerIp: 30,
+  parcelLockerLookupsPerTenant: 600,
+  parcelLockerLookupsGlobal: 1_200,
+  parcelLockerLookupsPublic: 600,
 };
 const DEVELOPMENT_LIMITS = {
   redirectHitsPerRedirect: 600,
@@ -77,6 +87,10 @@ const DEVELOPMENT_LIMITS = {
   deepHealthPerIp: 1_200,
   signupsPerIp: 1_000,
   signupsPerEmail: 100,
+  parcelLockerLookupsPerIp: 3_000,
+  parcelLockerLookupsPerTenant: 60_000,
+  parcelLockerLookupsGlobal: 120_000,
+  parcelLockerLookupsPublic: 60_000,
 };
 
 export type PublicRateLimitEnv = Pick<
@@ -95,10 +109,16 @@ export type PublicRateLimitEnv = Pick<
   | 'PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_IP_PER_MINUTE'
   | 'PUBLIC_RATE_LIMIT_SIGNUPS_PER_EMAIL_PER_10_MINUTES'
->;
+> & Partial<Pick<Env, 'PAYMENT_PROVIDER'>>;
+
+export const wiresRealPickupPointDirectory = (env: { PAYMENT_PROVIDER?: Env['PAYMENT_PROVIDER'] | undefined }): boolean =>
+  env.PAYMENT_PROVIDER === 'stripe';
 
 export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRateLimitPolicies => {
   const fallback = isProductionEnvironment(env) ? PRODUCTION_LIMITS : DEVELOPMENT_LIMITS;
+  const parcelLockers = isProductionEnvironment(env) || wiresRealPickupPointDirectory(env)
+    ? PRODUCTION_LIMITS
+    : DEVELOPMENT_LIMITS;
   return {
     redirectHitsPerRedirect: {
       limit: env.PUBLIC_RATE_LIMIT_REDIRECT_HITS_PER_REDIRECT_PER_MINUTE
@@ -144,6 +164,10 @@ export const selectPublicRateLimitPolicies = (env: PublicRateLimitEnv): PublicRa
       limit: env.PUBLIC_RATE_LIMIT_DEEP_HEALTH_PER_IP_PER_MINUTE ?? fallback.deepHealthPerIp,
       windowMs: MINUTE_MS,
     },
+    parcelLockerLookupsPerIp: { limit: parcelLockers.parcelLockerLookupsPerIp, windowMs: MINUTE_MS },
+    parcelLockerLookupsPerTenant: { limit: parcelLockers.parcelLockerLookupsPerTenant, windowMs: MINUTE_MS },
+    parcelLockerLookupsGlobal: { limit: parcelLockers.parcelLockerLookupsGlobal, windowMs: MINUTE_MS },
+    parcelLockerLookupsPublic: { limit: parcelLockers.parcelLockerLookupsPublic, windowMs: MINUTE_MS },
   };
 };
 
@@ -155,6 +179,8 @@ const AUTH_LINK_PATHS = new Set<string>([
 ]);
 
 const UNATTRIBUTED_IP_KEY = 'unattributed';
+
+const PARCEL_LOCKER_PATH_PATTERN = /^\/api\/public\/parcel-lockers\/[^/]+$/;
 
 export const claimCouponPreview = async (c: Context, tenantId: string, deps: PublicRateLimitMiddlewareDeps): Promise<boolean> => {
   const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
@@ -218,7 +244,55 @@ const rateLimitedResponse = (error: AppError): Response => {
   });
 };
 
-const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps): Promise<Response | null> => {
+const isFormEncoded = (c: Context): boolean =>
+  (c.req.header('content-type') ?? '').split(';')[0]?.trim().toLowerCase() === 'application/x-www-form-urlencoded';
+
+interface SignupRateLimit {
+  bucket: 'ip' | 'address';
+  error: AppError;
+}
+
+const claimSignupRateLimit = async (c: Context, deps: PublicRateLimitMiddlewareDeps, clientIp: string): Promise<SignupRateLimit | null> => {
+  const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
+  const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp, window: deps.publicRateLimitPolicies.signupsPerIp }, limiter);
+  if (!ip.ok) return { bucket: 'ip', error: ip.error };
+  const tenant = await resolveTenant(c.req.header('host') ?? '', null, deps);
+  const email = await requestEmail(c);
+  if (!tenant.ok || tenant.value === null || email === null) return null;
+  const key = createHash('sha256').update(`${tenant.value.tenant.id}:${email}`).digest('hex');
+  const claimed = await claimRateLimitWindow({ scope: 'signup:email', key, window: deps.publicRateLimitPolicies.signupsPerEmail }, limiter);
+  return claimed.ok ? null : { bucket: 'address', error: claimed.error };
+};
+
+const decodedPathSegment = (segment: string): string | null => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+};
+
+const signupFormPathFromSubmission = (path: string): string | null => {
+  if (!isMarketingSignupSubmissionPath(path)) return null;
+  const slug = decodedPathSegment(path.split('/').at(-2) ?? '');
+  const parsed = marketingSignupFormSlugSchema.safeParse(slug);
+  return parsed.success && parsed.data === slug ? `/marketing/forms/${encodeURIComponent(parsed.data)}` : null;
+};
+
+const signupRateLimitedPage = (c: Context, error: AppError): Response => {
+  const seconds = Reflect.get(error.details ?? {}, 'retryAfterSeconds');
+  const page = renderSignupRateLimitedPage({ language: languageFromRequest(c.req.raw), formPath: signupFormPathFromSubmission(c.req.path) });
+  return new Response(page, {
+    status: HTTP_STATUS_BY_ERROR_CODE.rate_limited,
+    headers: {
+      'content-type': 'text/html; charset=UTF-8',
+      'cache-control': 'no-store',
+      ...(typeof seconds === 'number' ? { 'retry-after': String(seconds) } : {}),
+    },
+  });
+};
+
+const enforcePublicRateLimit = async (c: Context<AppVars>, deps: PublicRateLimitMiddlewareDeps): Promise<Response | null> => {
   const limiter = { buckets: deps.rateLimitBuckets, clock: deps.clock };
   const policies = deps.publicRateLimitPolicies;
   const clientIp = (): string =>
@@ -230,6 +304,20 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
     );
     return claimed.ok ? null : rateLimitedResponse(claimed.error);
   }
+  if (c.req.method === 'GET' && PARCEL_LOCKER_PATH_PATTERN.test(c.req.path)) {
+    const perIp = await claimRateLimitWindow(
+      { scope: 'parcel-locker:ip', key: clientIp(), window: policies.parcelLockerLookupsPerIp },
+      limiter,
+    );
+    if (!perIp.ok) return rateLimitedResponse(perIp.error);
+    const tenant = await resolveTenant(c.req.header('host') ?? '', c.req.header(TENANT_HEADER) ?? null, deps);
+    if (!tenant.ok || tenant.value === null) return null;
+    const perTenant = await claimRateLimitWindow(
+      { scope: 'parcel-locker:tenant', key: tenant.value.tenant.id, window: policies.parcelLockerLookupsPerTenant },
+      limiter,
+    );
+    return perTenant.ok ? null : rateLimitedResponse(perTenant.error);
+  }
   if (c.req.method === 'GET') {
     if (c.req.path !== API_PATHS.healthDeep) return null;
     const claimed = await claimRateLimitWindow(
@@ -240,14 +328,14 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   }
   if (c.req.method !== 'POST') return null;
   if (isMarketingSignupSubmissionPath(c.req.path)) {
-    const ip = await claimRateLimitWindow({ scope: 'signup:ip', key: clientIp(), window: policies.signupsPerIp }, limiter);
-    if (!ip.ok) return rateLimitedResponse(ip.error);
-    const tenant = await resolveTenant(c.req.header('host') ?? '', null, deps);
-    const email = await requestEmail(c);
-    if (!tenant.ok || tenant.value === null || email === null) return null;
-    const key = createHash('sha256').update(`${tenant.value.tenant.id}:${email}`).digest('hex');
-    const claimed = await claimRateLimitWindow({ scope: 'signup:email', key, window: policies.signupsPerEmail }, limiter);
-    return claimed.ok ? null : rateLimitedResponse(claimed.error);
+    const limited = await claimSignupRateLimit(c, deps, clientIp());
+    if (limited === null) return null;
+    if (!isFormEncoded(c)) return rateLimitedResponse(limited.error);
+    // The per-IP page needs no tenant or form lookup of its own, so flooding the submit path stays cheap; the signup CORS middleware may still have read them for an Origin header.
+    if (limited.bucket === 'ip') return signupRateLimitedPage(c, limited.error);
+    // The submit handler answers an HTML form post with the form page itself, so it needs the error instead of a JSON response.
+    c.set('signupRateLimit', limited.error);
+    return null;
   }
   const kind = publicRateLimitKind(c.req.path);
   if (kind === null) return null;
@@ -289,7 +377,7 @@ const enforcePublicRateLimit = async (c: Context, deps: PublicRateLimitMiddlewar
   return perTenant.ok ? null : rateLimitedResponse(perTenant.error);
 };
 
-export const publicRateLimitMiddleware = (deps: PublicRateLimitMiddlewareDeps): MiddlewareHandler =>
+export const publicRateLimitMiddleware = (deps: PublicRateLimitMiddlewareDeps): MiddlewareHandler<AppVars> =>
   async (c, next) => {
     const limited = await enforcePublicRateLimit(c, deps);
     if (limited !== null) return limited;

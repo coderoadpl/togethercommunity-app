@@ -11,7 +11,7 @@ import { CompletionMark } from '../../../components/ui/CompletionMark.js';
 import { useTranslations } from '../../../i18n/index.js';
 import { RailProgressBar } from '../../../theme.js';
 import { courseTotals } from '../CourseRail.js';
-import { focusLesson } from '../course-tree-state.js';
+import { focusLesson, nextLessonOf } from '../course-tree-state.js';
 import { CourseTree } from '../CourseTree.js';
 import { spacesForCourse } from './course-spaces.js';
 import { memberHomePath } from './member-nav.js';
@@ -35,24 +35,28 @@ const CourseHeader = ({ structure }: { structure: CourseStructureWithAccess }) =
         </Typography>
         {done ? <CompletionMark label={t.courseOverview.courseCompleted} /> : null}
       </Stack>
-      <RailProgressBar
-        variant="determinate"
-        value={totals.percent}
-        sx={{ mt: '0.6rem' }}
-        aria-label={t.courseOverview.progressTitle}
-      />
-      <Typography
-        variant="body2"
-        component="p"
-        color="text.secondary"
-        sx={{ mt: '0.35rem' }}
-        data-testid="course-sidebar-totals"
-      >
-        {`${t.courseOverview.percentValue({ percent: totals.percent })} · ${t.shell.lessonsOf({
-          done: totals.done,
-          total: totals.total,
-        })}`}
-      </Typography>
+      {totals.total > 0 ? (
+        <>
+          <RailProgressBar
+            variant="determinate"
+            value={totals.percent}
+            sx={{ mt: '0.6rem' }}
+            aria-label={t.courseOverview.progressTitle}
+          />
+          <Typography
+            variant="body2"
+            component="p"
+            color="text.secondary"
+            sx={{ mt: '0.35rem' }}
+            data-testid="course-sidebar-totals"
+          >
+            {`${t.courseOverview.percentValue({ percent: totals.percent })} · ${t.shell.lessonsOf({
+              done: totals.done,
+              total: totals.total,
+            })}`}
+          </Typography>
+        </>
+      ) : null}
     </Box>
   );
 };
@@ -84,24 +88,27 @@ export const CourseSidebar = ({
   currentLessonId,
   tenantName,
   notFoundFallback = null,
+  showFilter = true,
 }: {
   courseId: string;
   currentLessonId: string | null;
   tenantName: string;
   notFoundFallback?: ReactNode;
+  showFilter?: boolean;
 }) => {
   const t = useTranslations();
   const structure = useQuery(actions.courseStructure(courseId));
   const progress = useQuery(actions.studentProgress(courseId));
   const tree = structure.data?.structure;
   const lastViewedLessonId = progress.data?.progress.lastViewedLessonId;
+  const nextLessonId = currentLessonId === null ? nextLessonOf(progress.data?.progress.resume) : null;
   const waitingForLastViewed = currentLessonId === null && progress.isPending;
   const focusLessonId = useMemo(
     () =>
       tree === undefined || waitingForLastViewed
         ? null
-        : focusLesson(tree, { currentLessonId, lastViewedLessonId }),
-    [tree, waitingForLastViewed, currentLessonId, lastViewedLessonId],
+        : focusLesson(tree, { currentLessonId, nextLessonId, lastViewedLessonId }),
+    [tree, waitingForLastViewed, currentLessonId, nextLessonId, lastViewedLessonId],
   );
 
   if (structure.isError && isNotFound(structure.error)) {
@@ -171,6 +178,8 @@ export const CourseSidebar = ({
             structure={tree}
             focusLessonId={focusLessonId}
             scrollFocusIntoView
+            showFilter={showFilter}
+            nextLessonId={nextLessonId}
             {...(currentLessonId === null ? {} : { currentLessonId })}
           />
         </>

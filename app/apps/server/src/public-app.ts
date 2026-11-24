@@ -1,4 +1,4 @@
-import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams } from '#core/domain/index.js';
+import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams, trimTrailing } from '#core/domain/index.js';
 import { createHash } from 'node:crypto';
 import { isStripeTermsUrlMissing, publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
@@ -112,6 +112,7 @@ import { checkoutConsentEvidence, trustedAuthRequest } from './auth-network.js';
 import { registerCrawlerFiles } from './crawler-files.js';
 import { stripeTestCheckoutIdentity } from './stripe-test-checkout-identity.js';
 import { registerDirectSalesLinkRoutes } from './direct-sales-link-routes.js';
+import { registerPublicParcelLockerRoutes } from './parcel-locker-routes.js';
 import { directSalesLinkCopy } from './direct-sales-link-page.js';
 import { registerDeepHealthRoute } from './deep-health-route.js';
 import { registerManifestRoute } from './manifest.js';
@@ -199,7 +200,7 @@ const authEmailLanguage = async (
 };
 
 const platformAuthBaseUrl = (hostHeader: string, deps: AppDeps): string | null => {
-  const host = (hostHeader.split(':')[0] ?? '').replace(/\.+$/u, '').toLowerCase();
+  const host = trimTrailing(hostHeader.split(':')[0] ?? '', '.').toLowerCase();
   if (deps.platformHost === null || host !== deps.platformHost.toLowerCase()) return null;
   const url = new URL(deps.appBaseUrl);
   url.hostname = deps.platformHost;
@@ -643,7 +644,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
     if (mode === 'list') {
       const editions = await listLessonEditions(ctx, lessonId, deps);
       if (!editions.ok) return respondPublic(!authenticated && editions.error.code === 'forbidden' ? err(unauthorized()) : editions);
-      return respondPublic(ok(lessonEditionsOutputSchema.parse({ editions: editions.value })));
+      return respondPublic(ok(lessonEditionsOutputSchema.parse(editions.value)));
     }
     const result = await getPlayableLesson(ctx, lessonId, deps, mode === 'edition' ? c.req.param('number') : undefined);
     if (!result.ok) {
@@ -705,6 +706,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         : config,
     );
   });
+
+  registerPublicParcelLockerRoutes(app, deps);
 
   const checkoutRequestSelection = async (tenantId: string, body: unknown) => {
     if (!isCheckoutCartRequest(body)) {

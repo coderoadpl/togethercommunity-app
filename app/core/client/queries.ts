@@ -253,6 +253,7 @@ const publicSurfaceScopes = {
   courseStructure: (courseId: string) => ['public-course-structure', courseId] as const,
   spaceFeed: (spaceId: string, limit?: number) =>
     ['public-space-feed', spaceId, limit ?? null] as const,
+  spaceFeedPages: (spaceId: string) => ['public-space-feed-pages', spaceId] as const,
   spaceThread: (spaceId: string, postId: string) =>
     ['public-space-thread', spaceId, postId] as const,
   spaceEvents: (spaceId: string, scope?: string) =>
@@ -298,6 +299,7 @@ const salesScopes = {
   all: () => ['sales'] as const,
   orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
   order: (id: string) => ['sales', 'order', id] as const,
+  refundPreview: (id: string) => ['sales', 'order', id, 'refund-preview'] as const,
   export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
   summary: () => ['sales', 'summary'] as const,
   reconciliation: (input: OrdersReconciliationQueryInput) =>
@@ -658,6 +660,15 @@ export const publicSpaceFeedQuery = (api: ApiClient, input: SpaceFeedGetInput) =
     call: ({ signal }) => api.publicSpaceFeed(input, signal),
   });
 
+export const publicSpaceFeedPagesQuery = (api: ApiClient, spaceId: string) =>
+  defineCursorQuery({
+    queryKey: publicSurfaceScopes.spaceFeedPages(spaceId),
+    call: ({ signal, pageParam }) => api.publicSpaceFeed({
+      spaceId, ...(pageParam === undefined ? {} : { cursor: pageParam }),
+    }, signal),
+    nextCursor: (page) => page.feed.nextCursor,
+  });
+
 export const publicSpaceThreadQuery = (api: ApiClient, input: PublicSpaceThreadGetInput) =>
   defineQuery({
     queryKey: publicSurfaceScopes.spaceThread(input.spaceId, input.postId),
@@ -686,6 +697,15 @@ export const publicPaymentConfigQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: ['payment-config'] as const,
     call: ({ signal }) => api.publicPaymentConfig(signal),
+  });
+
+export const publicParcelLockerQuery = (api: ApiClient, code: string) =>
+  defineQuery({
+    queryKey: ['parcel-locker', code] as const,
+    call: ({ signal }) => api.publicParcelLocker(code, signal),
+    retry: false,
+    networkMode: 'always',
+    meta: { background: true },
   });
 
 export const removeStripeTestModeMutation = (api: ApiClient) =>
@@ -927,6 +947,25 @@ export const orderQuery = (api: ApiClient, id: string) =>
   defineQuery({
     queryKey: salesScopes.order(id),
     call: ({ signal }) => api.getOrder(id, signal),
+  });
+
+export const orderRefundPreviewQuery = (api: ApiClient, orderId: string) =>
+  defineQuery({
+    queryKey: salesScopes.refundPreview(orderId),
+    staleTime: 0,
+    call: ({ signal }) => api.orderRefundPreview({ orderId }, signal),
+  });
+
+export const createOrderRefundMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'refund'],
+    call: (input: Parameters<ApiClient['createOrderRefund']>[0]) => api.createOrderRefund(input),
+  });
+
+export const shipOrderAnywayMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...salesScopes.all(), 'ship-anyway'],
+    call: (orderId: string) => api.shipOrderAnyway({ orderId }),
   });
 
 export const issueInvoiceMutation = (api: ApiClient) =>

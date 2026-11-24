@@ -11,6 +11,7 @@ export * from './stock-schema.js';
 export * from './order-fulfilment-schema.js';
 export * from './shipx-schema.js';
 export * from './order-refund-job-schema.js';
+export * from './order-staff-refund-schema.js';
 export * from './order-change-schema.js';
 export * from './change-proposal-schema.js';
 export * from './payment-event-rejection-schema.js';

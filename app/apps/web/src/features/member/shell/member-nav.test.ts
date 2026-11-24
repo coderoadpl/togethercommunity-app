@@ -4,6 +4,8 @@ import {
   activeNavEntry,
   anonHomePath,
   courseContextFromPath,
+  isPublicHomeAnchor,
+  lockedSpaceAnchor,
   memberHomePath,
   memberMessagesPath,
   memberSearchPath,
@@ -68,5 +70,16 @@ describe('courseContextFromPath', () => {
     ['/account'],
   ])('stays out of course context on %s', (pathname) => {
     expect(courseContextFromPath(pathname)).toBeNull();
+  });
+});
+
+describe('public home anchors', () => {
+  it('accepts the offer anchor and locked-space anchors only', () => {
+    expect(lockedSpaceAnchor('s9')).toBe('locked-s9');
+    expect(isPublicHomeAnchor('offer')).toBe(true);
+    expect(isPublicHomeAnchor(lockedSpaceAnchor('s9'))).toBe(true);
+    expect(isPublicHomeAnchor('locked-')).toBe(false);
+    expect(isPublicHomeAnchor('courses')).toBe(false);
+    expect(isPublicHomeAnchor('')).toBe(false);
   });
 });

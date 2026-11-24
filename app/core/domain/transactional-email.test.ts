@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
 import { contrastRatio, deriveLightAccent } from './color.js';
-import { emailOutboxPayloadSchema, renderEmailOutboxPayload } from './email-outbox.js';
+import { emailOutboxPayloadSchema, prerenderedTransactionalPayload, renderEmailOutboxPayload } from './email-outbox.js';
 import { marketingConsentConfirmation } from './marketing-email.js';
 import { ORDER_REFUND_ALERTS } from './order-refund-job.js';
-import { expectedPurchaseConfirmationPl, expectedPurchaseDeliveryPl, expectedPurchasePersonalizationPl, expectedTransactionalEmailPl, orderShippedFixturePl, purchaseDeliveryFixturesPl } from './transactional-email.expected.pl.js';
+import type { StaffRefundReason } from './order-staff-refund.js';
+import {
+  expectedPurchaseConfirmationPl,
+  expectedPurchaseDeliveryPl,
+  expectedPurchasePersonalizationPl,
+  expectedStaffRefundAlertPl,
+  expectedTransactionalEmailPl,
+  orderShippedFixturePl,
+  purchaseDeliveryFixturesPl,
+} from './transactional-email.expected.pl.js';
 import { transactionalEmailMessagesEn } from './transactional-email.en.js';
 import { transactionalEmailMessagesPl } from './transactional-email.pl.js';
 import {
@@ -23,8 +32,10 @@ import {
   stockLowEmail,
   orderOutOfStockEmail,
   orderRefundAlertEmail,
+  orderRefundIssuedEmail,
   orderSoldOutRefundEmail,
   paymentEventRejectedEmail,
+  staffRefundAlertEmail,
   subscriptionEnded,
   orderShipped,
   subscriptionPaymentFailed,
@@ -590,6 +601,13 @@ describe('transactional message catalogue', () => {
       reasonCode: 'validation', reasonMessage: 'Checkout snapshot not found', firstSeenAt: '1998-08-17T10:00:00.000Z',
       studioUrl: 'https://acme.test/panel/sales',
     })],
+    ['order-refund-issued', (language) => orderRefundIssuedEmail(language, {
+      tenantName: 'Acme Courses', orderId: 'order-1', amountCents: 1500, currency: 'PLN', shopUrl: 'https://acme.test/',
+    })],
+    ['staff-refund-alert', (language) => staffRefundAlertEmail(language, {
+      tenantName: 'Acme Courses', alert: 'failed', orderId: 'order-1', amountCents: 1500, currency: 'PLN', mayHaveRefunded: false, reason: null,
+      restocked: false, removedFromPackingList: false, diagnostic: 'Refund declined', orderUrl: 'https://acme.test/panel/sales/order-1',
+    })],
     ['email-transport-test', (language) => emailTransportTest(language, { transport: 'ses' })],
     ['marketing-consent-confirmation', (language) => marketingConsentConfirmation({
       language, wording: 'News and offers', confirmationUrl: 'https://acme.test/confirm',
@@ -804,6 +822,209 @@ describe('order refund alert email', () => {
 
   it('renders the Polish alert with a Polish amount', () => {
     expect(orderRefundAlertEmail('pl', { ...input, alert: 'failed' })).toEqual(expectedTransactionalEmailPl.orderRefundAlertEmail);
+  });
+});
+
+describe('order refund issued email', () => {
+  const input = { tenantName: 'Acme <Shop>', orderId: 'order-<1>', amountCents: 1500, currency: 'PLN', shopUrl: 'https://acme.example.com/' };
+
+  it('names the amount, the short order reference and the usual arrival time without a promised date', () => {
+    const message = orderRefundIssuedEmail('en', input);
+    expect(message.subject).toBe('Refund of PLN\u00a015.00 on its way — Acme <Shop> (#ORDER-<1)');
+    expect(message.text).toBe([
+      'Hello!',
+      '',
+      'A refund of PLN\u00a015.00 for order #ORDER-<1 on Acme <Shop> has been issued to the payment method you used. You do not need to do anything.',
+      '',
+      'When the money comes back:',
+      '- Card: a refund made soon after the payment usually shows as a reversal, so the charge disappears from your statement; otherwise it usually appears as a separate credit after about 5–10 business days, depending on your bank.',
+      '- Other payment methods: the time usually depends on the payment method and your bank.',
+      '',
+      'Visit the shop: https://acme.example.com/',
+    ].join('\n'));
+    expect(message.html).toContain('order #ORDER-&lt;1 on Acme &lt;Shop&gt;');
+    expect(message.html).toContain('<a href="https://acme.example.com/">Visit the shop</a>');
+    expect(message.text).not.toContain('order-<1>');
+  });
+
+  it('renders the Polish message with a Polish amount', () => {
+    expect(orderRefundIssuedEmail('pl', input)).toEqual(expectedTransactionalEmailPl.orderRefundIssuedEmail);
+  });
+
+  it('is stored rendered, in the shape every release renders, and never under a kind of its own', () => {
+    const message = orderRefundIssuedEmail('pl', input);
+    const payload = prerenderedTransactionalPayload(message);
+    expect(payload).toStrictEqual({ kind: 'm2m-transactional', ...message });
+    expect(renderEmailOutboxPayload(payload)).toMatchObject({ success: true, data: message });
+    expect(emailOutboxPayloadSchema.safeParse({ kind: 'order-refund-issued', language: 'pl', ...input }).success).toBe(false);
+  });
+
+  it.each([
+    ['en', 'JP¥1,200'],
+    ['pl', '1200\u00a0JPY'],
+  ] as const)('names a zero-decimal amount in its own minor units in the %s notice', (language, amount) => {
+    const message = orderRefundIssuedEmail(language, { ...input, amountCents: 1200, currency: 'JPY' });
+    expect(message.subject).toContain(amount);
+    expect(message.text).toContain(amount);
+  });
+
+  it('shortens a subject longer than a stored message may carry', () => {
+    const payload = prerenderedTransactionalPayload({ subject: 'x'.repeat(250), html: '<p>x</p>', text: 'x' });
+    expect(payload.kind === 'm2m-transactional' ? payload.subject : '').toBe(`${'x'.repeat(199)}…`);
+  });
+});
+
+describe('staff refund alert email', () => {
+  const input = {
+    tenantName: 'Acme', alert: 'failed' as const, orderId: 'order-<1>', amountCents: 4099, currency: 'PLN', mayHaveRefunded: false, reason: null,
+    restocked: true, removedFromPackingList: true, diagnostic: 'Stripe rejected the refund: <declined>', orderUrl: 'https://acme.example.com/panel/sales/order-1',
+  };
+
+  it('says a staff refund failed, that nothing was refunded, which stock and packing changes stay and what the provider said', () => {
+    const message = staffRefundAlertEmail('en', input);
+    expect(message.subject).toBe('[Acme] Staff refund failed, nothing refunded: order-<1>');
+    expect(message.text).toBe([
+      'A staff member asked to refund PLN\u00a040.99 of order order-<1>.',
+      'The refund failed and is no longer retried. Nothing was refunded by this request. Refund PLN\u00a040.99 again from the order page by entering that amount as a partial refund, not the whole remainder, or refund at most PLN\u00a040.99 by hand in the Stripe Dashboard.',
+      'The goods returned to stock and the order taken off the packing list with this refund stay that way. To send the order after all, put it back on the packing list from its page.',
+      'Last error: Stripe rejected the refund: <declined>',
+      'https://acme.example.com/panel/sales/order-1',
+    ].join('\n'));
+    expect(message.html).toContain('<p>A staff member asked to refund PLN\u00a040.99 of order order-&lt;1&gt;.</p>');
+    expect(message.html).toContain('<p>Last error: Stripe rejected the refund: &lt;declined&gt;</p>');
+    expect(message.html).toContain('<a href="https://acme.example.com/panel/sales/order-1">Open the order</a>');
+    expect(message.text).not.toContain('cancelled');
+  });
+
+  it('renders the Polish alerts in Polish, with the provider diagnostic as it came', () => {
+    expect(staffRefundAlertEmail('pl', input)).toEqual(expectedTransactionalEmailPl.staffRefundFailedAlertEmail);
+    expect(staffRefundAlertEmail('pl', { ...input, alert: 'failed_after_submission', restocked: false })).toEqual(expectedTransactionalEmailPl.staffRefundFailedAfterSubmissionAlertEmail);
+  });
+
+  it('tells staff to check access only when a refund failed after it was issued', () => {
+    const access = 'Check the member\'s access on the member page and restore it only if it was revoked and should be restored';
+    for (const alert of ORDER_REFUND_ALERTS) {
+      expect(staffRefundAlertEmail('en', { ...input, alert }).text.includes(access)).toBe(alert === 'failed_after_submission');
+    }
+  });
+
+  it('names the stock and packing changes that stay only for a refund that is no longer tried', () => {
+    const kept = 'stay that way';
+    for (const alert of ORDER_REFUND_ALERTS) {
+      expect(staffRefundAlertEmail('en', { ...input, alert }).text.includes(kept)).toBe(alert !== 'retrying' && alert !== 'blocked_permission');
+    }
+    expect(staffRefundAlertEmail('en', { ...input, removedFromPackingList: false }).text).toContain('The goods returned to stock with this refund stay in stock.');
+    expect(staffRefundAlertEmail('en', { ...input, restocked: false }).text).toContain('The order taken off the packing list with this refund stays off it.');
+    expect(staffRefundAlertEmail('en', { ...input, restocked: false, removedFromPackingList: false }).text).not.toContain('packing list');
+  });
+
+  it.each([
+    ['en', false, 'Staff refund not issued yet, retrying',
+      'The refund has not reached Stripe yet, so nothing has been refunded yet. It is retried automatically for 7 days; you get another message if it still fails.'],
+    ['en', true, 'Staff refund outcome not known yet, retrying',
+      'Stripe may already have received this refund request, but its answer was lost. The same request is repeated automatically for 7 days, so the order is never refunded twice; you get another message if it still fails.'],
+    ['pl', false, expectedStaffRefundAlertPl.retryingSubject, expectedStaffRefundAlertPl.retrying],
+    ['pl', true, expectedStaffRefundAlertPl.retryingOutcomeUnknownSubject, expectedStaffRefundAlertPl.retryingOutcomeUnknown],
+  ] as const)('words the %s retry alert by whether the request may have reached Stripe (%s), never saying it has not when it may have', (language, mayHaveRefunded, subject, state) => {
+    const message = staffRefundAlertEmail(language, { ...input, alert: 'retrying', mayHaveRefunded, diagnostic: '' });
+    expect(message.subject).toBe(`[Acme] ${subject}: order-<1>`);
+    expect(message.text.split('\n')[1]).toBe(state);
+    if (mayHaveRefunded) expect(message.text).not.toContain(language === 'en' ? 'has not reached Stripe' : expectedStaffRefundAlertPl.retrying.split(',')[0]);
+  });
+
+  const englishCheck = 'Check this refund of PLN\u00a040.99 in the Stripe Dashboard. If it is Succeeded, nothing more is needed. If it is Pending, do not refund it again: it is no longer checked automatically, so follow it there until it is Succeeded or Failed. If it is Requires action, complete it there. If it is Failed or Canceled, or not listed, refund there only the unpaid part of the PLN\u00a040.99 requested here, and never more than Stripe shows as left to refund on the payment; the order is updated once Stripe reports the refund.';
+
+  const unconfirmedRows: ReadonlyArray<readonly [string, StaffRefundReason, string, string]> = [
+    ['en', 'create_outcome_unknown', 'A request for this refund may have reached Stripe, but the payment\'s refunds could not be read before the automatic retries ended, so it is not known whether it was paid.', englishCheck],
+    ['en', 'awaiting_provider', 'Stripe still had this refund in progress at the last automatic check, and it is no longer checked automatically, so it is not known whether it was paid.', englishCheck],
+    ['en', 'refunded_outside', 'The payment shows a full refund made outside the platform that the workspace\'s Stripe key could not confirm, so it is not known whether this refund was paid.', englishCheck],
+    ['en', 'not_confirmed', 'Stripe has not confirmed the refund, and it is no longer checked automatically, so it is not known whether it was paid.', englishCheck],
+    ...(['create_outcome_unknown', 'awaiting_provider', 'refunded_outside', 'not_confirmed'] as const)
+      .map((reason) => ['pl', reason, expectedStaffRefundAlertPl.unconfirmedBecause[reason], expectedStaffRefundAlertPl.checkInDashboard(expectedStaffRefundAlertPl.paidAmount)] as const),
+  ];
+
+  it.each(unconfirmedRows)('tells staff in the %s unconfirmed alert (%s) what to do for each status the dashboard may show', (language, reason, because, check) => {
+    const text = staffRefundAlertEmail(language, { ...input, alert: 'unconfirmed', reason, mayHaveRefunded: reason === 'create_outcome_unknown', diagnostic: '' }).text;
+    expect(text.split('\n')[1]).toBe(`${because} ${check}`);
+    expect(text).not.toContain('refund the order again from its page');
+  });
+
+  it.each([
+    ['en', [
+      'If it is Succeeded, nothing more is needed.', 'If it is Pending, do not refund it again', 'If it is Requires action, complete it there.',
+      'If it is Failed or Canceled, or not listed, refund there only the unpaid part of the',
+    ], ['listed there, nothing more', 'Succeeded or Pending, nothing more']],
+    ['pl', expectedStaffRefundAlertPl.dashboardSteps, [expectedStaffRefundAlertPl.listedMeansDone, expectedStaffRefundAlertPl.pendingMeansDone]],
+  ] as const)('never treats a refund merely listed or still pending in the dashboard as paid in the %s guidance', (language, steps, treatedAsDone) => {
+    const text = staffRefundAlertEmail(language, { ...input, alert: 'unconfirmed', reason: 'awaiting_provider', diagnostic: '' }).text;
+    for (const step of steps) expect(text).toContain(step);
+    for (const done of treatedAsDone) expect(text).not.toContain(done);
+  });
+
+  it.each([
+    ['en', 'refund there only the unpaid part of the PLN\u00a010.00 requested here, and never more than Stripe shows as left to refund on the payment',
+      'Refund PLN\u00a010.00 again from the order page by entering that amount as a partial refund, not the whole remainder'],
+    ['pl', expectedStaffRefundAlertPl.partialCap, expectedStaffRefundAlertPl.partialFailedAfterSubmission],
+  ] as const)('bounds any replacement of a partial refund by the amount requested in the %s alerts, never the whole remainder', (language, cap, refundAgain) => {
+    const partial = { ...input, amountCents: 1000, diagnostic: '' };
+    for (const reason of ['create_outcome_unknown', 'awaiting_provider', 'refunded_outside', 'not_confirmed'] as const) {
+      expect(staffRefundAlertEmail(language, { ...partial, alert: 'unconfirmed', reason }).text).toContain(cap);
+    }
+    expect(staffRefundAlertEmail(language, { ...partial, alert: 'failed_after_submission', reason: 'failed_after_order_refunded' }).text).toContain(cap);
+    expect(staffRefundAlertEmail(language, { ...partial, alert: 'failed_after_submission', reason: 'failed_after_submission' }).text).toContain(refundAgain);
+  });
+
+  it.each([
+    ['en', 'Refund PLN\u00a010.00 again from the order page by entering that amount as a partial refund, not the whole remainder, or refund at most PLN\u00a010.00 by hand in the Stripe Dashboard.',
+      'Refund the order again'],
+    ['pl', expectedStaffRefundAlertPl.partialByHand, expectedStaffRefundAlertPl.refundOrderAgain],
+  ] as const)('bounds the replacement of a partial refund that was never issued by the amount requested in the %s alerts, never the whole remainder', (language, refundAgain, unbounded) => {
+    for (const alert of ['failed', 'blocked_permission_failed'] as const) {
+      const text = staffRefundAlertEmail(language, { ...input, alert, amountCents: 1000, reason: null, diagnostic: '' }).text;
+      expect(text).toContain(refundAgain);
+      expect(text).not.toContain(unbounded);
+    }
+  });
+
+  it.each([
+    ['en', 'If Stripe reported the refund before it failed, a full refund may have ended the access the order gave, and that is not undone automatically. Check the member\'s access on the member page and restore it only if it was revoked and should be restored: a partial refund never ends access, and another purchase may have kept it.',
+      'grant it again'],
+    ['pl', expectedStaffRefundAlertPl.access, expectedStaffRefundAlertPl.grantAgain],
+  ] as const)('tells staff in the %s alert of a partial refund that failed after it was issued to restore access only if it was revoked', (language, access, grantAgain) => {
+    const paragraphs = staffRefundAlertEmail(language, { ...input, alert: 'failed_after_submission', reason: 'failed_after_submission', amountCents: 1000, restocked: false, removedFromPackingList: false, diagnostic: '' }).text.split('\n');
+    expect(paragraphs.at(-2)).toBe(access);
+    expect(paragraphs.join('\n')).not.toContain(grantAgain);
+  });
+
+  it.each([
+    ['en', 'The order is already marked refunded, so it cannot be refunded again from its page. Check this refund of PLN\u00a040.99 in the Stripe Dashboard.', 'again from the order page by entering that amount as a partial refund, not the whole remainder'],
+    ['pl', `${expectedStaffRefundAlertPl.failedAfterOrderRefunded} ${expectedStaffRefundAlertPl.checkInDashboard(expectedStaffRefundAlertPl.paidAmount)}`, expectedStaffRefundAlertPl.refundAgainFromPage],
+  ] as const)('tells staff in the %s alert to refund in the dashboard a refund that failed after the order was marked refunded, never from the order page', (language, guidance, refundAgain) => {
+    const text = staffRefundAlertEmail(language, { ...input, alert: 'failed_after_submission', reason: 'failed_after_order_refunded', diagnostic: '' }).text;
+    expect(text).toContain(guidance);
+    expect(text).not.toContain(refundAgain);
+    expect(staffRefundAlertEmail(language, { ...input, alert: 'failed_after_submission', reason: 'failed_after_submission', diagnostic: '' }).text).toContain(refundAgain);
+  });
+
+  it('gives every alert its own staff refund subject in both languages', () => {
+    for (const language of ['en', 'pl']) {
+      const subjects = ORDER_REFUND_ALERTS.map((alert) => staffRefundAlertEmail(language, { ...input, alert }).subject);
+      expect(new Set(subjects).size).toBe(ORDER_REFUND_ALERTS.length);
+    }
+    expect(ORDER_REFUND_ALERTS.map((alert) => staffRefundAlertEmail('en', { ...input, alert }).subject).every((subject) => subject.includes('Staff refund'))).toBe(true);
+  });
+
+  it.each([
+    ['en', 'JP¥1,200'],
+    ['pl', '1200\u00a0JPY'],
+  ] as const)('names a zero-decimal amount in its own minor units in the %s alert', (language, amount) => {
+    expect(staffRefundAlertEmail(language, { ...input, amountCents: 1200, currency: 'JPY' }).text).toContain(amount);
+  });
+
+  it('leaves out the last error line when there is no diagnostic', () => {
+    const message = staffRefundAlertEmail('en', { ...input, diagnostic: '' });
+    expect(message.text).not.toContain('Last error');
+    expect(message.html).not.toContain('Last error');
   });
 });
 

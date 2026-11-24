@@ -118,8 +118,9 @@ queries or run outside the query cache. Timeout diagnostics include fetching que
 keys and held calls. Page decorators use the production tenant-loading boundary
 and baseline placement. Animation suppression belongs to the capture harness after
 the page settles, matching the application harness; disabling it before mount
-changes the course upload button’s initial border paint. The shared screen specification supplies the splash's 7 KiB minimum
-PNG size and skips network-idle waiting. Password recovery stories synchronize
+changes the course upload button’s initial border paint. The shared screen specification supplies the splash's per-screen 4 KiB minimum
+PNG size (the neutral splash compresses below the 7 KiB it used before; its ready
+step waits for the visible mark and label instead) and skips network-idle waiting. Password recovery stories synchronize
 the fixture route's token and error parameters with the iframe URL because the
 production auth pages read those values from the browser location.
 

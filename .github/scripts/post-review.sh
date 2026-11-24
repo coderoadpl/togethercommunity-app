@@ -31,18 +31,26 @@ consider() {
   fi
 }
 
-consider 1p "${O_1P:-}" "${RAW_1P:-}" "${LOG_1P:-}" "${MODEL_1P:-}" 1 try1p
-consider 1pr "${O_1PR:-}" "${RAW_1PR:-}" "${LOG_1PR:-}" "${MODEL_1PR:-}" 1 try1pr
-consider 1f "${O_1F:-}" "${RAW_1F:-}" "${LOG_1F:-}" "${MODEL_1F:-}" 1 try1f
-consider 1fr "${O_1FR:-}" "${RAW_1FR:-}" "${LOG_1FR:-}" "${MODEL_1FR:-}" 1 try1fr
-consider 2p "${O_2P:-}" "${RAW_2P:-}" "${LOG_2P:-}" "${MODEL_2P:-}" 2 try2p
-consider 2pr "${O_2PR:-}" "${RAW_2PR:-}" "${LOG_2PR:-}" "${MODEL_2PR:-}" 2 try2pr
-consider 2f "${O_2F:-}" "${RAW_2F:-}" "${LOG_2F:-}" "${MODEL_2F:-}" 2 try2f
-consider 2fr "${O_2FR:-}" "${RAW_2FR:-}" "${LOG_2FR:-}" "${MODEL_2FR:-}" 2 try2fr
-consider 3p "${O_3P:-}" "${RAW_3P:-}" "${LOG_3P:-}" "${MODEL_3P:-}" 3 try3p
-consider 3pr "${O_3PR:-}" "${RAW_3PR:-}" "${LOG_3PR:-}" "${MODEL_3PR:-}" 3 try3pr
-consider 3f "${O_3F:-}" "${RAW_3F:-}" "${LOG_3F:-}" "${MODEL_3F:-}" 3 try3f
-consider 3fr "${O_3FR:-}" "${RAW_3FR:-}" "${LOG_3FR:-}" "${MODEL_3FR:-}" 3 try3fr
+attempt_ids=()
+attempt_reasons=""
+attempt_list_valid=false
+attempt_list_pattern='^try[1-9][0-9]*(p|pr|f|fr)( try[1-9][0-9]*(p|pr|f|fr))*$'
+if [[ "${AI_REVIEW_ATTEMPTS:-}" =~ $attempt_list_pattern ]]; then
+  attempt_list_valid=true
+  read -r -a attempt_ids <<< "$AI_REVIEW_ATTEMPTS"
+fi
+
+attempt_value() {
+  local name="${1}_${2^^}"
+  printf '%s' "${!name:-}"
+}
+
+for attempt_id in "${attempt_ids[@]}"; do
+  key="${attempt_id#try}"
+  consider "$key" "$(attempt_value O "$key")" "$(attempt_value RAW "$key")" \
+    "$(attempt_value LOG "$key")" "$(attempt_value MODEL "$key")" "${key%%[pf]*}" "$attempt_id"
+  attempt_reasons+="$(attempt_value R "$key")"$'\n'
+done
 
 observed_model=""
 turns=""
@@ -96,19 +104,19 @@ trap 'rm -f "$body_file"' EXIT
     printf '## AI review: NO VERDICT — infrastructure failure\n\n'
     if [ "${PREPARE_REASON:-}" = base_moved ]; then
       printf '%s\n\n' "$base_moved_message"
-    elif printf '%s\n' "${R_1P:-}" "${R_1PR:-}" "${R_1F:-}" "${R_1FR:-}" "${R_2P:-}" "${R_2PR:-}" "${R_2F:-}" "${R_2FR:-}" "${R_3P:-}" "${R_3PR:-}" "${R_3F:-}" "${R_3FR:-}" | grep -qx turn_limit; then
+    elif printf '%s' "$attempt_reasons" | grep -qx turn_limit; then
       printf '%s\n\n' "$turn_limit_message"
     else
       printf 'The gate did not obtain a valid verdict. Merge remains blocked.\n\n'
     fi
     printf '### Attempts\n\n'
-    printf '%s\n' \
-      "- try1p: ${R_1P:-not_attempted}" "- try1pr: ${R_1PR:-not_attempted}" \
-      "- try1f: ${R_1F:-not_attempted}" "- try1fr: ${R_1FR:-not_attempted}" \
-      "- try2p: ${R_2P:-not_attempted}" "- try2pr: ${R_2PR:-not_attempted}" \
-      "- try2f: ${R_2F:-not_attempted}" "- try2fr: ${R_2FR:-not_attempted}" \
-      "- try3p: ${R_3P:-not_attempted}" "- try3pr: ${R_3PR:-not_attempted}" \
-      "- try3f: ${R_3F:-not_attempted}" "- try3fr: ${R_3FR:-not_attempted}"
+    if [ "$attempt_list_valid" != true ]; then
+      printf -- '- AI_REVIEW_ATTEMPTS is missing or invalid\n'
+    fi
+    for attempt_id in "${attempt_ids[@]}"; do
+      reason="$(attempt_value R "${attempt_id#try}")"
+      printf -- '- %s: %s\n' "$attempt_id" "${reason:-not_attempted}"
+    done
     printf '\nProducer: none\n'
   else
     verdict="$(printf '%s' "$producer_raw" | jq -r .verdict)"

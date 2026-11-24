@@ -76,6 +76,7 @@ export const CAPABILITIES = [
   'order:write',
   'order:export',
   'order:reconcile',
+  'order:refund',
   'sales:read',
   'support:request',
   'invoice:read',
@@ -176,6 +177,7 @@ const VERIFIED_EMAIL_CAPABILITIES: readonly Capability[] = [
   'tenant:create',
   'platform:data:reset',
   'proposal:decide',
+  'order:refund',
 ];
 
 export const requiresVerifiedEmail = (capability: Capability): boolean =>
@@ -254,6 +256,7 @@ const sharedStaffCapabilities = [
   'order:write',
   'order:export',
   'order:reconcile',
+  'order:refund',
   'sales:read',
   'invoice:read',
   'invoice:write',

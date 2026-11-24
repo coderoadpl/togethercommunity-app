@@ -1,4 +1,4 @@
-import type { AppError, MetaCapiState, MetaCapiEvent, MetaCapiPayload, Order, Result } from '#core/domain/index.js';
+import type { AppError, MetaCapiState, MetaCapiEvent, MetaCapiMemberConsent, MetaCapiPayload, Order, Result } from '#core/domain/index.js';
 import type { TenantRepository, TenantSecretResolver } from './ports.js';
 
 export interface MetaCapiOrder {
@@ -37,7 +37,7 @@ export interface MetaCapiRepository {
   listDueTenantIds(now: string): Promise<string[]>;
   processNext(tenantId: string, now: string, process: (job: MetaCapiJob, workspace: MetaCapiWorkspaceReaders) => Promise<MetaCapiJobOutcome>): Promise<boolean>;
   listEvents(tenantId: string): Promise<MetaCapiEvent[]>;
-  listMemberConsents(tenantId: string, memberId: string): Promise<(MetaCapiState & { orderId: string; consentAt: string | null })[]>;
+  listMemberConsents(tenantId: string, memberId: string): Promise<MetaCapiMemberConsent[]>;
 }
 type MetaCapiSendResult = { ok: true; fbtraceId: string | null } | { ok: false; retryable: boolean; error: string };
 export interface MetaCapiGateway {

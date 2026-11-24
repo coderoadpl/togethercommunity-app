@@ -458,7 +458,7 @@ export const saveMarketingConsentPreferences = async (
     confirmationBaseUrl: string;
   },
   deps: UnsubscribeDeps & Pick<ConsentDeps, 'confirmations' | 'members' | 'outbox' | 'tenants' | 'tokens'>,
-): Promise<Result<{ pendingConfirmations: number }, AppError>> => {
+): Promise<Result<{ pendingConfirmations: number; subscriptionsRefused: boolean }, AppError>> => {
   const tenantId = tenantIdFrom(ctx, 'marketing:consent:write');
   if (!tenantId.ok) return tenantId;
   const token = await deps.unsubscribes.findByToken(tenantId.value, input.token);
@@ -471,19 +471,28 @@ export const saveMarketingConsentPreferences = async (
   }
   const selectedIds = new Set(input.selectedDefinitionIds);
   const presentIds = new Set(input.presentDefinitionIds.filter((definitionId) => allowedIds.has(definitionId)));
+  const current = await Promise.all(definitions.map(async (definition) => {
+    const state = deriveConsentState(await deps.consents.listByEmail(tenantId.value, token.email, definition.id), definition);
+    const selected = selectedIds.has(definition.id);
+    const held = state.state === 'active' || state.state === 'pending_confirmation';
+    return {
+      definition,
+      state,
+      selected,
+      newGrant: selected && !held,
+      withdrawal: presentIds.has(definition.id) && !selected && state.state !== 'none' && state.state !== 'withdrawn',
+    };
+  }));
   const emailHmac = deps.hmac.compute(tenantId.value, token.email);
-  if (selectedIds.size > 0 && await deps.suppressions.isSuppressed(tenantId.value, emailHmac)) {
+  const subscriptionsRefused = current.some((entry) => entry.newGrant)
+    && await deps.suppressions.isSuppressed(tenantId.value, emailHmac);
+  if (subscriptionsRefused && !current.some((entry) => entry.withdrawal)) {
     return err(validation('Globally unsubscribed addresses cannot re-subscribe from this page'));
   }
   const resolveLanguage = consentEmailLanguage(tenantId.value, token.email, deps);
   let pendingConfirmations = 0;
-  for (const definition of definitions) {
-    const state = deriveConsentState(
-      await deps.consents.listByEmail(tenantId.value, token.email, definition.id),
-      definition,
-    );
-    const selected = selectedIds.has(definition.id);
-    if (presentIds.has(definition.id) && !selected && state.state !== 'none' && state.state !== 'withdrawn') {
+  for (const { definition, state, selected, newGrant, withdrawal } of current) {
+    if (withdrawal) {
       const withdrawn = await withdrawMarketingConsent(ctx, {
         email: token.email,
         definitionId: definition.id,
@@ -491,7 +500,8 @@ export const saveMarketingConsentPreferences = async (
       }, deps);
       if (!withdrawn.ok) return withdrawn;
     }
-    if (selected && state.state !== 'active' && state.state !== 'pending_confirmation') {
+    if (newGrant) {
+      if (subscriptionsRefused) continue;
       const recorded = await recordMarketingConsent(ctx, {
         email: token.email,
         memberId: token.memberId,
@@ -507,7 +517,7 @@ export const saveMarketingConsentPreferences = async (
       pendingConfirmations += 1;
     }
   }
-  return ok({ pendingConfirmations });
+  return ok({ pendingConfirmations, subscriptionsRefused });
 };
 
 export const unsubscribeOneClick = async (

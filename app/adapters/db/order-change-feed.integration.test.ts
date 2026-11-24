@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { decodeOrderChangeCursor, orderLineSchema, orderSchema, type Identity, type Order, type OrderChangeFeed, type OrderShipping } from '#core/domain/index.js';
 import { listOrderChangeFeed, type OrderChangeFeedDeps } from '#core/server/index.js';
 
+import { waitForSettledOrderChanges } from './order-change-feed-test-helpers.js';
 import { createOrderChangeRepository } from './order-changes.js';
 import { createOrderFulfilmentRepository } from './order-fulfilment.js';
 import { createOrderRepository } from './repositories.js';
@@ -124,7 +125,8 @@ describe('order change feed on Postgres', () => {
       orderId, eventId: `ship-${orderId}`, email: null,
       shipment: { carrier: 'other', trackingNumber: 'TRACK-0002', shippedAt: now, shippedBy: 'staff' },
     });
-    const page = await feedUntil('workspace', { after: start }, (candidate) => ids(candidate).length >= 2);
+    await waitForSettledOrderChanges(database.db, 'workspace');
+    const page = await feed('workspace', { after: start });
     expect(ids(page)).toEqual([other, orderId]);
     expect(page.changes[1]?.order.fulfilmentStatus).toBe('shipped');
     expect(page.nextCursor).toBe(page.changes[1]?.cursor);

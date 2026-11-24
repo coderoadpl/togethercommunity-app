@@ -5,7 +5,7 @@ import { randomInt } from 'node:crypto';
 
 import {
   adoptionRefusal,
-  collectedShippingFromStripe,
+  checkoutShippingFromStripe,
   orderBillingDataSchema,
   nipSchema,
   err,
@@ -13,16 +13,17 @@ import {
   orderLineQuantity,
   refundCoverage,
   SHIPPING_ALLOWED_COUNTRIES,
+  redactProviderCredentials,
   refundFailure,
   stripeCancelErrorSchema,
   stripeRequestErrorSchema,
   stripeTermsUrlMissing,
-  stripeCheckoutShippingSchema,
   stripePermissionMissing,
   stripeRefundFailure,
   stripeRefundObjectSchema,
   REFUND_REQUEST_MAX_NETWORK_RETRIES,
   REFUND_REQUEST_TIMEOUT_MS,
+  REFUND_REQUEST_WORST_CASE_MS,
   stripeAdoptionObjectSchema,
   stripeSubscriptionListEntrySchema,
   stripeSubscriptionSnapshotSchema,
@@ -35,7 +36,6 @@ import {
   stripeKeyModeConflicts,
   type AppError,
   type CheckoutBranding,
-  type CollectedShipping,
   type ProviderRefund,
   type Result,
   type StripePermissionCheck,
@@ -85,6 +85,8 @@ export interface StripePaymentProviderConfig {
 
 export const STRIPE_WEBHOOK_EVENTS = STRIPE_WEBHOOK_EVENT_TYPES satisfies readonly Stripe.WebhookEndpointCreateParams.EnabledEvent[];
 
+export const STRIPE_WEBHOOK_API_VERSION: Stripe.LatestApiVersion = '2025-09-30.clover';
+
 type CreateCheckoutSessionRequest = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type EnsureCouponRequest = Parameters<NonNullable<PaymentProvider['ensureCouponPromotion']>>[0];
 
@@ -120,15 +122,6 @@ const checkoutShippingParams = (
         }),
       },
     }],
-  };
-};
-
-const checkoutShipping = (session: unknown): { shipping: CollectedShipping | null; shippingCostCents: number | null } => {
-  const parsed = stripeCheckoutShippingSchema.safeParse(session);
-  if (!parsed.success) return { shipping: null, shippingCostCents: null };
-  return {
-    shipping: collectedShippingFromStripe(parsed.data, parsed.data.customer_details?.phone ?? null),
-    shippingCostCents: parsed.data.shipping_cost?.amount_total ?? null,
   };
 };
 
@@ -323,7 +316,7 @@ const toCheckoutSessionEvent = (
     invoiceId: idOrNull(session.invoice),
     amountTotalCents: session.amount_total,
     discountTotalCents: session.total_details?.amount_discount ?? null,
-    ...checkoutShipping(session),
+    ...checkoutShippingFromStripe(session),
     metadata: {
       attribution: attributionFromMetadata(session.metadata),
       tenantId: session.metadata?.tenantId ?? null,
@@ -448,6 +441,8 @@ const webhookSlotOf = (webhookUrl: string): string | null => {
 };
 
 const REFUND_LIST_LIMIT = 100;
+const REFUND_LIST_MAX_PAGES = 10;
+const REFUND_LIST_INCOMPLETE = 'refund_list_incomplete';
 const REFUND_REQUEST_OPTIONS = { timeout: REFUND_REQUEST_TIMEOUT_MS, maxNetworkRetries: REFUND_REQUEST_MAX_NETWORK_RETRIES } as const;
 
 const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
@@ -458,9 +453,10 @@ const providerRefund = (raw: unknown): Result<ProviderRefund, AppError> => {
     paymentIntentId: idOrNull(parsed.data.payment_intent),
     amountCents: parsed.data.amount,
     status: parsed.data.status,
-    failureReason: parsed.data.failure_reason ?? null,
+    failureReason: parsed.data.failure_reason == null ? null : redactProviderCredentials(parsed.data.failure_reason),
     orderId: parsed.data.metadata?.['orderId'] ?? null,
     reason: parsed.data.metadata?.['reason'] ?? null,
+    ...(parsed.data.metadata?.['refundJobId'] === undefined ? {} : { refundJobId: parsed.data.metadata['refundJobId'] }),
   });
 };
 
@@ -496,6 +492,36 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
     if (!key.ok) return key;
     if (stripeKeyModeConflicts(key.value, mode)) return err(validation('Stripe key mode does not match the requested mode'));
     return ok(createClient(key.value));
+  };
+
+  const listRefundPages = async (input: { mode: 'live' | 'test'; tenantId: string; paymentIntentId: string; deadlineAt?: number }): Promise<Result<ProviderRefund[], AppError>> => {
+    const client = await clientFor(input.tenantId, input.mode);
+    if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
+    const refunds: ProviderRefund[] = [];
+    let startingAfter: string | undefined;
+    for (let pageCount = 0; pageCount < REFUND_LIST_MAX_PAGES; pageCount += 1) {
+      if (pageCount > 0 && input.deadlineAt !== undefined && Date.now() + REFUND_REQUEST_WORST_CASE_MS > input.deadlineAt) {
+        return err(refundFailure('transient', 'The refund list of the payment could not be read in full before the run deadline', null, false, false, { token: REFUND_LIST_INCOMPLETE }));
+      }
+      let page: { data: unknown[]; has_more: boolean };
+      try {
+        page = await client.value.refunds.list({
+          payment_intent: input.paymentIntentId,
+          limit: REFUND_LIST_LIMIT,
+          ...(startingAfter === undefined ? {} : { starting_after: startingAfter }),
+        }, REFUND_REQUEST_OPTIONS);
+      } catch (cause) {
+        return err(stripeRefundFailure('Stripe could not list the refunds', cause));
+      }
+      for (const raw of page.data) {
+        const refund = providerRefund(raw);
+        if (!refund.ok) return refund;
+        refunds.push(refund.value);
+      }
+      startingAfter = refunds.at(-1)?.refundId;
+      if (!page.has_more || startingAfter === undefined) return ok(refunds);
+    }
+    return err(refundFailure('transient', `The refund list of the payment is longer than ${String(REFUND_LIST_MAX_PAGES * REFUND_LIST_LIMIT)} refunds and could not be read in full`, null, false, false, { token: REFUND_LIST_INCOMPLETE }));
   };
 
   return {
@@ -634,6 +660,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         );
         for (const endpoint of stale) await webhookEndpoints.del(endpoint.id);
         const endpoint = await webhookEndpoints.create({
+          api_version: STRIPE_WEBHOOK_API_VERSION,
           url: input.webhookUrl,
           enabled_events: [...STRIPE_WEBHOOK_EVENTS],
           description: 'Together payment fulfillment',
@@ -767,7 +794,12 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           {
             payment_intent: input.paymentIntentId,
             amount: input.amountCents,
-            metadata: { tenantId: input.tenantId, orderId: input.metadata.orderId, reason: input.metadata.reason },
+            metadata: {
+              tenantId: input.tenantId,
+              orderId: input.metadata.orderId,
+              reason: input.metadata.reason,
+              ...(input.metadata.reason === 'staff' ? { refundJobId: input.metadata.refundJobId } : {}),
+            },
           },
           { ...REFUND_REQUEST_OPTIONS, idempotencyKey: input.idempotencyKey },
         );
@@ -787,24 +819,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       }
       return providerRefund(raw);
     },
-    listRefunds: async (input) => {
-      const client = await clientFor(input.tenantId, input.mode);
-      if (!client.ok) return err(refundFailure('credentials_unavailable', client.error.message));
-      let page: { data: unknown[]; has_more: boolean };
-      try {
-        page = await client.value.refunds.list({ payment_intent: input.paymentIntentId, limit: REFUND_LIST_LIMIT }, REFUND_REQUEST_OPTIONS);
-      } catch (cause) {
-        return err(stripeRefundFailure('Stripe could not list the refunds', cause));
-      }
-      if (page.has_more) return err(refundFailure('refund_failed', `The payment has more than ${String(REFUND_LIST_LIMIT)} refunds`));
-      const refunds: ProviderRefund[] = [];
-      for (const raw of page.data) {
-        const refund = providerRefund(raw);
-        if (!refund.ok) return refund;
-        refunds.push(refund.value);
-      }
-      return ok(refunds);
-    },
+    listRefunds: listRefundPages,
     verifyWebhookEvent: async (input): Promise<Result<PaymentWebhookEvent, AppError>> => {
       // constructEvent verifies the HMAC locally and never calls the API, so a
       // throwaway key is enough to build the instance for signature checking.

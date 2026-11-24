@@ -1,4 +1,5 @@
 import type { OrderRefundAlert } from './order-refund-job.js';
+import type { StaffRefundReason } from './order-staff-refund.js';
 
 interface TransactionalEmailMessageContent {
   subject: string;
@@ -284,6 +285,34 @@ export interface TransactionalEmailMessages {
       shopUrl: string;
       shopLink: string;
     }) => TransactionalEmailMessageContent;
+  };
+  orderRefundIssuedEmail: {
+    shopLabel: string;
+    render: (input: BrandedInput & {
+      tenantName: string;
+      tenantNameHtml: string;
+      orderReference: string;
+      orderReferenceHtml: string;
+      amount: string;
+      amountHtml: string;
+      shopUrl: string;
+      shopLink: string;
+    }) => TransactionalEmailMessageContent;
+  };
+  staffRefundAlertEmail: {
+    subjects: Record<OrderRefundAlert, string>;
+    retryingOutcomeUnknownSubject: string;
+    lastErrorLabel: string;
+    openOrder: string;
+    paragraphs: (input: {
+      alert: OrderRefundAlert;
+      amount: string;
+      orderId: string;
+      mayHaveRefunded: boolean;
+      reason: StaffRefundReason | null;
+      restocked: boolean;
+      removedFromPackingList: boolean;
+    }) => string[];
   };
   orderRefundAlertEmail: {
     render: (input: {

@@ -51,6 +51,10 @@ add it here before using it in either dictionary.
 | Internal bookkeeping document | dokument wewnętrzny (WEW) | internal document (WEW) | Prepared by the accountant from the sales summary; the summary is not a tax document. |
 | Consumer sales with no issued invoice | sprzedaż konsumencka bez faktury | uninvoiced consumer sales | Paid consumer orders without a NIP, excluding all refunds and issued, in-flight, accepted, or ambiguous invoices. |
 | Sales ledger entry | zamówienie | order | Statuses: paid, pending, failed, refunded; lowercase in tables. |
+| Money returned to the buyer by staff | zwrot | refund | Staff refund from Studio or the CLI; distinct from the automatic refund of a sold-out order. Verb: zwrócić pieniądze / refund. |
+| Refund of part of the paid amount | zwrot częściowy | partial refund | Below the remainder it changes no stock, packing list or access. |
+| Amount still refundable | pozostało do zwrotu | remaining | Shown with Paid / Refunded on the order page. |
+| Put a refunded order back to pack | wyślij mimo to | ship anyway | Only for an order taken off the packing list; takes back the units the refund returned to stock. |
 | Access entitlement | dostęp | grant | Long form: przyznany dostęp. Verb: przyznać / grant. States include active, expired, and perpetual. |
 | Withdraw an entitlement | cofnąć dostęp | revoke | Keep distinct from claiming free access. Do not use odbierz for revocation. |
 | Free checkout action | odbierz za darmo | get it for free | Checkout call to action. |
@@ -71,7 +75,7 @@ add it here before using it in either dictionary.
 | Version note | opis wersji | version note | Publisher-provided description visible to buyers. |
 | Edition | wydanie | edition | An author-marked, numbered snapshot of lesson content that readers can open. Distinct from a file version (a downloadable file) and from change-history versions (every save, staff only). |
 | Edition note | notatka do wydania | edition note | Optional author note shown with an edition. |
-| Previous editions | poprzednie wydania | previous editions | Reader entry point listing a lesson's earlier editions. |
+| Lesson editions | wydania lekcji | lesson editions | Reader dialog, opened from the edition badge, listing the current lesson first and then its other editions. |
 | Downloadable product files | pliki do pobrania | downloadable files | Use for files delivered by digital download products. |
 
 ## Content structure
@@ -85,7 +89,7 @@ add it here before using it in either dictionary.
 | Lesson building block | blok treści | content block | Short form: blok / block. |
 | Collapsible lesson reading preview | `lesson.showAll` / `lesson.collapseText` in the Polish dictionary | Show all / Collapse text | Reveals the full lesson text or returns to the clipped reading preview; distinct from collapsing an embedded editor. |
 | Embedded editor collapse action | `lesson.collapseEmbed` in the Polish dictionary | Collapse the editor | Applies only to the embedded editor, not the lesson reading preview. |
-| Course outline | program kursu | course curriculum | Eyebrow: course syllabus. |
+| Course outline | program kursu | course program | Member course page heading: Course program. Eyebrow: course syllabus. |
 | Connect or disconnect a module | podepnij / odepnij | attach / detach | Use the same pair throughout. Do not use podłącz / odłącz for this concept. |
 | Publication state | wersja robocza / opublikowany | draft / published | Use consistently for state labels. |
 | Archived course filter | `courses.archived` in the Polish dictionary | Archived | Use the established archived state term, including in the confirmation dialog. |
@@ -114,10 +118,11 @@ add it here before using it in either dictionary.
 | Concept | PL | EN | Decision notes |
 |---|---|---|---|
 | Tenant | platforma | workspace | Never expose tenant in user-facing copy. The Polish workspace term is distinct from the community-space term. |
+| Tenant as named to visitors | społeczność | community | Visitor-facing public pages and the workspace-not-found screens name the workspace a community; the panel, member account and billing keep workspace / platforma. Never confuse it with a space (przestrzeń). |
 | Login identity | konto | account | Shared authentication identity. |
 | Automatic lesson text expansion | `account.lessonTextAutoExpandLabel` in the Polish dictionary | Expand lesson text automatically | A member preference for the initial reading-preview state, independent of video autoplay policy. |
 | Browser-local preference help | `account.lessonTextAutoExpandHint` in the Polish dictionary | Remembered in this browser. | Applies to the current browser only, not every device signed in to the account. |
-| Passwordless login URL | magiczny link | magic link | Use the canonical localized word order. |
+| Passwordless login URL | link do logowania | sign-in link | The one term on sign-in screens in both languages; avoid magic link there. |
 | Passwordless credential | klucz dostępu | passkey | Keep distinct from an API key. |
 | Additional sign-in factor | uwierzytelnianie dwuskładnikowe | two-factor authentication | Spell it out in action labels. |
 | S3-compatible service | magazyn plików | file storage | Its container is a bucket in both languages. |

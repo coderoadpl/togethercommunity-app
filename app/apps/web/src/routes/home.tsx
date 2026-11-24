@@ -6,11 +6,11 @@ import { ForeignTenantNotice } from '../features/member/shell/ForeignTenantNotic
 export const HomeRoute = () => (
   <TenantHomePage
     renderAnonymousHome={(visitorEmail) => (
-      <AnonShell>
+      <AnonShell visitorEmail={visitorEmail}>
         {visitorEmail === null ? null : (
           <ForeignTenantNotice email={visitorEmail} hostname={window.location.hostname} />
         )}
-        <AnonHomePage />
+        <AnonHomePage visitorEmail={visitorEmail} />
       </AnonShell>
     )}
   />

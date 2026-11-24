@@ -226,6 +226,67 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
       };
     },
   },
+  orderRefundIssuedEmail: {
+    shopLabel: 'Przejdź do sklepu',
+    render: ({ header, socialLinks, tenantName, tenantNameHtml, orderReference, orderReferenceHtml, amount, amountHtml, shopUrl, shopLink }) => {
+      const timing = [
+        'Karta: zwrot zlecony wkrótce po płatności zwykle ma postać anulowania transakcji, więc obciążenie znika z wyciągu; w przeciwnym razie zwykle pojawia się jako osobny przelew zwrotny po około 5–10 dniach roboczych, zależnie od banku.',
+        'Inne metody płatności: czas zwykle zależy od metody płatności i banku.',
+      ];
+      return {
+        subject: `Zwrot ${amount} w drodze — ${tenantName} (${orderReference})`,
+        html: `${header}<p>Cześć!</p><p>Zwrot ${amountHtml} za zamówienie ${orderReferenceHtml} na platformie ${tenantNameHtml} został zlecony na metodę płatności, której użyto. Nie musisz nic robić.</p><p>Kiedy pieniądze wrócą:</p><ul>${timing.map((line) => `<li>${line}</li>`).join('')}</ul><p>${shopLink}</p>${socialLinks.html}`,
+        text: `Cześć!\n\nZwrot ${amount} za zamówienie ${orderReference} na platformie ${tenantName} został zlecony na metodę płatności, której użyto. Nie musisz nic robić.\n\nKiedy pieniądze wrócą:\n${timing.map((line) => `- ${line}`).join('\n')}\n\nPrzejdź do sklepu: ${shopUrl}${socialLinks.text}`,
+      };
+    },
+  },
+  staffRefundAlertEmail: {
+    subjects: {
+      retrying: 'Zwrot zlecony przez zespół jeszcze niezrealizowany, ponawiamy',
+      blocked_permission: 'Zwrot zlecony przez zespół zablokowany przez brak uprawnienia w Stripe',
+      blocked_permission_failed: 'Zwrot zlecony przez zespół nadal zablokowany po 72 godzinach, niezrealizowany',
+      failed: 'Zwrot zlecony przez zespół nie powiódł się, nic nie zwrócono',
+      failed_after_submission: 'Zwrot zlecony przez zespół nie powiódł się po zleceniu',
+      unconfirmed: 'Stripe nie potwierdził zwrotu zleconego przez zespół, sprawdź go',
+    },
+    retryingOutcomeUnknownSubject: 'Wynik zwrotu zleconego przez zespół jeszcze nieznany, ponawiamy',
+    lastErrorLabel: 'Ostatni błąd',
+    openOrder: 'Otwórz zamówienie',
+    paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
+      const checkInDashboard = `Sprawdź ten zwrot ${amount} w panelu Stripe. Jeśli ma status Succeeded, nic więcej nie trzeba robić. Jeśli ma status Pending, nie zlecaj go ponownie: nie jest już sprawdzany automatycznie, więc śledź go tam, aż będzie miał status Succeeded lub Failed. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam tylko niewypłaconą część kwoty ${amount} zleconej tutaj i nigdy więcej, niż Stripe pokazuje jako pozostałe do zwrotu z tej płatności; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.`;
+      const refundAgainFromPage = `Zleć ponownie zwrot ${amount} na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę`;
+      const refundAgainOrByHand = `${refundAgainFromPage}, albo zwróć ręcznie w panelu Stripe najwyżej ${amount}.`;
+      const unconfirmedBecause = reason === 'create_outcome_unknown'
+        ? 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.'
+        : reason === 'awaiting_provider'
+          ? 'Podczas ostatniego automatycznego sprawdzenia Stripe nadal realizował ten zwrot, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.'
+          : reason === 'refunded_outside'
+            ? 'Płatność ma pełny zwrot zlecony poza platformą, którego klucz Stripe tej przestrzeni nie mógł potwierdzić, więc nie wiadomo, czy ten zwrot został wypłacony.'
+            : 'Stripe nie potwierdził zwrotu, a zwrot nie jest już sprawdzany automatycznie, więc nie wiadomo, czy został wypłacony.';
+      const states = {
+        retrying: mayHaveRefunded
+          ? 'Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła. To samo zlecenie jest powtarzane automatycznie przez 7 dni, więc zamówienie nigdy nie zostanie zwrócone dwa razy; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.'
+          : 'Zwrot nie dotarł jeszcze do Stripe, więc na razie nic nie zostało zwrócone. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
+        blocked_permission: 'Stripe go odrzucił, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis), więc na razie nic nie zostało zwrócone. Dodaj to uprawnienie do klucza w panelu Stripe; zwrot zostanie wtedy wypłacony przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.',
+        blocked_permission_failed: `Zwrot był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Nic nie zostało zwrócone. Najpierw dodaj uprawnienie do klucza. ${refundAgainOrByHand}`,
+        failed: `Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło. ${refundAgainOrByHand}`,
+        failed_after_submission: reason === 'failed_after_order_refunded'
+          ? `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc nie można zlecić zwrotu ponownie na jego stronie. ${checkInDashboard}`
+          : `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. ${refundAgainFromPage}, albo zwróć pieniądze w inny sposób.`,
+        unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
+      } as const;
+      const settled = alert !== 'retrying' && alert !== 'blocked_permission';
+      const backToPacking = 'Jeśli zamówienie ma jednak zostać wysłane, przywróć je do pakowania na stronie zamówienia.';
+      const kept = !settled ? null
+        : restocked && removedFromPackingList ? `Towar przywrócony do magazynu i zamówienie zdjęte z listy do spakowania przy tym zwrocie pozostają bez zmian. ${backToPacking}`
+          : restocked ? 'Towar przywrócony do magazynu przy tym zwrocie pozostaje w magazynie.'
+            : removedFromPackingList ? `Zamówienie zdjęte z listy do spakowania przy tym zwrocie pozostaje poza nią. ${backToPacking}` : null;
+      const access = alert === 'failed_after_submission'
+        ? 'Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika na stronie uczestnika i przywróć go tylko wtedy, gdy został cofnięty i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.'
+        : null;
+      return [`Osoba z zespołu zleciła zwrot ${amount} za zamówienie ${orderId}.`, states[alert], ...(kept === null ? [] : [kept]), ...(access === null ? [] : [access])];
+    },
+  },
   orderRefundAlertEmail: {
     render: ({ tenantName, alert, orderId, orderIdHtml, amount, amountHtml, error, errorHtml, orderUrl, orderUrlHtml }) => {
       const subjects = {

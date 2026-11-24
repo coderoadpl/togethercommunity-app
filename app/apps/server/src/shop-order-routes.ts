@@ -51,7 +51,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
     handler: async (c, { ctx }) => {
       const parsed = shopOrderContracts.exportOrders.input.safeParse(c.req.query());
       if (!parsed.success) return respond(err(validation('Invalid orders export query', parsed.error.flatten())));
-      return respond(await exportOrders(ctx, parsed.data, deps));
+      return respond(await exportOrders(ctx, parsed.data, { orders: deps.orders, ...(deps.orderStaffRefunds === undefined ? {} : { staffRefunds: deps.orderStaffRefunds }) }));
     },
   },
   {

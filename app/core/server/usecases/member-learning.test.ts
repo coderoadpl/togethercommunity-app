@@ -285,14 +285,13 @@ const deps = (input: {
       ) ?? null,
     listByMember: async (tenantId, memberId) =>
       progress.filter((r) => r.tenantId === tenantId && r.memberId === memberId),
-    findOrCreate: async (tenantId, query) => ({
-      id: query.id,
-      tenantId,
-      memberId: query.memberId,
-      courseId: query.courseId,
-      completedLessonIds: [],
-      updatedAt: query.now,
-    }),
+    addCompletedLesson: async () => {
+      throw new Error('not used');
+    },
+    removeCompletedLesson: async () => null,
+    setLastViewed: async () => {
+      throw new Error('not used');
+    },
     update: async (_t, row) => row,
     countReferencingLesson: async () => 0,
   };

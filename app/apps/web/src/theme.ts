@@ -1,8 +1,8 @@
 import type { ElementType } from 'react';
-import { Alert, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, DialogActions, DialogTitle, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, Table, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
-import { alpha, createTheme, styled, type CSSObject, type Theme } from '@mui/material/styles';
+import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
 
 import { accentOnSurface, type AccentGradient } from './theme-branding.js';
 
@@ -21,6 +21,12 @@ import { progressTokens } from './theme-progress.js';
 
 export const FONT_MONO = "ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
 export const MEMBER_BOTTOM_BAR_HEIGHT = '4.9375rem';
+export const SHELL_TOOLBAR_MIN_HEIGHT = 52;
+export const SHELL_ANCHOR_SCROLL_MARGIN = `calc(var(--member-app-bar-height, ${SHELL_TOOLBAR_MIN_HEIGHT}px) + 1rem)`;
+export const SHELL_ANCHOR_TARGET_STYLE = {
+  scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
+  '&:focus': { outline: 'none' },
+} as const;
 export const COURSE_TREE_SCROLL_PADDING_REM = 0.5;
 const FONT_DISPLAY =
   "'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif";
@@ -2826,14 +2832,18 @@ export const CheckoutDeliveryPrice = styled('span')(({ theme }) => ({
   fontWeight: 600,
 }));
 
-export const CheckoutLockerChosen = styled(Stack)(({ theme }) => ({
+export const CheckoutFieldset = styled('fieldset')({ border: 0, margin: 0, padding: 0, minWidth: 0 });
+
+export const CheckoutLockerChosen = styled(Stack, {
+  shouldForwardProp: (prop) => prop !== 'rejected',
+})<{ rejected?: boolean }>(({ rejected = false, theme }) => ({
   flexDirection: 'row',
   alignItems: 'center',
   justifyContent: 'space-between',
   alignSelf: 'stretch',
   gap: '0.75rem',
   padding: '0.5rem 0.5rem 0.5rem 0.875rem',
-  border: `1px solid ${theme.palette.divider}`,
+  border: `1px solid ${rejected ? theme.palette.error.main : theme.palette.divider}`,
   borderRadius: theme.shape.borderRadius,
 }));
 
@@ -2846,6 +2856,15 @@ export const CheckoutLockerChosenCaption = styled(Typography)(({ theme }) => ({
 }));
 
 export const CheckoutLockerName = styled(Typography)({ fontWeight: 600, overflowWrap: 'anywhere' });
+
+export const CheckoutLockerRejection = styled(Typography)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '0.25rem',
+  color: theme.palette.error.main,
+  overflowWrap: 'anywhere',
+  '& svg': { flex: 'none', width: '1rem', height: '1rem', marginTop: '0.125rem', color: theme.palette.error.main },
+}));
 
 export const CheckoutLockerDialog = styled(Dialog)({
   '& .MuiDialog-paperFullScreen': { borderRadius: 0, border: 0 },
@@ -3162,6 +3181,7 @@ export const QuietNotice = styled(Paper)(({ theme }) => ({
   color: theme.palette.text.secondary,
   ...theme.typography.body2,
   '& a': { marginLeft: 'auto', whiteSpace: 'nowrap' },
+  '& a.MuiButton-root': { whiteSpace: 'normal' },
 }));
 
 export const Eyebrow = styled(Typography)<AsElement>({ fontSize: '0.78rem' });
@@ -3389,16 +3409,6 @@ export const CountBadge = styled('span')(({ theme }) => ({
 /** Direct messages stay ink: the red badge is reserved for the notification count. */
 export const InkDotBadge = styled(Badge)(({ theme }) => ({
   '& .MuiBadge-badge': { backgroundColor: theme.palette.text.primary },
-}));
-
-export const LockedSpaceMark = styled(Box)(({ theme }) => ({
-  width: 36,
-  height: 36,
-  flexShrink: 0,
-  display: 'grid',
-  placeItems: 'center',
-  borderRadius: '8px',
-  backgroundColor: theme.palette.action.hover,
 }));
 
 export const UnreadDot = styled('span')(({ theme }) => ({
@@ -3721,6 +3731,11 @@ export const CourseTreeChapterTitle = styled(TreeChapterTitle)<AsElement>({
 export const TreeLessonTitle = styled(Typography)<AsElement>({
   fontSize: '0.875rem',
   lineHeight: 1.45,
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  overflowWrap: 'anywhere',
 });
 
 export const TreeProgressCount = styled(Typography)<AsElement>(({ theme }) => ({
@@ -3795,7 +3810,7 @@ export const CourseCardRoot = styled(Box)<AsElement & { to?: string; href?: stri
   },
 }));
 
-export const VisuallyHidden = styled('span')({
+const VISUALLY_HIDDEN: CSSObject = {
   position: 'absolute',
   width: 1,
   height: 1,
@@ -3805,7 +3820,9 @@ export const VisuallyHidden = styled('span')({
   clip: 'rect(0 0 0 0)',
   whiteSpace: 'nowrap',
   border: 0,
-});
+};
+
+export const VisuallyHidden = styled('span')(VISUALLY_HIDDEN);
 
 export type CoverFrame = 'card' | 'standalone';
 
@@ -4037,6 +4054,17 @@ export const EllipsisTableCell = styled(TableCell)({
   textOverflow: 'ellipsis',
 });
 
+export const ContinueCtaLesson = styled('span')({
+  display: '-webkit-box',
+  WebkitLineClamp: 2,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  maxWidth: '100%',
+  overflowWrap: 'anywhere',
+  textAlign: 'center',
+  fontWeight: 400,
+});
+
 export const RailProgressBar = styled(LinearProgress)(({ theme }) => {
   const tokens = progressTokens(theme.palette.background.paper, theme.palette.primary.main);
   return {
@@ -4056,7 +4084,7 @@ export const LessonDurationText = styled('span')(({ theme }) => ({
   whiteSpace: 'nowrap',
   flexShrink: 0,
   fontSize: '0.75rem',
-  color: theme.palette.text.disabled,
+  color: theme.palette.text.secondary,
   fontFamily: theme.numericFontFamily,
   fontVariantNumeric: theme.numericFontFamily === undefined ? undefined : 'tabular-nums',
 }));
@@ -4148,11 +4176,59 @@ export const LessonMediaIframe = styled('iframe')({
   display: 'block',
 });
 
+const standardAlertTint = (theme: Theme, color: 'warning' | 'info'): CSSObject => {
+  const light = theme.palette.mode === 'light';
+  return {
+    padding: '6px 16px',
+    border: 'none',
+    backgroundColor: light ? lighten(theme.palette[color].light, 0.9) : darken(theme.palette[color].light, 0.9),
+    color: light ? darken(theme.palette[color].light, 0.6) : lighten(theme.palette[color].light, 0.6),
+    '& .MuiAlert-icon': { color: theme.palette[color].main },
+  };
+};
+
 export const LessonEditionWarning = styled(Alert)(({ theme }) => ({
-  '&.MuiAlert-colorWarning': {
-    backgroundColor: theme.palette.warning.main,
-    color: theme.palette.warning.contrastText,
+  '&.MuiAlert-standard.MuiAlert-colorWarning': standardAlertTint(theme, 'warning'),
+  '&.MuiAlert-standard.MuiAlert-colorInfo': standardAlertTint(theme, 'info'),
+  alignItems: 'center',
+  '& .MuiAlert-message > .MuiTypography-root': { fontWeight: 700 },
+  '& .MuiAlert-action': { paddingTop: 0 },
+  '& .MuiAlert-action .MuiButton-root': { whiteSpace: 'nowrap' },
+  [theme.breakpoints.down('sm')]: {
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+    '& .MuiAlert-message': { flex: '1 1 0', minWidth: 0 },
+    '& .MuiAlert-action': { flexBasis: '100%', margin: 0, padding: '0 0 0.5rem' },
+    '& .MuiAlert-icon ~ .MuiAlert-action': { paddingLeft: '2.125rem' },
   },
+}));
+
+export const LessonEditionTrigger = styled(Button)({
+  minHeight: TOUCH_TARGET_MIN,
+  whiteSpace: 'nowrap',
+});
+
+export const LessonEditionRows = styled(List)(({ theme }) => ({
+  '& .MuiListItem-root, & .MuiListItem-root:first-of-type, & .MuiListItem-root:last-of-type, & .MuiListItem-root:hover': {
+    padding: 0,
+    margin: 0,
+    border: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    backgroundImage: 'none',
+    boxShadow: 'none',
+    transform: 'none',
+    transition: 'none',
+  },
+  '& .MuiListItem-root + .MuiListItem-root': { borderTop: `1px solid ${theme.palette.divider}` },
+  '& .MuiListItemButton-root': {
+    alignItems: 'center',
+    gap: '0.75rem',
+    minHeight: TOUCH_TARGET_MIN,
+    padding: '0.75rem 1.5rem',
+    borderRadius: 0,
+  },
+  '& .MuiListItemText-root': { margin: 0 },
 }));
 
 export const LessonPlaceholder = styled(Box)(({ theme }) => ({
@@ -4182,7 +4258,7 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   '& iframe': { maxWidth: '100%' },
   '& a': { color: theme.palette.text.primary },
   '& h1, & h2, & h3, & h4, & h5, & h6': {
-    scrollMarginTop: 'calc(var(--member-app-bar-height, 52px) + 1rem)',
+    scrollMarginTop: SHELL_ANCHOR_SCROLL_MARGIN,
   },
   '& pre': {
     overflowX: 'auto',
@@ -4192,37 +4268,73 @@ export const LessonHtmlContent = styled(Box)(({ theme }) => ({
   },
 }));
 
+export const LessonLightboxBackdrop = styled(Backdrop)(({ theme }) => ({
+  backgroundColor: alpha(theme.palette.common.black, 0.96),
+}));
+
 export const LessonImageLightbox = styled(Box)(({ theme }) => ({
-  position: 'absolute',
-  inset: '1rem',
-  margin: 'auto',
-  maxWidth: 'calc(100vw - 2rem)',
-  maxHeight: 'calc(100dvh - 2rem)',
-  padding: '1rem',
+  position: 'fixed',
+  inset: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: '1rem',
-  backgroundColor: theme.palette.background.paper,
-  color: theme.palette.text.primary,
-  borderRadius: theme.shape.borderRadius,
-  '& > .MuiButton-root': { alignSelf: 'flex-end', flexShrink: 0, minHeight: 44 },
+  paddingTop: `calc(${String(TOUCH_TARGET_MIN)}px + 1.5rem + env(safe-area-inset-top))`,
+  paddingBottom: 'env(safe-area-inset-bottom)',
+  color: theme.palette.common.white,
+  outline: 'none',
+  '& [data-slot="close"]': {
+    position: 'absolute',
+    top: 'calc(0.75rem + env(safe-area-inset-top))',
+    right: 'calc(0.75rem + env(safe-area-inset-right))',
+    zIndex: 1,
+    width: TOUCH_TARGET_MIN,
+    height: TOUCH_TARGET_MIN,
+    backgroundColor: theme.palette.common.white,
+    color: theme.palette.common.black,
+    '&:hover': { backgroundColor: theme.palette.grey[200] },
+    '&:focus-visible': {
+      outline: `3px solid ${theme.palette.common.white}`,
+      outlineOffset: 3,
+      boxShadow: 'none',
+    },
+  },
+  '& [data-slot="stage"]': {
+    flex: '1 1 0',
+    minHeight: 0,
+    containerType: 'size',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   '& [data-slot="caption"]': {
     flexShrink: 0,
+    width: '100%',
+    maxWidth: '44rem',
     maxHeight: '20dvh',
+    padding: '0.75rem 1rem 1rem',
     overflowY: 'auto',
     overflowWrap: 'anywhere',
     textAlign: 'center',
+    color: alpha(theme.palette.common.white, 0.92),
+  },
+  [theme.breakpoints.up('sm')]: {
+    paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
+    '& [data-slot="stage"]': { paddingInline: '2rem' },
   },
 }));
 
-export const LessonLightboxImage = styled('img')({
+const LIGHTBOX_IMAGE_ROOM = 'calc(100cqh - var(--lightbox-caption-height, 0px))';
+
+export const LessonLightboxImage = styled('img', { shouldForwardProp: (prop) => prop !== 'fillRatio' && prop !== 'vector' })<{ vector: boolean; fillRatio: number | null }>(({ theme, vector, fillRatio }) => ({
   display: 'block',
-  width: '100%',
-  height: '100%',
-  flex: '1 1 0',
-  minHeight: 0,
+  flexShrink: 0,
+  width: fillRatio !== null ? `min(100cqw, calc(${LIGHTBOX_IMAGE_ROOM} * ${String(fillRatio)}))` : vector ? '100cqw' : 'auto',
+  height: vector && fillRatio === null ? LIGHTBOX_IMAGE_ROOM : 'auto',
+  maxWidth: '100cqw',
+  maxHeight: LIGHTBOX_IMAGE_ROOM,
   objectFit: 'contain',
-});
+  backgroundColor: theme.palette.common.white,
+}));
 
 export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   position: 'sticky',
@@ -4235,11 +4347,15 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
   [theme.breakpoints.up('md')]: {
     bottom: 0,
     '& .MuiButton-root': { width: 'auto' },
+    '& .MuiAlert-root': { alignItems: 'center' },
+    '& .MuiAlert-action': { paddingTop: 0, alignItems: 'center' },
+    '& .MuiAlert-action .MuiButton-root': { minHeight: 0 },
   },
   [theme.breakpoints.down('md')]: {
     marginInline: '-1.25rem',
     padding: '0.5rem 0.75rem',
     '& .MuiButton-root': { width: 'auto', minHeight: 44 },
+    '& .MuiAlert-action .MuiIconButton-root': { width: 44, height: 44 },
     '& [data-slot="compact"]': { flex: '0 0 auto' },
     '& .MuiButton-root[data-slot="compact"], & [data-slot="compact"] > .MuiButton-root': {
       width: 44,
@@ -4252,13 +4368,54 @@ export const LessonFooterBar = styled(Box)<AsElement>(({ theme }) => ({
       minWidth: 0,
       paddingInline: '0.75rem',
     },
+    '& [data-slot="wide"]': { flex: '1 1 0', minWidth: 0 },
+    '& [data-slot="wide"] ~ [data-slot="primary"]': { flexBasis: '100%' },
+    '& [data-slot="primary"] > svg': { flexShrink: 0, marginInlineStart: '0.25rem' },
+    '& [data-slot="undo"]': { minWidth: 44, paddingInline: '0.5rem' },
     '& [data-slot="status"]': { order: -1, flexBasis: '100%' },
   },
+}));
+
+export const LessonAlertDetail = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: VISUALLY_HIDDEN,
 }));
 
 export const LessonNavIcon = styled(SvgIcon)(({ theme }) => ({
   fontSize: '1.5rem',
   [theme.breakpoints.up('md')]: { display: 'none' },
+}));
+
+export const LessonCompletionStatus = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '0.375rem',
+  flex: '0 0 auto',
+  color: theme.palette.text.secondary,
+}));
+
+export const LessonLockIcon = styled(SvgIcon)({
+  fontSize: '1.15rem',
+  color: 'inherit',
+});
+
+export const LockedLeadSvg = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.5rem',
+  color: theme.palette.text.primary,
+}));
+
+export const LockedLeadText = styled(Typography)<AsElement>({
+  '&.MuiTypography-subtitle1': { lineHeight: 1.4 },
+});
+
+export const LockedScopeText = styled(Typography)<AsElement>(({ theme }) => ({
+  color: theme.palette.text.secondary,
+  display: '-webkit-box',
+  WebkitLineClamp: 3,
+  WebkitBoxOrient: 'vertical',
+  overflow: 'hidden',
+  [theme.breakpoints.up('sm')]: { WebkitLineClamp: 2 },
 }));
 
 export const LessonNavLabel = styled('span')(({ theme }) => ({
@@ -4271,6 +4428,19 @@ export const LessonNavLabel = styled('span')(({ theme }) => ({
 export const LessonActionLabel = styled('span')(({ theme }) => ({
   [theme.breakpoints.down('md')]: {
     minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  },
+}));
+
+export const LessonDestinationLabel = styled('span')(({ theme }) => ({
+  [theme.breakpoints.down('md')]: {
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    minWidth: 0,
+    overflow: 'hidden',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.25,
+    textAlign: 'center',
   },
 }));
 
@@ -4387,24 +4557,43 @@ export const DeletedPostText = styled(Typography)<AsElement>(({ theme }) => ({
   color: theme.palette.text.secondary,
 }));
 
-export const NotificationDot = styled('span', {
-  shouldForwardProp: (prop) => prop !== 'active',
-})<{ active?: boolean }>(({ theme, active }) => ({
-  display: 'inline-block',
-  width: 8,
-  height: 8,
-  borderRadius: '50%',
-  backgroundColor:
-    active === true ? theme.palette.success.main : alpha(theme.palette.text.primary, 0.25),
-  flexShrink: 0,
-}));
-
 export const PendingPostBox = styled(Box)({ opacity: 0.55 });
 
 export const DiscussionHitSnippet = styled(Typography)<AsElement>(({ theme }) => ({
   fontSize: '0.85rem',
   color: theme.palette.text.secondary,
   overflowWrap: 'anywhere',
+}));
+
+export const DiscussionHitCard = styled(Link)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.75rem',
+  padding: '0.6rem 0.9rem',
+  minHeight: 44,
+  color: theme.palette.text.primary,
+  fontWeight: 400,
+  textDecoration: 'none',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.background.paper,
+  transition: theme.transitions.create(['background-color', 'border-color'], { duration: theme.transitions.duration.shortest }),
+  '&:hover': { backgroundColor: theme.palette.action.hover, borderColor: theme.palette.text.secondary },
+  '&:focus-visible': { borderColor: theme.palette.primary.main },
+}));
+
+export const DiscussionHitText = styled('span')({
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
+  flex: 1,
+  minWidth: 0,
+});
+
+export const DiscussionHitChevron = styled(SvgIcon)(({ theme }) => ({
+  flexShrink: 0,
+  fontSize: '1.25rem',
+  color: theme.palette.text.secondary,
 }));
 
 export const ThreadHeadline = styled('span')({
@@ -4436,11 +4625,18 @@ export const AccountTabs = styled(Tabs)(({ theme }) => {
   const accent = accentOnSurface(theme.brandAccent ?? theme.emberCta?.main ?? '#E8682A', theme.palette.background.default, 4.5);
   return {
     '& .MuiTab-root': { minHeight: 48, gap: 8, color: theme.palette.text.secondary, '&:hover': { color: theme.palette.text.primary } },
-    '& .MuiTab-icon': { margin: 0 },
+    '& .MuiTab-root > .MuiTab-icon': { margin: 0 },
     '& .MuiTab-root.Mui-selected': { color: accent, fontWeight: 600 },
     '& .MuiTabs-indicator': { backgroundColor: accent, height: 3, borderRadius: 3 },
     '& .MuiTab-root.Mui-focusVisible': { outline: `2px solid ${accent}`, outlineOffset: -3 },
     '& .MuiTabScrollButton-root.Mui-disabled': { display: 'none' },
+    [theme.breakpoints.down('sm')]: {
+      '& .MuiTab-root': { minWidth: 0, paddingLeft: 10, paddingRight: 10 },
+      '& .MuiTab-icon': { display: 'none' },
+      '& .MuiTabScrollButton-root': { width: 24, position: 'relative', zIndex: 1, opacity: 1, '& svg': { display: 'none' } },
+      '& .MuiTabScrollButton-root:first-of-type': { marginRight: -24, background: `linear-gradient(to left, transparent, ${theme.palette.background.default})` },
+      '& .MuiTabScrollButton-root:last-of-type': { marginLeft: -24, background: `linear-gradient(to right, transparent, ${theme.palette.background.default})` },
+    },
   };
 });
 
@@ -4466,6 +4662,28 @@ export const AccountSessionDisclosure = styled(ButtonBase)(({ theme }) => ({
   '& > svg:last-of-type': { marginLeft: 'auto' },
   '&[aria-expanded=true] > svg:last-of-type': { transform: 'rotate(180deg)' },
   '&.Mui-focusVisible': { outline: `2px solid ${theme.focusRing ?? theme.palette.primary.main}`, outlineOffset: 2 },
+}));
+
+const consentScrollCue = (theme: Theme, towards: 'top' | 'bottom'): CSSObject => ({
+  content: '""',
+  position: 'absolute',
+  left: 0,
+  right: 0,
+  height: 24,
+  zIndex: 1,
+  pointerEvents: 'none',
+  backgroundImage: `linear-gradient(to ${towards}, transparent, ${alpha(theme.palette.text.primary, 0.12)})`,
+});
+
+export const ConsentDialog = styled(Dialog)(({ theme }) => ({
+  '& .MuiDialog-paper:has(> .MuiDialogContent-root[data-more-above=true])::before': { ...consentScrollCue(theme, 'top'), top: 0 },
+  '& .MuiDialogContent-root[data-more-below=true] + .MuiDialogActions-root::before': { ...consentScrollCue(theme, 'bottom'), bottom: 'calc(100% + 1px)' },
+  '& .MuiDialogContent-root': { '@media (prefers-reduced-motion: no-preference)': { scrollBehavior: 'smooth' } },
+  '& .MuiDialogActions-root': { position: 'relative', borderTop: `1px solid ${theme.palette.divider}` },
+}));
+
+export const ConsentDialogHeading = styled(Typography)<AsElement>(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: { fontSize: '1.0625rem', lineHeight: 1.45, fontWeight: 600 },
 }));
 
 export const AccountGlyph = styled(SvgIcon)({ fill: 'none' });
@@ -4529,3 +4747,146 @@ export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => p
   } : {}),
 }));
 export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
+
+export const SalesOrderCardList = styled('ul')(({ theme }) => ({
+  listStyle: 'none',
+  margin: 0,
+  padding: 0,
+  backgroundColor: theme.palette.background.paper,
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: 12,
+}));
+export const SalesTable = styled(Table)(({ theme }) => ({
+  [theme.breakpoints.down('xl')]: {
+    '& .MuiTableCell-root:not(.MuiTableCell-paddingCheckbox)': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+  },
+}));
+export const SalesNoWrapCell = styled(TableCell)({ whiteSpace: 'nowrap' });
+export const SalesMemberCell = styled(TableCell)({ whiteSpace: 'nowrap', maxWidth: '14rem', overflow: 'hidden', textOverflow: 'ellipsis' });
+export const SalesCardAmount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
+export const SalesOrderCard = styled('li')(({ theme }) => ({
+  position: 'relative',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.35rem',
+  padding: '0.875rem 1rem',
+  minWidth: 0,
+  '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
+}));
+export const SalesCardControl = styled('span')({ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column' });
+export const SalesCardMemberLink = styled(Link)<AsElement & { to?: string }>({ position: 'relative', zIndex: 1 });
+export const SalesCardOrderLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.5rem',
+  color: theme.palette.text.secondary,
+  '&::after': { content: '""', position: 'absolute', inset: 0 },
+}));
+export const RefundStrokeIcon = styled(SvgIcon)({ fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' });
+export const RefundAmountLabel = styled(Typography, { shouldForwardProp: (prop) => prop !== 'total' })<{ total: boolean }>(({ theme, total }) => ({
+  color: total ? theme.palette.text.primary : theme.palette.text.secondary,
+  fontWeight: total ? 600 : undefined,
+}));
+export const RefundAmountValue = styled(Typography, { shouldForwardProp: (prop) => prop !== 'total' })<{ total: boolean }>(({ total }) => (
+  total ? { fontSize: '1.5rem', fontWeight: 700, lineHeight: 1.2 } : {}
+));
+export const RefundMutedRow = styled(Stack)(({ theme }) => ({ color: theme.palette.text.secondary }));
+export const RefundHistoryItem = styled('li')({ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.75rem' });
+export const RefundHistoryCard = styled(Box, { shouldForwardProp: (prop) => prop !== 'attention' })<{ attention: boolean }>(({ theme, attention }) => ({
+  padding: '1rem',
+  border: `1px solid ${attention ? theme.palette.warning.main : theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));
+export const RefundWarningRow = styled(Stack)(({ theme }) => ({
+  color: theme.palette.mode === 'light' ? theme.palette.warning.dark : theme.palette.warning.light,
+  '& svg': { flexShrink: 0, marginTop: '0.1rem' },
+}));
+export const RefundNote = styled(Stack)(({ theme }) => ({
+  padding: '0.75rem 1rem',
+  borderRadius: theme.shape.borderRadius,
+  backgroundColor: theme.palette.action.hover,
+  border: `1px solid ${theme.palette.divider}`,
+  '& svg': { flexShrink: 0, marginTop: '0.1rem', color: theme.palette.text.secondary },
+}));
+export const RefundHistoryAmount = styled(Typography)({ fontSize: '1.125rem', fontWeight: 700 });
+export const RefundPlainList = styled('ul')({ listStyle: 'none', margin: 0, padding: 0 });
+export const RefundConsequenceGroup = styled(RefundPlainList)(({ theme }) => ({ borderBottom: `1px solid ${theme.palette.divider}` }));
+export const RefundConsequenceItem = styled('li')(({ theme }) => ({
+  display: 'flex',
+  gap: '0.75rem',
+  padding: '0.75rem 0',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  '&:last-of-type': { borderBottom: 0 },
+}));
+export const RefundConsequenceIcon = styled(Box)(({ theme }) => ({ display: 'flex', paddingTop: '0.1rem', color: theme.palette.text.secondary }));
+export const RefundConsequenceText = styled(Typography, { shouldForwardProp: (prop) => prop !== 'strong' })<{ strong: boolean }>(({ strong }) => ({
+  fontWeight: strong ? 600 : undefined,
+}));
+export const RefundConsequencesPanel = styled(Box)(({ theme }) => ({
+  padding: '1.5rem',
+  backgroundColor: theme.palette.action.hover,
+  borderTop: `1px solid ${theme.palette.divider}`,
+  [theme.breakpoints.up('md')]: { borderTop: 0, borderLeft: `1px solid ${theme.palette.divider}` },
+}));
+export const RefundSheetDialog = styled(Dialog)(({ theme }) => ({
+  [theme.breakpoints.down('sm')]: {
+    '& .MuiDialog-container': { alignItems: 'flex-end' },
+    '& .MuiDialog-paper': {
+      margin: 0,
+      width: '100%',
+      maxWidth: '100%',
+      maxHeight: '92dvh',
+      borderRadius: '1rem 1rem 0 0',
+      borderBottom: 0,
+    },
+  },
+}));
+export const RefundSheetHandle = styled('div')(({ theme }) => ({
+  display: 'none',
+  [theme.breakpoints.down('sm')]: {
+    display: 'block',
+    flexShrink: 0,
+    width: '2.5rem',
+    height: '0.25rem',
+    margin: '0.5rem auto 0',
+    borderRadius: '0.125rem',
+    backgroundColor: theme.palette.divider,
+  },
+}));
+export const RefundDialogTitle = styled(DialogTitle)<AsElement>(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '1rem',
+  borderBottom: `1px solid ${theme.palette.divider}`,
+  [theme.breakpoints.down('sm')]: { flexDirection: 'column', gap: '0.5rem', padding: '0.75rem 1rem 1rem' },
+}));
+export const RefundDialogActions = styled(DialogActions)(({ theme }) => ({
+  flexWrap: 'wrap',
+  gap: '0.5rem',
+  padding: '1rem 1.5rem',
+  borderTop: `1px solid ${theme.palette.divider}`,
+  [theme.breakpoints.down('sm')]: {
+    flexDirection: 'column',
+    flexWrap: 'nowrap',
+    alignItems: 'stretch',
+    padding: '0.75rem 1rem',
+    '& > .MuiButton-root': { width: '100%' },
+  },
+}));
+export const RefundFinalNote = styled(Stack)(({ theme }) => ({
+  alignItems: 'center',
+  color: theme.palette.text.secondary,
+  marginRight: 'auto',
+  [theme.breakpoints.down('sm')]: { justifyContent: 'center', marginRight: 0 },
+}));
+export const RefundAmountField = styled(TextField, { shouldForwardProp: (prop) => prop !== 'locked' })<{ locked: boolean }>(({ theme, locked }) => (
+  locked ? { '& .MuiOutlinedInput-root': { backgroundColor: theme.palette.action.hover } } : {}
+));
+export const RefundFieldset = styled('fieldset')(({ theme }) => ({
+  margin: 0,
+  padding: '0.75rem 1rem',
+  border: `1px solid ${theme.palette.divider}`,
+  borderRadius: theme.shape.borderRadius,
+}));

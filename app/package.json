@@ -24,7 +24,7 @@
     "vercel-build": "tsx scripts/vercel-build.ts",
     "build:web": "vite build --config apps/web/vite.config.ts",
     "sdk:build": "tsc -p packages/client-sdk/tsconfig.build.json",
-    "test": "vitest run config-regression/gates.test.ts --maxWorkers=1 && vitest run adapters/db/seed.integration.test.ts --maxWorkers=1 && vitest run --exclude config-regression/gates.test.ts --exclude adapters/db/seed.integration.test.ts",
+    "test": "vitest run config-regression/gates.test.ts --maxWorkers=1 && vitest run adapters/db/seed.integration.test.ts --maxWorkers=1 && vitest run scripts/cli-parity.test.ts --maxWorkers=1 && vitest run apps/web/src/features/checkout/CheckoutPage.keys.test.tsx --maxWorkers=1 && vitest run --exclude config-regression/gates.test.ts --exclude adapters/db/seed.integration.test.ts --exclude scripts/cli-parity.test.ts --exclude apps/web/src/features/checkout/CheckoutPage.keys.test.tsx",
     "coverage": "vitest run --coverage --maxWorkers=1 --test-timeout=60000 && tsx scripts/coverage-report.ts && tsx scripts/coverage-check.ts",
     "coverage:check": "tsx scripts/coverage-check.ts",
     "coverage:baseline": "vitest run --coverage --maxWorkers=1 --test-timeout=60000 && tsx scripts/coverage-report.ts --write-baseline",

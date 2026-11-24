@@ -5,6 +5,7 @@ import { EMAIL_SEND_SOURCE_KINDS } from '#core/domain/index.js';
 import { en } from './en.js';
 import { format, type Messages } from './messages.js';
 import { pl } from './pl.js';
+import { GENDERED_PAST_TENSE, SIGN_IN_LINK_TERM } from './sign-in-copy-rules.pl.js';
 
 /**
  * The `: Messages` annotation on each dictionary already makes a missing key a
@@ -48,6 +49,18 @@ describe('i18n dictionaries', () => {
     expect(label).not.toBe(pl.tenantTeam.invitationSent);
   });
 
+  it('writes email without a hyphen across the English account copy', () => {
+    expect(plainStrings(en.account).filter((text) => /e-mail/iu.test(text))).toEqual([]);
+    expect(en.account.erasureConfirmLabel).toBe('Retype your email address');
+  });
+
+  it('names two-factor authentication and the setup link in English and translates the backup-code and session sign-out labels into Polish', () => {
+    expect(en.security.disableTwoFactorConfirm).toContain('two-factor authentication');
+    expect(en.security.otpauthUriLabel).toBe('Setup link (advanced)');
+    expect(pl.security.backupCodesSaved).not.toBe(en.security.backupCodesSaved);
+    expect(pl.security.sessionsRevokeOthers).not.toBe(en.security.sessionsRevokeOthers);
+  });
+
   it('never names the retired sending-settings page', () => {
     expect(plainStrings(en).filter((text) => text.includes('Sending settings'))).toEqual([]);
   });
@@ -59,11 +72,12 @@ describe('i18n dictionaries', () => {
       /does not exist/iu,
     ];
     const stepCopy = Object.values(dictionaries).flatMap((messages) => [
-      messages.auth.signInMethodsUnavailable,
-      messages.auth.signInRateLimited,
-      messages.auth.signInMethodsChoosePrompt,
-      messages.auth.signInMethodsChooseMagicLink,
-      messages.auth.signInMethodsChoosePassword,
+      messages.auth.signInRateLimitedRetryIn({ delay: '30 s' }),
+      messages.auth.signInRateLimitedTitle,
+      messages.auth.signInRateLimitedRetryNow,
+      messages.auth.signInRateLimitedLeadRetryIn({ delay: '30 s' }),
+      messages.auth.signInRateLimitedLeadWait,
+      messages.auth.signInRateLimitedChooseMethod,
       messages.auth.magicLinkExpiredOnStep,
       messages.auth.methodLead,
       messages.auth.methodMagicLinkBody,
@@ -73,6 +87,21 @@ describe('i18n dictionaries', () => {
 
     for (const text of stepCopy) {
       expect([text, enumerating.filter((pattern) => pattern.test(text))]).toEqual([text, []]);
+    }
+  });
+
+  it('keeps the sign-in copy consistent: one link term, one example address, neutral Polish', () => {
+    expect(plainStrings(en.auth).filter((text) => text.includes('e-mail'))).toEqual([]);
+    expect([pl.auth.signInLead, pl.auth.methodPasswordBody].filter((text) => GENDERED_PAST_TENSE.test(text))).toEqual([]);
+    for (const messages of Object.values(dictionaries)) {
+      expect(messages.auth.emailInvalid).toContain(messages.auth.emailPlaceholder);
+      expect(messages.auth.magicLinkExpiredOnStep).toContain(messages.auth.methodMagicLinkTitle);
+    }
+    for (const text of [en.auth.methodMagicLinkTitle, en.auth.magicLinkFetching, en.auth.openMagicLink]) {
+      expect(text).toContain('sign-in link');
+    }
+    for (const text of [pl.auth.methodMagicLinkTitle, pl.auth.magicLinkFetching, pl.auth.openMagicLink]) {
+      expect(text).toContain(SIGN_IN_LINK_TERM);
     }
   });
 
@@ -86,6 +115,33 @@ describe('i18n dictionaries', () => {
     }
   });
 
+  it('counts lessons inline in lowercase with the right plural form', () => {
+    expect([1, 3, 12, 22].map((count) => en.courseOverview.lessonCount({ count }))).toEqual([
+      '1 lesson', '3 lessons', '12 lessons', '22 lessons',
+    ]);
+    const polishNouns = [1, 3, 12, 22].map((count) => {
+      const text = pl.courseOverview.lessonCount({ count });
+      expect(text.startsWith(`${count} `)).toBe(true);
+      const noun = text.slice(`${count} `.length);
+      expect(noun).toMatch(/^\S+$/u);
+      expect(noun).toBe(noun.toLocaleLowerCase('pl'));
+      return noun;
+    });
+    const [one, few, many, twentyTwo] = polishNouns;
+    expect(new Set([one, few, many]).size).toBe(3);
+    expect(twentyTwo).toBe(few);
+  });
+
+  it('starts every open-thread link name with the visible link text', () => {
+    for (const messages of [en, pl]) {
+      for (const excerpt of ['', 'First words…']) {
+        expect(messages.community.openThreadAria({ author: 'Olivia', excerpt })).toMatch(
+          new RegExp(`^${messages.community.openThread}`, 'u'),
+        );
+      }
+    }
+  });
+
   it('share an identical key structure across every language', () => {
     expect(keyShape(dictionaries.en)).toEqual(keyShape(dictionaries.pl));
   });
@@ -93,5 +149,23 @@ describe('i18n dictionaries', () => {
   it('interpolates named params through the format helper', () => {
     expect(format('checkout · {tenant}', { tenant: 'Acme' })).toBe('checkout · Acme');
     expect(en.checkout.eyebrow({ tenant: 'Acme' })).toBe('Checkout · Acme');
+  });
+
+  it('gives the Polish course progress line its own text that names both counts', () => {
+    const lines = [1, 2, 5, 22].map((done) => pl.courseOverview.completedOf({ done, total: 25 }));
+    for (const [index, done] of [1, 2, 5, 22].entries()) {
+      expect(lines[index]).toContain(String(done));
+      expect(lines[index]).toContain('25');
+      expect(lines[index]).not.toBe(en.courseOverview.completedOf({ done, total: 25 }));
+    }
+    expect(new Set(lines).size).toBe(lines.length);
+  });
+
+  it('names the course program and the discussion search the same way in English as in the UI around them', () => {
+    expect(en.courseOverview.curriculum).toBe(en.shell.programTitle);
+    expect(en.courseOverview.completedOf({ done: 2, total: 8 })).toBe('2 of 8 lessons completed');
+    expect(en.discussion.searchCoursePlaceholder).toBe('Search discussion posts…');
+    expect(pl.discussion.searchCoursePlaceholder.trim()).not.toBe('');
+    expect(pl.discussion.searchCoursePlaceholder).not.toBe(en.discussion.searchCoursePlaceholder);
   });
 });

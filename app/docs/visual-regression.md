@@ -43,9 +43,12 @@ preserving coverage of both settings surfaces and their headings.
 Lesson lightbox captures are page variants declared in
 `scripts/visual-screen-inventory.ts` and mapped in
 `scripts/storybook-page-screens.ts`. They reuse the recorded lesson fixture with
-local image content and open the overlay through a story interaction. Desktop
-and mobile goldens cover a captioned SVG in light mode and a raster image with
-alternative text in dark mode, including the lesson shell behind the overlay.
+local image content. The light desktop variant opens the overlay with a real
+pointer click in the capture's readiness step, so its close button shows no
+focus ring; the others open it through a story interaction. The goldens cover a
+small captioned raster (light desktop), a captioned transparent SVG in Polish
+(light mobile) and in the dark theme (dark desktop), and a raster with
+alternative text only (dark mobile), including the lesson shell behind the overlay.
 Each variant uses an isolated browser context and the normal fixture readiness
 handshake; no new recording scenario or database is required.
 
@@ -76,7 +79,12 @@ fonts before mounting to reproduce navigation within an already loaded panel.
 Course captures repaint their asynchronously settled notification badge, public
 sidebar icons and editor upload control before the screenshot: repeated runs of
 those screens alternated between two antialias states for the same geometry, and
-forcing a re-raster once the chrome is final made them byte-stable. Each repaint
+forcing a re-raster once the chrome is final made them byte-stable. The mobile
+lesson lightbox captures repaint the lesson footer bar behind the scrim for the
+same reason: the lesson image can finish loading after the overlay opens and move
+that bar, and repeated runs left its outlined previous-lesson button one pixel
+apart. The differences were seen only in the mobile captures, so the repaint runs
+below 900 px. Each repaint
 first waits for its target, so a selector that stops matching fails the capture
 instead of silently skipping the re-raster.
 The mobile long-curriculum capture moves the pointer off the program button and
@@ -84,6 +92,10 @@ blurs the trigger after dismissing its sheet, then asserts that it is neither
 hovered nor focused, so prior interactions cannot change its captured background.
 The email integration story preserves the initial font-loading sequence used
 by its recorded tab-underline measurement through `preloadFonts: false`.
+The Meta settings capture fires a window resize and waits until the autosized
+consent text field fits its content: on a phone the field could measure its
+height before the web font arrived and stay one wrap short, which changed the
+page height between runs.
 The lesson-attachment scenario explicitly scrolls its HTML
 field to the recorded end position. DNS fixtures open settings without an initial
 hash jump; the harness scrolls to the domain section after fonts settle so the
@@ -104,8 +116,12 @@ Migration acceptance is stricter: each converted capture must report
 0 counted pixels, preferably identical bytes. Any residual pixels and their
 cause must be listed in the pull request. Browser errors, unexpected fixture
 calls, unexercised expected errors, unresolved queries and suspiciously small
-screenshots also fail. The default size floor is 10 KiB; the held boot splash
-uses 7 KiB and skips network-idle waiting, and component screens use 4 KiB.
+screenshots also fail. The size floor is set per screen: the default is 10 KiB
+and component screens use 4 KiB. The held boot splash is the one page exception:
+it skips network-idle waiting and uses 4 KiB, because the neutral grey splash
+compresses to about 6 KiB. Its content is guarded instead: the capture's ready
+step waits for the visible mark and the `Loading…` label, and
+`BrandLoader.test.tsx` checks both render in the neutral text token.
 
 Screenshots are written to `out/visual/current`, diffs to `out/visual/diff`, and
 per-capture counts, byte equality, fixture hashes and diagnostics to

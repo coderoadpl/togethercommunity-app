@@ -40,6 +40,7 @@ interface AuthShellProps {
   title?: string;
   hostname?: string;
   footer?: ReactNode;
+  colophon?: ReactNode;
   children: ReactNode;
 }
 
@@ -77,15 +78,17 @@ const usePublicSurface = (hostname: string) => {
   };
 };
 
-const TenantFooter = ({ hostname }: { hostname: string }) => {
+const TenantFooter = ({ hostname, colophon }: { hostname: string; colophon: ReactNode }) => {
   const t = useTranslations();
   const { tenantName, legal, supportUrl, socialLinks, homeSpaceId, hasCourses } = usePublicSurface(hostname);
   const hasLegal = legal?.termsUrl != null || legal?.privacyUrl != null;
-  const hasPublicNav = hasCourses || homeSpaceId !== null;
+  const showsCatalogPrompt = hasCourses && tenantName !== null;
+  const navCourses = hasCourses && !showsCatalogPrompt;
+  const hasPublicNav = navCourses || homeSpaceId !== null;
 
   return (
     <AuthFooter component="footer" data-testid="auth-footer">
-      {hasCourses && tenantName !== null ? (
+      {showsCatalogPrompt ? (
         <AuthHelp component="p" data-testid="auth-footer-access">
           {t.auth.noAccessPrompt}{' '}
           <AuthAccentLink component={Link} to="/" data-testid="auth-footer-courses">
@@ -116,8 +119,9 @@ const TenantFooter = ({ hostname }: { hostname: string }) => {
         </AuthFooterRow>
       ) : null}
       {socialLinks.length === 0 ? null : <TenantSocialLinks links={socialLinks} />}
-      {hasPublicNav ? <TenantPublicNav homeSpaceId={homeSpaceId} hasCourses={hasCourses} /> : null}
+      {hasPublicNav ? <TenantPublicNav homeSpaceId={homeSpaceId} hasCourses={navCourses} /> : null}
       <PoweredByTogether separated={hasPublicNav} />
+      {colophon}
     </AuthFooter>
   );
 };
@@ -151,6 +155,7 @@ export const AuthShell = ({
   title,
   hostname = window.location.hostname,
   footer,
+  colophon,
   children,
 }: AuthShellProps) => {
   useSuppressGlobalChrome();
@@ -185,9 +190,10 @@ export const AuthShell = ({
             {platformSurface ? (
               <AuthFooter component="footer" data-testid="auth-footer">
                 <PoweredByTogether />
+                {colophon}
               </AuthFooter>
             ) : (
-              <TenantFooter hostname={hostname} />
+              <TenantFooter hostname={hostname} colophon={colophon} />
             )}
           </AuthColumn>
         </AuthStage>

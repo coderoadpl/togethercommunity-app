@@ -334,7 +334,7 @@ them.
 
 ### Migration
 
-One migration, placeholder number `0168` (`0168_order_staff_refunds.sql`), renumbered at merge. It creates the new table, its indexes and two triggers. Locks:
+One migration, number `0168` (`0168_order_staff_refunds.sql`), the next after `0167` on `staging`. It creates the new table, its indexes and two triggers. Locks:
 `CREATE TABLE` with foreign keys takes `SHARE ROW EXCLUSIVE` on `tenants` and `orders` for the
 duration of the statement (milliseconds; the new table is empty), the indexes and triggers lock
 only the new table. No backfill, no rewrite of an existing table.
@@ -401,7 +401,7 @@ guard against refunding more than the charge.
   from Studio. Revert: "undo D12 → refund by charge".
 - D14. A test-mode order is refunded in test mode without a buyer e-mail; restock returns
   nothing because a test checkout never commits stock. Revert: "undo D14 → e-mail in test mode".
-- D13. Migration placeholder `0168`, renumbered at merge.
+- D13. Migration number `0168`, the next after `0167` on `staging`.
 - D15. A refund request carries the packing-list and label state its preview showed and is
   refused when it changed under the order lock; a request without it (an older CLI) is not
   checked. Why: goods must not return to stock behind a label bought after the preview. Revert:

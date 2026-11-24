@@ -1686,7 +1686,7 @@ export interface StorageProvider {
     region?: string;
     deadlineMs?: number;
   }, options: { maxBytes: number; range?: boolean }): Promise<Result<Uint8Array, AppError>>;
-  /** `getObject` together with the entity tag the storage sent with those bytes, null when it sent none. */
+  /** The entity tag must come from the response that carried the bytes, or a later metadata request could vouch for other bytes. */
   getObjectVersion?(input: {
     url: string;
     accessKeyId: string;
@@ -1730,10 +1730,7 @@ export interface StorageProvider {
     region?: string;
     expiresInSeconds: number;
   }): Result<string, AppError>;
-  /**
-   * `deadlineMs` bounds the request from the moment the endpoint's address is resolved, which has its own bound; without
-   * it the adapter's default deadline applies.
-   */
+  /** `deadlineMs` bounds the whole request, the lookup of the endpoint's address included. */
   delete(input: {
     url: string;
     accessKeyId: string;
@@ -3274,7 +3271,6 @@ export type QuarantinedImageInsertion =
   | { kind: 'busy' };
 
 interface QuarantinedImageWrite {
-  /** Whether the storage still holds the object of the key's unreleased row of the same image with the recorded size. */
   present(existing: QuarantinedImageAsset): Promise<Result<boolean, AppError>>;
   store(): Promise<Result<void, AppError>>;
 }
@@ -3298,9 +3294,7 @@ export type QuarantinedImageUploadRecord =
   | { kind: 'cap_exceeded'; cap: ChangeProposalImageCap };
 
 export interface QuarantinedImageLiveUse {
-  /** Whether a live product cover or branding field of the workspace holds exactly this address. */
   inLiveUse(tenantId: string, path: string): Promise<boolean>;
-  /** Whether an applied proposal of the workspace carries this address in its input. */
   inAppliedProposal(tenantId: string, path: string): Promise<boolean>;
 }
 
@@ -3362,10 +3356,6 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
    * created after `countedAfter`.
    */
   recordUpload(tenantId: string, upload: QuarantinedImageUpload, countedAfter: string): Promise<QuarantinedImageUploadRecord>;
-  /**
-   * The recorded start of the upload to this candidate key, which names the key that may complete it, with the image a
-   * completion stored, null before one did; null for a live upload.
-   */
   findUpload(tenantId: string, objectKey: string): Promise<(QuarantinedImageUpload & { completed: QuarantinedImageUploadResult | null }) | null>;
   /** Concurrent completions can read different candidate bytes, so only the first result is kept and every caller answers it. */
   markUploadCompleted(tenantId: string, objectKey: string, completed: QuarantinedImageUploadResult): Promise<QuarantinedImageUploadResult | null>;
@@ -3391,14 +3381,8 @@ export interface QuarantinedImageRepository extends QuarantinedImageLiveUse {
 }
 
 export interface QuarantinedImageLocks extends QuarantinedImageLiveUse {
-  /** Locks the key's unreleased row against release until the surrounding transaction ends; null when there is none. */
   lockForPublication(tenantId: string, apiKeyId: string, image: ProposalImageReference): Promise<QuarantinedImageAsset | null>;
-  /** Locks the attempt's publication records of these images until the transaction ends; false when one of them is gone. */
   claimPublications(tenantId: string, attemptId: string, images: readonly ProposalImageReference[]): Promise<boolean>;
-  /**
-   * Locks one publication record until the transaction ends and answers its delete mark; null when it is gone or, with
-   * `dueBefore`, no longer due: its mark, or else its start, is not before it.
-   */
   lockPublication(
     tenantId: string,
     attemptId: string,

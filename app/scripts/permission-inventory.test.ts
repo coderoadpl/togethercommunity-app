@@ -582,7 +582,19 @@ describe('use-case shape probe', () => {
     expect(collectUseCasesInSource('change-proposal-images.ts', source(own))).toEqual([
       { name: `beginProposed${family}Upload`, file: 'change-proposal-images.ts', capability: 'proposal:asset:upload' },
     ]);
-    expect(() => collectUseCasesInSource('change-proposal-images.ts', source(other))).toThrow(/exactly one authorization capability/u);
+    expect(() => collectUseCasesInSource('change-proposal-images.ts', source(other))).toThrow(`must authorize proposal:asset:upload + ${own}; found proposal:asset:upload, ${other}`);
+  });
+
+  it.each([
+    ['ProductCover', 'proposal:asset:upload'],
+    ['ProductCover', 'proposal:submit:catalog'],
+    ['BrandingAsset', 'proposal:asset:upload'],
+    ['BrandingAsset', 'proposal:submit:settings'],
+  ])('refuses the %s proposal upload that authorizes only %s', (family, capability) => {
+    const source = `
+      export const completeProposed${family}Upload = (ctx: Ctx) => authorizeTenant(ctx, '${capability}');
+    `;
+    expect(() => collectUseCasesInSource('change-proposal-images.ts', source)).toThrow(/must authorize proposal:asset:upload/u);
   });
 
   it('classifies organization use-cases by the capability given to authorizeOrganization', () => {

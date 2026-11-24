@@ -659,9 +659,14 @@ const capabilityFromBody = (
   const directoryConjunction = (subject === 'marketing-lists.ts#previewMarketingList' && capabilities.join(',') === 'marketing:list:read,marketing:contact:read') || (subject === 'marketing-contact-audience.ts#previewMarketingContactAudience' && capabilities.join(',') === 'marketing:campaign:read,marketing:contact:read');
   const proposalFamilyChoice = ['change-proposals.ts#submitChangeProposal', 'change-proposal-groups.ts#submitGroupedChangeProposal'].includes(subject) && capabilities.join(',') === 'proposal:submit:catalog,product:read,proposal:submit:settings,tenant:settings:read';
   const imageFamily = /^change-proposal-images\.ts#(?:begin|complete)Proposed(ProductCover|BrandingAsset)Upload$/u.exec(subject)?.[1];
-  const proposalImageUpload = imageFamily !== undefined
-    && capabilities.join(',') === `proposal:asset:upload,${imageFamily === 'ProductCover' ? 'proposal:submit:catalog' : 'proposal:submit:settings'}`;
-  if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice && !proposalImageUpload) {
+  if (imageFamily !== undefined) {
+    const pair = `proposal:asset:upload,${imageFamily === 'ProductCover' ? 'proposal:submit:catalog' : 'proposal:submit:settings'}`;
+    if (capabilities.join(',') !== pair) {
+      throw new Error(`${subject} must authorize ${pair.replace(',', ' + ')}; found ${capabilities.join(', ') || 'none'}`);
+    }
+    return { capability: 'proposal:asset:upload' };
+  }
+  if (capabilities.length !== 1 && !directoryConjunction && !proposalFamilyChoice) {
     throw new Error(
       `${subject} must declare exactly one authorization capability; found ${capabilities.join(', ') || 'none'}`,
     );

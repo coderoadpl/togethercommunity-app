@@ -41,6 +41,22 @@ describe('marketing CSV', () => {
       expect(mapMarketingImportCsv(parsed(`email,${field}\na@example.test,${value}\n`), { kind: 'contacts' })).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('pipe inside') } });
     }
   });
+  it('rejects the same tag values for literal pipes as the previous expression on seeded random input', () => {
+    let state = 20_261_124;
+    const random = () => {
+      state = (Math.imul(state, 1_103_515_245) + 12_345) >>> 0;
+      return state / 4_294_967_296;
+    };
+    const alphabet = ['"', '|', '\\', 'a', ' '];
+    for (let sample = 0; sample < 3_000; sample += 1) {
+      let value = '';
+      const length = Math.floor(random() * 12);
+      for (let position = 0; position < length; position += 1) value += alphabet[Math.floor(random() * alphabet.length)] ?? '';
+      const mapped = mapMarketingImportCsv({ headers: ['email', 'tags'], rows: [['a@example.test', value]], delimiter: ',' }, { kind: 'contacts' });
+      const rejectedForPipe = !mapped.ok && mapped.error.message.includes('pipe inside');
+      expect(rejectedForPipe, JSON.stringify(value)).toBe(/\\\||"[^"]*\|[^"]*"/.test(value));
+    }
+  });
   it('enforces byte and row limits and ignores only trailing blank records', () => {
     expect(parseMarketingImportCsv('x'.repeat(3 * 1024 * 1024 + 1), ',').ok).toBe(false);
     expect(parseMarketingImportCsv('email,name\n' + 'a@example.test,A\n'.repeat(10_001), ',').ok).toBe(false);

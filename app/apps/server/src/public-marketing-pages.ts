@@ -1,6 +1,7 @@
 import type { MarketingSignupForm } from '#core/domain/index.js';
-import { DEFAULT_LANGUAGE, deriveDarkAccent, deriveLightAccent, languageSchema, resolveTenantLogo, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
+import { DEFAULT_LANGUAGE, deriveDarkAccent, deriveLightAccent, languageSchema, resolveTenantLogo, trimTrailing, type Language, type Tenant, type TenantSettings } from '#core/domain/index.js';
 
+import { headingPattern, inlineLinks, listItemPattern } from './hosted-markdown-syntax.js';
 import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
 import type { PublicMarketingMessages } from './public-marketing-pages-messages.js';
 import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
@@ -60,27 +61,22 @@ const renderMarkdownText = (source: string): string => {
 const renderInlineMarkdown = (source: string): string => {
   let output = '';
   let cursor = 0;
-  for (const match of source.matchAll(/(!?)\[([^\]]+)]\(([^)\s]+)\)/g)) {
-    const index = match.index;
-    const label = match[2];
-    const target = match[3];
-    if (index === undefined || label === undefined || target === undefined) continue;
+  for (const { index, length, image, label, target } of inlineLinks(source)) {
     output += renderMarkdownText(source.slice(cursor, index));
-    if (match[1] === '!') {
+    if (image) {
       output += target.startsWith('https://') ? `<img src="${escapeHtml(target)}" alt="${escapeMarkdownText(label)}">` : '';
     } else {
       const safe = safeHref(target);
       output += safe === null
-        ? renderMarkdownText(match[0])
+        ? renderMarkdownText(source.slice(index, index + length))
         : `<a href="${escapeHtml(safe)}">${renderMarkdownText(label)}</a>`;
     }
-    cursor = index + match[0].length;
+    cursor = index + length;
   }
   return output + renderMarkdownText(source.slice(cursor));
 };
 
 const thematicBreakPattern = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
-const listItemPattern = /^(\s*)(?:[-*+]|(\d{1,9})[.)])\s+(.*)$/;
 const quotePattern = /^ {0,3}>/;
 
 interface ListItemStart {
@@ -170,7 +166,7 @@ const renderMarkdownBlocks = (lines: readonly string[]): string[] => {
       blocks.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
       continue;
     }
-    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+    const heading = headingPattern.exec(line);
     if (heading !== null) {
       flushParagraph();
       const level = Math.min((heading[1]?.length ?? 1) + 1, 6);
@@ -639,7 +635,7 @@ const renderConsentDocumentLink = (t: PublicMarketingMessages, document: SignupC
   return href === null ? '' : `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(t.signupConsentExternalDocument)}</a>`;
 };
 
-const consentWording = (wording: string): string => wording.trim().replace(/\.+$/, '');
+const consentWording = (wording: string): string => trimTrailing(wording.trim(), '.');
 
 const renderSignupConsent = (input: {
   t: PublicMarketingMessages; tenant: string; wording: string; doubleOptIn: boolean; document: SignupConsentDocument | null;

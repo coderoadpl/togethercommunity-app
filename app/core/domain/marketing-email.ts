@@ -6,6 +6,7 @@ import { normalizeEmail } from './email.js';
 import { validation, type AppError } from './errors.js';
 import { languageOrDefault } from './language.js';
 import { err, ok, type Result } from './result.js';
+import { trimTrailing } from './text-trim.js';
 
 export const isoDateTimeSchema = z.string().datetime();
 
@@ -313,7 +314,7 @@ const stringifyTemplateValue = (value: unknown): string => {
 };
 
 const templatePath = '[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*';
-const templateSlot = new RegExp(`\\{\\{\\{\\s*(${templatePath})(?:\\s*\\?\\?\\s*([^{}]*?))?\\s*\\}\\}\\}|\\{\\{\\s*(${templatePath})(?:\\s*\\?\\?\\s*([^{}]*?))?\\s*\\}\\}`, 'g');
+const templateSlot = new RegExp(`\\{\\{\\{\\s*(${templatePath})(?:\\s*\\?\\?([^{}]*)|\\s*)\\}\\}\\}|\\{\\{\\s*(${templatePath})(?:\\s*\\?\\?([^{}]*)|\\s*)\\}\\}`, 'g');
 
 const fallbackValue = (fallback: string | undefined): string => {
   if (fallback === undefined) return '';
@@ -622,7 +623,7 @@ export const sesIdentityFreshness = (
 export const normalizeSesWebhookEndpoint = (endpoint: string): string => {
   try {
     const url = new URL(endpoint.trim());
-    return `${url.protocol}//${url.host}${url.pathname.replace(/\/+$/, '')}${url.search}`;
+    return `${url.protocol}//${url.host}${trimTrailing(url.pathname, '/')}${url.search}`;
   } catch {
     return endpoint.trim();
   }

@@ -79,6 +79,9 @@ export const parseMarketingImportCsv = (source: string, delimiter?: ',' | ';'): 
   return headers === undefined ? err(validation('CSV header is required')) : ok({ headers, rows, delimiter });
 };
 
+const hasLiteralPipe = (value: string): boolean =>
+  value.includes('\\|') || value.split('"').slice(1, -1).some((quoted) => quoted.includes('|'));
+
 export const mapMarketingImportCsv = (
   csv: MarketingCsv,
   input: { kind: MarketingImportCreateInput['kind']; mapping?: Record<string, z.output<typeof marketingImportFieldSchema>> | undefined; defaults?: MarketingImportCreateInput['defaults'] | undefined },
@@ -103,7 +106,7 @@ export const mapMarketingImportCsv = (
     warnings.push({ rowNumber: 0, message: `${header}: pipes separate ${field}; literal pipes inside a token are unsupported` });
     for (const [index, record] of csv.rows.entries()) {
       const value = record[column] ?? '';
-      if (/\\\||"[^"]*\|[^"]*"/.test(value)) return err(validation(`Row ${index + 1}, ${header}: a pipe inside a tag or list token is unsupported; remove literal pipes before mapping`));
+      if (hasLiteralPipe(value)) return err(validation(`Row ${index + 1}, ${header}: a pipe inside a tag or list token is unsupported; remove literal pipes before mapping`));
     }
   }
   const rows = csv.rows.map((record) => Object.fromEntries(csv.headers.flatMap((header, index) => {

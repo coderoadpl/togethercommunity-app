@@ -18,6 +18,7 @@ export * from './email-event.js';
 export * from './email-reputation.js';
 export * from './email-send.js';
 export * from './slug.js';
+export * from './text-trim.js';
 export * from './product.js';
 export * from './personalization.js';
 export * from './stock.js';

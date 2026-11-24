@@ -136,35 +136,49 @@ Request rules:
 Answer rules:
 
 - `access` is `true` exactly when the person has an active grant for the
-  product now; that is the rule Together itself uses to open lessons.
-- `source`: `purchase` (a one-time payment), `subscription` (a payment kept up
-  by a subscription), `grant` (given by staff) or `import` (migrated from a
-  previous platform); `null` without access.
+  product now: the grant rule Together uses for members. Lesson access in
+  Together also lets staff and free previews through; the check ignores both.
+- `source`: the origin recorded on the grant when it was created: `purchase`
+  (a payment), `grant` (given by staff) or `import` (migrated from a previous
+  platform). A payment is reported as `subscription` while a current
+  subscription keeps the window moving (see `subscription`). A later renewal
+  of the same grant through another route keeps the recorded origin, so
+  `source` is informational and is not proof of what paid for the current
+  window; rely on `access`. `null` without access.
 - `subscription`: the newest subscription for that product. It is reported
   only when the access has an end date and that subscription is `active` or
-  `past_due` or paid through the check time, and a paid access reported this
-  way has `source` `subscription`; with `entitlements:members:read` the
-  subscription is reported in every case, a lapsed one included.
+  `past_due` or paid through the check time, and an access whose recorded
+  origin is a payment is then reported with `source` `subscription`; with
+  `entitlements:members:read` the subscription is reported in every case, a
+  lapsed one included.
 - Without `productIds`: a key with an allow-list answers every allow-listed
   product; a key without one lists only the products the person has access
   to, so an empty list means no access.
 - `identity`: `"verified"` when the person was matched through a verified
-  account that has signed in to this workspace and the answer reveals the
-  match (access to at least one answered product, or a key with
-  `entitlements:members:read`); otherwise `null`. Treat any other value as
-  `null`: later versions may add ways to match without changing `version`.
+  account whose member in this workspace has a recorded sign-in and the
+  answer reveals the match (access to at least one answered product, or a key
+  with `entitlements:members:read`); otherwise `null`. Treat any other value
+  as `null`: later versions may add ways to match without changing `version`.
 - `member`: `{ "id": … }` for a matched person with `entitlements:members:read`,
-  otherwise `null`. Store it to keep the link when the person changes e-mail
-  address, and check by `memberId` afterwards.
+  otherwise `null`. The id names the person's member row in this workspace.
+  You may store it next to your own user and check by `memberId` afterwards,
+  so the address is not sent again. It identifies the row, not the person:
+  after the operator's bulk import moves a member to another account (the
+  limitation in [security](security.md#application-keys)), the row answers
+  for that account. So re-confirm a stored id by your user's verified e-mail
+  address whenever you re-verify the user (for example at sign-in), and drop
+  a stored id that the e-mail check no longer returns.
 - A `memberId` matches only when that member's current account exists and has
-  a verified e-mail address and the member has signed in to this workspace:
-  the same rule as for an e-mail address. Otherwise the answer is the one for
-  a person who matches nobody.
-- With `entitlements:members:read` the answer also tells whether the person is
-  a signed-in member of the workspace at all, independent of product access.
-  The answer echoes the selector you sent and returns no other address.
-- An unknown person, an unverified address, a person who never signed in to
-  this workspace and a known person without access give the same answer
+  a verified e-mail address and the member has a recorded sign-in in this
+  workspace: the same rule as for an e-mail address. Otherwise the answer is
+  the one for a person who matches nobody.
+- With `entitlements:members:read` a matched person is named with the member
+  id even without access to any product. A `null` member does not prove that
+  the person is not a member: a member whose account is unverified or who has
+  no recorded sign-in answers like an unknown person. The answer echoes the
+  selector you sent and returns no other address.
+- An unknown person, an unverified address, a member with no recorded sign-in
+  in this workspace and a known person without access give the same answer
   unless the key holds `entitlements:members:read`.
 - Never in the answer: names, addresses, orders, amounts.
 
@@ -220,8 +234,9 @@ your application. Your application must:
 
 - take the e-mail address only from its own authenticated user whose mailbox
   it has verified, never from a form field;
-- bind a returned member id to that same user on its server, and check by that
-  stored id afterwards;
+- if it stores a returned member id, bind it to that same user on its server
+  and re-confirm it by that user's verified e-mail address whenever it
+  re-verifies the user, dropping an id the e-mail check no longer returns;
 - never treat a selector typed by a visitor (an address or a member id) as
   proof of who they are.
 
@@ -235,12 +250,13 @@ days, and the owner's reconciliation report lists paid orders without a grant.
 ### When does a new buyer start to match
 
 A person matches only when their account has a verified e-mail address and
-they have signed in to this workspace at least once. Neither happens on the
-checkout itself:
+their member in this workspace has a recorded sign-in. For a buyer new to
+the platform, neither happens on the checkout itself:
 
-1. The payment webhook creates the buyer's account unverified (`ensureUser`
-   in `app/adapters/auth/create-auth.ts`) and queues the purchase e-mail. That
-   e-mail carries a one-time sign-in link (`queueEnrollmentWelcome` in
+1. For a buyer who has no account yet, the payment webhook creates one,
+   unverified; an existing account is kept as it is (`ensureUser` in
+   `app/adapters/auth/create-auth.ts`). The webhook queues the purchase
+   e-mail. That e-mail carries a one-time sign-in link (`queueEnrollmentWelcome` in
    `app/core/server/usecases/fulfill-enrollment.ts`), valid for one hour
    (`MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS` in `app/core/domain/identity.ts`).
 2. The success page only polls the payment status (the `paymentStatus` query
@@ -250,12 +266,16 @@ checkout itself:
    session and writes no `sign-in` event.
 3. When the buyer opens that link (or asks for a new one on the sign-in page),
    the account is verified, a session is created and a `sign-in` event is
-   written for this workspace (the sign-in hook in
+   written for the buyer's member in this workspace (the sign-in hook in
    `app/adapters/auth/create-auth.ts` calls `recordSignIn`, which
-   `app/apps/server/src/composition.ts` provides). From then on the check
-   answers `access: true`.
+   `app/apps/server/src/composition.ts` provides). That event is written on a
+   best-effort basis: a failed write is logged, and the next sign-in writes
+   its own event.
 
-So every new buyer reads as no access until they open the purchase e-mail.
+Once both hold the person matches, and `access` is `true` when a live grant
+exists. So a buyer who is new to the platform reads as no access until they
+open the purchase e-mail, while a person who already has a verified account
+and a recorded sign-in in this workspace matches as soon as the grant exists.
 Recommended handling in the other application:
 - After a purchase, show "Confirm your purchase with the link in the e-mail we
   sent you", then re-check when the person comes back or presses "I have
@@ -264,16 +284,13 @@ Recommended handling in the other application:
   within the rate limit.
 - Never grant access on your side because of the payment alone.
 
-The member id returned under `entitlements:members:read` is the stable link to
-a person when their e-mail address changes.
-
 ## Gaps found for new applications
 
 - Workspaces for new applications are created only by the operator; an owner
   cannot create one by themselves once public creation is closed.
 - No Studio screen issues application keys yet; the owner uses the CLI.
-- A buyer created by a payment matches only after their first sign-in to the
-  workspace, normally through the link in the purchase e-mail (see "When does a
-  new buyer start to match").
+- A buyer new to the platform matches only once a sign-in to the workspace is
+  recorded for their member, normally through the link in the purchase e-mail
+  (see "When does a new buyer start to match").
 - Organizations (one owner, several workspaces) cannot yet share one key across
   their workspaces; a key is bound to one workspace.

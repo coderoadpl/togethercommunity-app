@@ -949,15 +949,18 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   `member_events` of the answering workspace. The account's verified flag
   alone is not proof: an import by any workspace owner sets it for an address
   without an account. A sign-in to this workspace (magic link, password,
-  passkey or Google) is made by the person. A buyer created by a payment
-  therefore matches only after their first sign-in, normally through the
-  link in the purchase e-mail.
+  passkey or Google) is made by the person. So a person matches only when the
+  account is verified and its member in the workspace has a recorded sign-in;
+  a buyer created by a payment matches only once a sign-in is recorded for
+  their member, normally through the link in the purchase e-mail.
 - **Indistinguishability.** Without `entitlements:members:read` an unknown
-  person, an unverified address, a deleted or erased member and a known person
-  without access give the same entry (`access: false`, `source`,
-  `subscription` and `member` null) or the same empty list, and run the same
-  sequence of queries against ids no row carries. Staff roles are ignored: the
-  answer comes from live grants only, so it never reveals who is staff.
+  person, an unverified address, a member without a recorded sign-in, a
+  deleted or erased member and a known person without access give the same
+  entry (`access: false`, `source`, `subscription` and `member` null) or the
+  same empty list. A subject that matches nobody runs the same sequence of
+  queries as one that matches, with placeholder ids whose results are
+  discarded. Staff roles are ignored: the answer comes from live grants only,
+  so it never reveals who is staff.
 - **Answer.** Per product: `access`, `source`, the subscription status, period
   end and cancel flag, and the check time. Per person, `identity` is
   `verified` only when the answer already reveals the match (access to an
@@ -968,10 +971,20 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   shown to a key without `entitlements:members:read`, only when the grant has
   an expiry and the newest subscription for the product is active or past due
   or paid through the check time.
-- **What `entitlements:members:read` reveals.** With this scope the answer
-  tells whether the person is a signed-in member of the workspace at all,
-  independent of product access, and returns the member id; it also shows a
-  lapsed subscription.
+- **`source` is informational.** It is the origin recorded on the grant when
+  the grant was created (a payment, staff, an import); a payment origin is
+  reported as `subscription` while a current subscription keeps the window
+  moving, under the rule above. A later renewal of the same grant through
+  another route keeps the recorded origin: `createOrRenewGrant` in
+  `core/server/usecases/grant-window.ts` changes the window, not the source.
+  So `source` is not proof of what paid for the current window; `access` is
+  the answer to rely on.
+- **What `entitlements:members:read` reveals.** With this scope a person who
+  matches (a verified account whose member in the workspace has a recorded
+  sign-in) is named with the member id, independently of product access, and
+  a lapsed subscription is shown. A `null` member does not prove that the
+  person is not a member: a member whose account is unverified or who has no
+  recorded sign-in answers like an unknown person.
 - **Scopes a later release adds.** Reading a stored key (listing,
   authentication, revocation) drops scope values this release does not know,
   so such a key only lacks their capabilities and never breaks the list;
@@ -992,10 +1005,14 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   e-mail address is a stable pseudonym that anyone with database access can
   confirm by guessing, and the history needs only which key was used and when.
 - **Identifiers kept out of errors and logs.** E-mail addresses travel only in
-  the `POST` body, never in a URL. Every query of the check runs behind an
-  adapter boundary that replaces a database error, whose message carries the
-  bound parameters, with `Entitlement check database query failed` and the
-  SQLSTATE. Validation errors of the check carry field paths and issue codes
+  the `POST` body, never in a URL. The queries that carry the checked
+  person's e-mail address or member id run in the subject reader
+  (`adapters/db/entitlement-subjects.ts`), which replaces a database error,
+  whose message carries the bound parameters, with `Entitlement check
+  database query failed` plus the SQLSTATE when the driver gave one. The key
+  lookup has its own boundary that drops the driver error, because it carries
+  the key hash. The rate-limit and history writes carry no identifier of the
+  person checked. Validation errors of the check carry field paths and issue codes
   only, never request text. Telemetry records the route, the status, the key
   attribution and, exactly as on the shop management key routes, the identity
   of the owner who issued the key; never the person checked.
@@ -1004,10 +1021,13 @@ reaches exactly one route, `POST /api/m2m/entitlements/check`.
   to another account; such a member then matches at the new address without a
   new sign-in. The keyed import route refuses to change an imported member's
   e-mail address.
-- **Known limitation: rate-limit release at a window boundary.** A claim that
-  lands just after a window boundary is not given back by a later release of
-  that request; the error is at most one request's weight and always in the
-  limiting direction.
+- **Known limitation: rate-limit release after a window change.** A request
+  computes its windows when it starts. When another request has already moved
+  the key's bucket to a newer window by the time the claim is stored, the
+  claim is charged to that newer window, and a later release of that request
+  (history unavailable, or the day limit refused after the minute claim) does
+  not find its window, so the weight stays charged. Each such request can
+  leave its own weight behind, always in the limiting direction.
 - **Rollback.** Migration 0169 only adds `application_keys` and
   `application_key_rate_limit_buckets`, and the previous release never reads
   them. Its purge, however, does not delete application keys, and it has no

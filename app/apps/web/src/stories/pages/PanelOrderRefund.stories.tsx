@@ -37,6 +37,7 @@ const preview = {
   remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: true, returnableStock: [{ productId: 'product-mug', quantity: 1 }], onPackingList: true, hasShipment: false, hasInvoice: false, cancelsSubscription: false,
   fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true }, waitingRefundId: null,
   providerListedRefundIds: [],
+  providerNotFinalCents: 0,
 };
 
 const refund = (overrides: Record<string, unknown>) => ({
@@ -100,7 +101,7 @@ export const PartiallyRefunded: Story = refundStory({
   refunded: 9900,
   preview: {
     refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', refundedCents: 9900, remainderCents: 15000, waitingRefundId: 'refund-demo-2',
-    providerListedRefundIds: ['refund-demo-2', 'refund-demo-1'],
+    providerListedRefundIds: ['refund-demo-2', 'refund-demo-1'], providerNotFinalCents: 4900,
   },
 });
 

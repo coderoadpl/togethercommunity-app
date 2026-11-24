@@ -49,7 +49,7 @@ const paidOrder: OrderListItem = {
 const preview: StaffRefundPreview = {
   orderId: 'o1', refundable: true, blockedReason: null, paidCents: 24900, refundedCents: 0, remainderCents: 24900, currency: 'PLN',
   mode: 'live', remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: true, returnableStock: [{ productId: 'mug', quantity: 1 }], onPackingList: true,
-  hasShipment: false, hasInvoice: false, cancelsSubscription: false, waitingRefundId: null, providerListedRefundIds: [],
+  hasShipment: false, hasInvoice: false, cancelsSubscription: false, waitingRefundId: null, providerListedRefundIds: [], providerNotFinalCents: 0,
   fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
 };
 
@@ -158,14 +158,14 @@ describe('staff refund action', () => {
   it('keeps the action disabled with the reason while another refund waits for Stripe', async () => {
     serve(
       { order: { ...paidOrder, status: 'partially_refunded' }, staffRefunds: [staffRefund({ status: 'running', amountCents: 4900 })], refundTotals: { paidCents: 24900, refundedCents: 4900, remainingCents: 20000, currency: 'PLN' } },
-      { ...preview, refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', waitingRefundId: 'refund-1', remainderCents: 20000, refundedCents: 4900, providerListedRefundIds: ['refund-1'] },
+      { ...preview, refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', waitingRefundId: 'refund-1', remainderCents: 20000, refundedCents: 4900, providerListedRefundIds: ['refund-1'], providerNotFinalCents: 4900 },
     );
     await renderDetail();
     expect(await screen.findByRole('button', { name: messages.action })).toBeDisabled();
     expect(screen.getByText(messages.waitingBlocksAction)).toBeVisible();
     const payment = screen.getByTestId('order-payment');
     expect(within(payment).getByText(`−${pln(4900)}`)).toBeVisible();
-    expect(within(payment).getByText(messages.inProgress({ amount: pln(4900) }))).toBeVisible();
+    expect(within(payment).getByText(messages.notFinalAtProvider({ amount: pln(4900) }))).toBeVisible();
     expect(within(payment).getByText(pln(20000))).toBeVisible();
   });
 });
@@ -203,6 +203,21 @@ describe('payment card totals', () => {
     expect(calls.preview).toBe(1);
   });
 
+  it.each([
+    { status: 'pending', notFinalCents: 24900 },
+    { status: 'succeeded', notFinalCents: 0 },
+  ])('qualifies a full refund made in the Stripe Dashboard with no staff refund by the amount Stripe has not finished ($status) and says the whole amount was refunded only when none is left', async ({ notFinalCents }) => {
+    serve(
+      { order: { ...paidOrder, status: 'refunded' }, refundTotals: { paidCents: 24900, refundedCents: 0, remainingCents: 0, currency: 'PLN' } },
+      { ...preview, ...refundedBlocked, refundedCents: 24900, providerNotFinalCents: notFinalCents },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(`−${pln(24900)}`)).toBeVisible();
+    expect(within(payment).queryByText(messages.notFinalAtProvider({ amount: pln(24900) })) !== null).toBe(notFinalCents > 0);
+    expect(within(payment).queryByText(messages.fullyRefunded) !== null).toBe(notFinalCents === 0);
+  });
+
   it('shows the paid amount and says the refund totals are not available instead of a remainder when neither the preview nor the detail has them', async () => {
     const calls = serve({ order: { ...paidOrder, status: 'refunded' }, refundTotals: null });
     await renderDetail({ ...owner, emailVerified: false });
@@ -220,7 +235,7 @@ describe('payment card totals', () => {
   ])('counts a refund whose create response was lost once in the refunded total when Stripe lists it ($listed), and otherwise calls it possibly at Stripe, never not sent', async ({ listed, requested }) => {
     serve(
       { order: { ...paidOrder, status: 'partially_refunded' }, staffRefunds: [staffRefund({ status: 'pending', amountCents: 1000, createOutcomeUnknown: true, providerRefundId: null, providerRefundStatus: null })] },
-      { ...preview, refundable: false, waitingRefundId: 'refund-1', refundedCents: listed.length === 0 ? 0 : 1000, remainderCents: 23900, providerListedRefundIds: listed },
+      { ...preview, refundable: false, waitingRefundId: 'refund-1', refundedCents: listed.length === 0 ? 0 : 1000, remainderCents: 23900, providerListedRefundIds: listed, providerNotFinalCents: listed.length === 0 ? 0 : 1000 },
     );
     await renderDetail();
     const payment = await screen.findByTestId('order-payment');
@@ -228,7 +243,7 @@ describe('payment card totals', () => {
     expect(within(payment).queryByText(messages.notSentYet)).toBeNull();
     expect(within(payment).queryByText(messages.requestedRefund) !== null).toBe(requested);
     expect(within(payment).queryByText(messages.mayBeAtProvider) !== null).toBe(requested);
-    expect(within(payment).queryByText(messages.inProgress({ amount: pln(1000) })) !== null).toBe(!requested);
+    expect(within(payment).queryByText(messages.notFinalAtProvider({ amount: pln(1000) })) !== null).toBe(!requested);
     expect(within(payment).getAllByText(`−${pln(1000)}`)).toHaveLength(1);
   });
 
@@ -246,6 +261,45 @@ describe('payment card totals', () => {
     expect(await within(payment).findByText(messages.requestedRefund)).toBeVisible();
     expect(within(payment).getByText(messages.mayBeAtProvider)).toBeVisible();
     expect(within(payment).queryByText(messages.refunded)).toBeNull();
+  });
+
+  const amountBeside = (payment: HTMLElement, note: string) => within(within(payment).getByText(note).parentElement ?? payment);
+
+  it('lists the requested refunds per state, a refund only watching other refunds included, so paid, refunded, requested and remaining add up', async () => {
+    serve(
+      {
+        order: { ...paidOrder, status: 'partially_refunded' },
+        staffRefunds: [
+          staffRefund({ id: 'r-blocked', status: 'blocked_permission', amountCents: 1000, providerRefundId: null, providerRefundStatus: null, permissionBlockedAt: '2026-11-22T07:05:00.000Z' }),
+          staffRefund({ id: 'r-unknown', status: 'unconfirmed', amountCents: 2000, createOutcomeUnknown: true, providerRefundId: null, providerRefundStatus: null }),
+          staffRefund({ id: 'r-watching', status: 'submitted', amountCents: 3000, providerRefundId: null, providerRefundStatus: null, lastError: 'waiting_for_other_refund' }),
+          staffRefund({ id: 'r-done', amountCents: 5000 }),
+        ],
+        refundTotals: { paidCents: 24900, refundedCents: 5000, remainingCents: 13900, currency: 'PLN' },
+      },
+      { ...preview, refundable: false, waitingRefundId: 'r-blocked', remainderSource: 'platform', refundedCents: 5000, remainderCents: 13900 },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(pln(13900))).toBeVisible();
+    expect(within(payment).getAllByText(messages.requestedRefund)).toHaveLength(3);
+    expect(amountBeside(payment, messages.mayBeAtProvider).getByText(`−${pln(2000)}`)).toBeVisible();
+    expect(amountBeside(payment, messages.waitingForPermission).getByText(`−${pln(1000)}`)).toBeVisible();
+    expect(amountBeside(payment, messages.watchingOtherRefunds).getByText(`−${pln(3000)}`)).toBeVisible();
+    expect(within(payment).getByText(`−${pln(5000)}`)).toBeVisible();
+    expect(within(payment).queryByText(messages.notSentYet)).toBeNull();
+  });
+
+  it('says a refund the dispatcher is sending and Stripe does not list yet is being sent, never not sent', async () => {
+    serve(
+      { order: { ...paidOrder, status: 'paid' }, staffRefunds: [staffRefund({ status: 'running', amountCents: 4900, providerRefundId: null, providerRefundStatus: null })] },
+      { ...preview, refundable: false, waitingRefundId: 'refund-1', remainderCents: 20000 },
+    );
+    await renderDetail();
+    const payment = await screen.findByTestId('order-payment');
+    expect(await within(payment).findByText(messages.beingSent)).toBeVisible();
+    expect(amountBeside(payment, messages.beingSent).getByText(`−${pln(4900)}`)).toBeVisible();
+    expect(within(payment).queryByText(messages.notSentYet)).toBeNull();
   });
 
   it('says the whole amount was refunded only when the refunds the platform saw cover the payment', async () => {
@@ -724,7 +778,7 @@ describe('staff refund history and ship anyway', () => {
         staffRefund({ id: 'r-done', status: 'succeeded', amountCents: 5000, restocked: true }),
       ],
       refundTotals: { paidCents: 24900, refundedCents: 5000, remainingCents: 14000, currency: 'PLN' },
-    }, { ...preview, refundable: false, waitingRefundId: 'r-blocked', refundedCents: 9900, remainderCents: 14000, providerListedRefundIds: ['r-running', 'r-done'] });
+    }, { ...preview, refundable: false, waitingRefundId: 'r-blocked', refundedCents: 9900, remainderCents: 14000, providerListedRefundIds: ['r-running', 'r-done'], providerNotFinalCents: 4900 });
     await renderDetail();
 
     const history = await screen.findByTestId('order-staff-refunds');
@@ -751,7 +805,7 @@ describe('staff refund history and ship anyway', () => {
     const payment = screen.getByTestId('order-payment');
     expect(within(payment).getByText(messages.notPaidOut)).toBeVisible();
     expect(await within(payment).findByText(`−${pln(9900)}`)).toBeVisible();
-    expect(within(payment).getByText(messages.inProgress({ amount: pln(4900) }))).toBeVisible();
+    expect(within(payment).getByText(messages.notFinalAtProvider({ amount: pln(4900) }))).toBeVisible();
     expect(within(payment).getByText(messages.requestedRefund)).toBeVisible();
     expect(within(payment).getByText(`−${pln(1000)}`)).toBeVisible();
     expect(within(payment).getByText(messages.waitingForPermission)).toBeVisible();
@@ -814,7 +868,44 @@ describe('staff refund history and ship anyway', () => {
     const plain = (text: string) => text.replace(/\s/gu, ' ');
     expect(help('r-after')).toContain(plain(again(amount)));
     for (const id of ['r-unknown', 'r-awaiting', 'r-outside', 'r-unconfirmed']) expect(help(id)).toContain(plain(cap(amount)));
-    expect(t.sales.staffRefund.reasonHelp.awaiting_provider({ amount })).not.toMatch(/Succeeded (or|lub) Pending/u);
+    expect(t.sales.staffRefund.reasonHelp.awaiting_provider({ amount })).not.toMatch(new RegExp(`Succeeded (or|${expectedStaffRefundHelpPl.or}) Pending`, 'u'));
+    languagePreference.save('en');
+  });
+
+  it.each([
+    {
+      language: 'en', t: en,
+      again: (amount: string) => `Refund ${amount} again by entering that amount as a partial refund, not the whole remainder, or refund at most ${amount} by hand in the Stripe Dashboard.`,
+      access: 'Check the member\'s access and restore it only if it was revoked and should be restored: a partial refund never ends access, and another purchase may have kept it.',
+    },
+    { language: 'pl', t: pl, again: expectedStaffRefundHelpPl.refundAgainOrByHand, access: expectedStaffRefundHelpPl.checkAccess },
+  ] as const)('bounds the replacement of a 10.00 refund that was never issued by its amount with 100.00 still refundable, and asks to check access after a failed issued refund, in the $language Studio help', async ({ language, t, again, access }) => {
+    languagePreference.save(language);
+    const partial = { amountCents: 1000, lastError: null, providerRefundId: null };
+    serve(
+      {
+        order: { ...paidOrder, amountCents: 10000 },
+        staffRefunds: [
+          staffRefund({ ...partial, id: 'r-refused', status: 'failed', providerRefundStatus: null }),
+          staffRefund({ ...partial, id: 'r-permission', status: 'failed', providerRefundStatus: null, permissionBlockedAt: '2026-11-19T07:05:00.000Z' }),
+          staffRefund({ ...partial, id: 'r-after', status: 'failed', providerRefundId: 're_after', providerRefundStatus: 'failed' }),
+        ],
+        refundTotals: { paidCents: 10000, refundedCents: 0, remainingCents: 10000, currency: 'PLN' },
+      },
+      { ...preview, paidCents: 10000, remainderCents: 10000 },
+    );
+    await renderAt('/panel/sales/$orderId', () => <LanguageProvider><OrderDetailPage orderId="o1" /></LanguageProvider>);
+    const plain = (text: string) => text.replace(/\s/gu, ' ');
+    const help = async (id: string) => plain((await within(await screen.findByTestId(`order-staff-refund-${id}`)).findByTestId('order-staff-refund-help')).textContent ?? '');
+    const amount = plain(formatMinorUnitsPrice(1000, 'PLN', language));
+    const remainder = plain(formatMinorUnitsPrice(10000, 'PLN', language));
+    for (const id of ['r-refused', 'r-permission']) {
+      const text = await help(id);
+      expect(text).toContain(plain(again(amount)));
+      expect(text).not.toContain(remainder);
+    }
+    expect(await help('r-after')).toContain(plain(access));
+    expect(plain(t.sales.staffRefund.reasonHelp.failed_after_order_refunded({ amount }))).toContain(plain(access));
     languagePreference.save('en');
   });
 

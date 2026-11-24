@@ -45,8 +45,18 @@ const refundCountedIn = (preview: StaffRefundPreview | null): ((refund: OrderSta
   return (refund) => listed.has(refund.id);
 };
 
-const isReserved = (refund: OrderStaffRefundView): boolean =>
-  WAITING_STATUSES.includes(refund.status) || (refund.createOutcomeUnknown && UNCERTAIN_STATUSES.includes(refund.status));
+const REQUESTED_NOTES = ['mayBeAtProvider', 'beingSent', 'notSentYet', 'waitingForPermission', 'watchingOtherRefunds'] as const;
+
+type RequestedNote = (typeof REQUESTED_NOTES)[number];
+
+const requestedNoteOf = (refund: OrderStaffRefundView): RequestedNote | null => {
+  if (refund.createOutcomeUnknown && (WAITING_STATUSES.includes(refund.status) || UNCERTAIN_STATUSES.includes(refund.status))) return 'mayBeAtProvider';
+  if (refund.status === 'running') return 'beingSent';
+  if (refund.status === 'pending') return 'notSentYet';
+  if (refund.status === 'blocked_permission') return 'waitingForPermission';
+  if (refund.status === 'submitted' && refund.providerRefundId === null) return 'watchingOtherRefunds';
+  return null;
+};
 
 const AmountRow = ({ label, children, sub, total = false }: { label: string; children: ReactNode; sub?: string | undefined; total?: boolean }) => (
   <Stack direction="row" useFlexGap spacing="1rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -88,15 +98,19 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
   const remainingCents = preview?.remainderCents ?? totals?.remainingCents ?? 0;
   const unknown = totalsAvailable && refundedAmountUnknown(order, refundedCents);
   const counted = refundCountedIn(preview);
-  const requested = staffRefunds.filter((refund) => !counted(refund) && isReserved(refund));
-  const requestedCents = sumOf(requested);
-  const unconfirmedCents = Math.min(refundedCents, sumOf(staffRefunds.filter((refund) =>
-    counted(refund) && refund.status !== 'succeeded' && PLATFORM_COMMITTED_REFUND_STATUSES.some((status) => status === refund.status))));
+  const requested = REQUESTED_NOTES
+    .map((note) => ({ note, cents: sumOf(staffRefunds.filter((refund) => !counted(refund) && requestedNoteOf(refund) === note)) }))
+    .filter((group) => group.cents > 0);
+  const requestedCents = requested.reduce((sum, group) => sum + group.cents, 0);
+  const notFinal = preview?.remainderSource === 'provider'
+    ? { cents: preview.providerNotFinalCents, note: messages.notFinalAtProvider }
+    : {
+      cents: Math.min(refundedCents, sumOf(staffRefunds.filter((refund) =>
+        counted(refund) && refund.status !== 'succeeded' && PLATFORM_COMMITTED_REFUND_STATUSES.some((status) => status === refund.status)))),
+      note: messages.inProgress,
+    };
   const shippingCents = order.shipping?.amountCents ?? 0;
   const blocked = staffRefunds.some((refund) => refund.status === 'blocked_permission');
-  const requestedNote = requested.some((refund) => refund.createOutcomeUnknown)
-    ? messages.mayBeAtProvider
-    : requested.some((refund) => refund.status === 'blocked_permission') ? messages.waitingForPermission : messages.notSentYet;
 
   return (
     <SectionCard title={messages.paymentTitle} headerActions={chips} data-testid="order-payment">
@@ -114,13 +128,13 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
             <AmountRow label={messages.paidTotal}>{money(paidCents)}</AmountRow>
             {unknown ? <AmountRow label={messages.refunded}>{messages.refundedUnknownValue}</AmountRow> : null}
             {unknown || refundedCents === 0 ? null : (
-              <AmountRow label={messages.refunded} sub={unconfirmedCents === 0 ? undefined : messages.inProgress({ amount: money(unconfirmedCents) })}>
+              <AmountRow label={messages.refunded} sub={notFinal.cents === 0 ? undefined : notFinal.note({ amount: money(notFinal.cents) })}>
                 {`−${money(refundedCents)}`}
               </AmountRow>
             )}
-            {requestedCents === 0 ? null : (
-              <AmountRow label={messages.requestedRefund} sub={requestedNote}>{`−${money(requestedCents)}`}</AmountRow>
-            )}
+            {requested.map(({ note, cents }) => (
+              <AmountRow key={note} label={messages.requestedRefund} sub={messages[note]}>{`−${money(cents)}`}</AmountRow>
+            ))}
             <Divider />
             <AmountRow label={messages.remaining} total>{money(remainingCents)}</AmountRow>
           </>
@@ -138,7 +152,7 @@ export const OrderPaymentCard = ({ order, totals, staffRefunds, chips, action, o
           <WarningIcon />
           <Typography variant="body2">{messages.notPaidOut}</Typography>
         </RefundWarningRow>
-      ) : !unknown && refundedCents > 0 && refundedCents >= paidCents && remainingCents === 0 && unconfirmedCents === 0 ? (
+      ) : !unknown && refundedCents > 0 && refundedCents >= paidCents && remainingCents === 0 && notFinal.cents === 0 ? (
         <RefundMutedRow direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
           <CheckCircleIcon />
           <Typography variant="body2">{messages.fullyRefunded}</Typography>

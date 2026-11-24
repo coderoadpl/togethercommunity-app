@@ -1188,6 +1188,7 @@ export interface Messages {
       requestedRefund: string;
       waitingForPermission: string;
       inProgress: (params: { amount: string }) => string;
+      notFinalAtProvider: (params: { amount: string }) => string;
       remaining: string;
       action: string;
       fullyRefunded: string;
@@ -1197,6 +1198,8 @@ export interface Messages {
       refundedUnknown: string;
       notSentYet: string;
       mayBeAtProvider: string;
+      beingSent: string;
+      watchingOtherRefunds: string;
       totalsUnavailable: string;
       waitingBlocksAction: string;
       notPaidOut: string;

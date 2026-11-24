@@ -10,7 +10,7 @@ const preview = (over: Partial<StaffRefundPreview> = {}): StaffRefundPreview => 
   orderId: 'order-1', refundable: true, blockedReason: null, paidCents: 4099, refundedCents: 1000, remainderCents: 3099, currency: 'PLN',
   mode: 'live', remainderSource: 'provider', refundedAmountUnknown: false, grantsAccess: false, returnableStock: [{ productId: 'book', quantity: 1 }], onPackingList: true, hasShipment: false,
   hasInvoice: true, cancelsSubscription: false, fullRefundOptions: { restockOffered: true, restockDefault: true, removeFromPackingListOffered: true, removeFromPackingListDefault: true },
-  waitingRefundId: null, providerListedRefundIds: [], ...over,
+  waitingRefundId: null, providerListedRefundIds: [], providerNotFinalCents: 0, ...over,
 });
 
 const refundView = (over: Partial<OrderStaffRefundView> = {}): OrderStaffRefundView => ({

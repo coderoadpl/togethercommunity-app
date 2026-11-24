@@ -627,7 +627,8 @@ export type SignupConsentDocument =
 const externalHref = (value: string): string | null => {
   const safe = safeHref(value);
   if (safe === null || !URL.canParse(safe)) return null;
-  const protocol = new URL(safe).protocol;
+  const { protocol, username, password } = new URL(safe);
+  if (username !== '' || password !== '') return null;
   return protocol === 'http:' || protocol === 'https:' ? safe : null;
 };
 

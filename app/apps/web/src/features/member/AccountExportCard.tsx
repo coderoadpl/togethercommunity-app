@@ -1,5 +1,6 @@
 import { Box, Button } from '@mui/material';
 import { AccountCard as SectionCard } from './AccountCard.js';
+import { DownloadIcon } from '../../components/ui/account-icons.js';
 import { StatusView } from '../../components/layout/index.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 
@@ -7,6 +8,7 @@ export const AccountExportCard = ({ pending, error, onDownload }: { pending: boo
   const t = useTranslations();
   return (
           <Box><SectionCard
+            icon={<DownloadIcon />}
             title={t.account.dataExportHeading}
             description={t.account.dataExportIntro}
           >

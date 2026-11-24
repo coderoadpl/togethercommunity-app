@@ -15,6 +15,9 @@ export const signInWithPassword = async (
   password: string,
 ): Promise<void> => {
   await continueWithIdentifier(page, email);
+  const usePassword = page.getByTestId('use-password');
+  await usePassword.waitFor(visible);
+  await usePassword.click();
   const passwordField = page.getByTestId('login-password');
   await passwordField.waitFor(visible);
   await passwordField.fill(password);

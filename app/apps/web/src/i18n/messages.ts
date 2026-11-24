@@ -418,7 +418,12 @@ export interface Messages {
   auth: {
     signInNoticeLabel: string;
     invalidCredentials: string;
-    signInRateLimited: string;
+    signInRateLimitedRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedTitle: string;
+    signInRateLimitedRetryNow: string;
+    signInRateLimitedLeadRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedLeadWait: string;
+    signInRateLimitedChooseMethod: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -428,20 +433,20 @@ export interface Messages {
     emailHelper: string;
     orSeparator: string;
     emailInvalid: string;
+    emailRequired: string;
     passwordLabel: string;
+    showPassword: string;
     passwordTooShort: (params: { min: number }) => string;
+    passwordRequired: string;
     nameLabel: string;
+    nameRequired: string;
     signInIdle: string;
     signInPending: string;
     identifierContinue: string;
     identifierPending: string;
     signingInAs: (params: { email: string }) => string;
-    changeIdentifier: string;
+    changeIdentifierSuffix: string;
     changeIdentifierShort: string;
-    signInMethodsUnavailable: string;
-    signInMethodsChoosePrompt: string;
-    signInMethodsChooseMagicLink: string;
-    signInMethodsChoosePassword: string;
     methodTitle: string;
     methodLead: string;
     methodMagicLinkTitle: string;
@@ -452,12 +457,18 @@ export interface Messages {
     methodPasskeyBody: string;
     passkeyLink: string;
     passkeyPending: string;
+    passkeyCancelled: string;
     twoFactorTitle: string;
     twoFactorIntro: string;
     twoFactorCodeLabel: string;
     twoFactorVerifying: string;
     twoFactorVerifyTotp: string;
+    twoFactorInvalidCode: string;
     twoFactorUseBackupCode: string;
+    twoFactorBackupIntro: string;
+    twoFactorBackupCodeLabel: string;
+    twoFactorVerifyBackupCode: string;
+    twoFactorUseAppCode: string;
     twoFactorBackToLogin: string;
     continueWithGoogle: string;
     forgotPassword: string;
@@ -466,8 +477,9 @@ export interface Messages {
     magicLinkExpiredOnStep: string;
     checkInboxTitle: string;
     magicLinkRequestedBody: (params: { email: string }) => string;
+    magicLinkSentHint: (params: { minutes: number }) => string;
     magicLinkResend: string;
-    magicLinkResendCooldown: (params: { seconds: number }) => string;
+    magicLinkResendCooldown: (params: { delay: string }) => string;
     magicLinkResent: string;
     magicLinkFetching: string;
     openMagicLink: string;
@@ -489,7 +501,8 @@ export interface Messages {
     alreadyHaveAccount: string;
     signInLink: string;
     registeredTitle: string;
-    registeredOnTenantBody: (params: { host: string }) => string;
+    signUpConfirmationSent: (params: { email: string }) => string;
+    registeredOnTenantBody: (params: { workspace: string }) => string;
     registeredCreateOwnCta: string;
     registeredBoughtHint: string;
     registeredUseMagicLinkCta: string;
@@ -499,6 +512,7 @@ export interface Messages {
     terms: string;
     privacy: string;
     and: string;
+    required: string;
   };
   tenant: {
     visitorNotice: (params: { email: string }) => string;
@@ -1522,6 +1536,7 @@ export interface Messages {
     heading: string;
     verifiedStatus: string;
     pending: (params: { email: string }) => string;
+    pendingMember: (params: { email: string }) => string;
     resend: string;
     sending: string;
     sent: string;
@@ -1529,6 +1544,8 @@ export interface Messages {
     expired: string;
     invalid: string;
     providerError: string;
+    resendSignedIn: string;
+    resendSignedOut: string;
   };
   security: {
     passkeyProofShort: string;
@@ -1539,6 +1556,7 @@ export interface Messages {
     sessionsSummary: ({ count }: { count: number }) => string;
     passkeyCount: ({ count }: { count: number }) => string;
     continueSetup: string;
+    wizardBack: string;
     disableTwoFactorConfirm: string;
     wizardSteps: Record<'password' | 'qr' | 'verify' | 'codes' | 'done', string>;
     twoFactorStatusUnknown: string;
@@ -1553,9 +1571,14 @@ export interface Messages {
     backupCodesCopied: string;
     downloadBackupCodes: string;
     backupCodesSaved: string;
+    leaveWithoutCodesTitle: string;
+    leaveWithoutCodesBody: string;
+    leaveWithoutCodesConfirm: string;
+    leaveWithoutCodesCancel: string;
     finishSetup: string;
     setupComplete: string;
     twoFactorDescription: string;
+    twoFactorNeedsPassword: string;
     heading: string;
     setOrResetPasswordHeading: string;
     setOrResetPassword: string;
@@ -1595,6 +1618,8 @@ export interface Messages {
     twoFactorOff: string;
     regenerateBackupCodes: string;
     regeneratingBackupCodes: string;
+    regeneratedBackupCodesTitle: string;
+    regeneratedBackupCodesDone: string;
     backupCodesRegenerated: string;
     sessionsHeading: string;
     sessionsIntro: string;
@@ -2774,8 +2799,9 @@ export interface Messages {
     back: string;
     profileHeading: string;
     tabsLabel: string;
-    tabs: { profile: string; security: string; notifications: string; playback: string };
+    tabs: { profile: string; security: string; preferences: string; playback: string };
     displayNameLabel: string;
+    displayNameNotSet: string;
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
@@ -2785,15 +2811,15 @@ export interface Messages {
     avatarUploading: string;
     avatarRemove: string;
     avatarTooLarge: string;
+    avatarUnsupportedType: string;
     editName: string;
     passwordStatusSet: string;
     passwordStatusUnset: string;
-    setPassword: string;
     passwordHeading: string;
     passwordIntro: string;
-    setOrResetPassword: string;
+    forgotPasswordPrompt: string;
+    forgotPasswordEmailLink: string;
     resetSending: string;
-    resetSent: string;
     billingHeading: string;
     billingIntro: string;
     managePayments: string;
@@ -2814,12 +2840,14 @@ export interface Messages {
     dataExportPreparing: string;
     erasureHeading: string;
     erasureIntro: string;
+    erasureEffects: Record<'profile' | 'posts' | 'access' | 'signIn', string>;
+    erasureDialogBody: (input: { days: number }) => string;
     erasureConfirmLabel: string;
+    erasureConfirmHint: (input: { email: string }) => string;
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;
     erasureCancelButton: string;
-    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
-    erasureResolved: (input: { status: string; resolvedAt: string }) => string;
+    erasureClosed: Record<'cancelled' | 'rejected' | 'completed', (input: { date: string }) => string>;
   };
   changePassword: {
     minimumHint: ({ min }: { min: number }) => string;
@@ -2843,10 +2871,12 @@ export interface Messages {
     intro: string;
     emailLabel: string;
     invalidEmail: string;
+    emailRequired: string;
     submitIdle: string;
     submitPending: string;
     successTitle: string;
-    successBody: string;
+    successBody: (params: { email: string }) => string;
+    useDifferentAddress: string;
     backToLogin: string;
   };
   resetPassword: {
@@ -2858,12 +2888,15 @@ export interface Messages {
     submitPending: string;
     mismatch: string;
     tooShort: (params: { min: number }) => string;
+    passwordRequired: string;
+    confirmRequired: string;
     missingTokenTitle: string;
     missingToken: string;
     successTitle: string;
     successBody: string;
     goToLogin: string;
     requestNewLink: string;
+    backToLogin: string;
   };
   support: {
     heading: string;

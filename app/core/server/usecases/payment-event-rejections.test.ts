@@ -6,6 +6,8 @@ import {
   internal,
   notFound,
   ok,
+  paymentEventRejectedEmail,
+  prerenderedTransactionalPayload,
   renderEmailOutboxPayload,
   tenantSettingsSchema,
   validation,
@@ -149,20 +151,22 @@ describe('recordStripeWebhookOutcome', () => {
       [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'admin@togethercommunity.app'],
     ]);
     const [queued] = [...outbox.values()];
-    expect(queued).toMatchObject({ tenantId: tenant.id, onConflict: 'keep-existing' });
-    expect(queued?.payload).toEqual({
-      kind: 'payment-event-rejected',
-      language: 'pl',
+    expect(queued).toMatchObject({ tenantId: tenant.id, onConflict: 'keep-existing', sourceApp: 'payment-event-rejections', tenantTransportRequired: false });
+    const message = paymentEventRejectedEmail('pl', {
       tenantName: 'Acme',
       eventId: 'evt_paid',
-      eventType: 'checkout.session.completed',
       checkoutSessionId: 'cs_paid',
       reasonCode: 'validation',
       reasonMessage: 'Checkout snapshot not found',
       firstSeenAt: '2026-11-20T10:00:00.000Z',
       studioUrl: 'https://acme.togethercommunity.app/panel/sales',
     });
-    expect(renderEmailOutboxPayload(queued?.payload)).toMatchObject({ success: true });
+    expect(queued?.payload).toStrictEqual(prerenderedTransactionalPayload(message));
+    expect(renderEmailOutboxPayload(queued?.payload).data).toStrictEqual(message);
+    expect(paymentEventRejectedEmail('en', {
+      tenantName: 'Acme', eventId: 'evt_paid', checkoutSessionId: 'cs_paid', reasonCode: 'validation',
+      reasonMessage: 'Checkout snapshot not found', firstSeenAt: '2026-11-20T10:00:00.000Z', studioUrl: 'https://acme.togethercommunity.app/panel/sales',
+    })).toStrictEqual(renderEmailOutboxPayload([...outbox.values()][1]?.payload).data);
     expect(dispatchEmail).toHaveBeenCalledTimes(1);
   });
 
@@ -207,7 +211,7 @@ describe('recordStripeWebhookOutcome', () => {
     await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
 
     expect([...outbox.values()].map((input) => [input.id, input.to, input.payload])).toEqual([
-      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'support@togethercommunity.app', expect.objectContaining({ language: 'pl' })],
+      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'support@togethercommunity.app', expect.objectContaining({ kind: 'm2m-transactional', subject: expect.stringContaining('Płatność') })],
     ]);
   });
 
@@ -284,7 +288,7 @@ describe('recordStripeWebhookOutcome', () => {
     await recordStripeWebhookOutcome(tenant, paidCheckout(), err(error), deps);
 
     expect([...store.rows.values()]).toMatchObject([{ reasonCode: error.code, reasonMessage: reason }]);
-    expect([...outbox.values()].map((input) => input.payload)).toMatchObject([{ reasonMessage: reason }, { reasonMessage: reason }]);
+    expect([...outbox.values()].map((input) => renderEmailOutboxPayload(input.payload).data?.text)).toStrictEqual([expect.stringContaining(reason), expect.stringContaining(reason)]);
     expect(JSON.stringify([...store.rows.values(), ...outbox.values()])).not.toContain('buyer@togethercommunity.app');
   });
 

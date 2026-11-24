@@ -9390,6 +9390,7 @@ describe('checkout consent ordering', () => {
       }));
       expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
         id: `payment-event-rejected:${acme.id}:evt_refused_paid:0`, to: 'owner@togethercommunity.app',
+        payload: expect.objectContaining({ kind: 'm2m-transactional' }), sourceApp: 'payment-event-rejections',
       }));
       expect(error).toHaveBeenCalledWith(`[payment-webhook-rejected] tenant=${acme.id} event=evt_refused_paid type=checkout.session.completed reason=validation`);
     });

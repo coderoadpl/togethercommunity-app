@@ -3612,7 +3612,6 @@ export interface Messages {
       orderOutOfStock: string;
       orderRefundAlert: string;
       orderSoldOutRefund: string;
-      paymentEventRejected: string;
       marketingConsentConfirmation: string;
       m2mTransactional: string;
       marketingCampaign: string;

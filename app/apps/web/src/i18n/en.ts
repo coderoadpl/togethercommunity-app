@@ -4017,7 +4017,6 @@ export const en: Messages = {
       orderOutOfStock: 'Order cancelled, out of stock',
       orderRefundAlert: 'Automatic refund alert',
       orderSoldOutRefund: 'Order cancelled: sold out',
-      paymentEventRejected: 'Payment not recorded',
       marketingConsentConfirmation: 'Consent confirmation',
       m2mTransactional: 'API transactional message',
       marketingCampaign: 'Marketing campaign',

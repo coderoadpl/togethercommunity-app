@@ -1,7 +1,9 @@
 import {
   err,
   ok,
+  paymentEventRejectedEmail,
   paymentEventRejectionListQuerySchema,
+  prerenderedTransactionalPayload,
   validation,
   type AppError,
   type ErrorCode,
@@ -82,6 +84,8 @@ const storedReason = (error: AppError): string =>
     ? error.message
     : FIXED_REASONS[error.code] ?? 'The payment could not be processed';
 
+const PAYMENT_EVENT_REJECTION_EMAIL_SOURCE = 'payment-event-rejections';
+
 const notifyStaff = async (
   tenant: Pick<Tenant, 'id' | 'name' | 'slug'>,
   rejection: PaymentEventRejection,
@@ -98,18 +102,17 @@ const notifyStaff = async (
       id: `payment-event-rejected:${tenant.id}:${rejection.eventId}:${String(index)}`,
       tenantId: tenant.id,
       to: recipient.email,
-      payload: {
-        kind: 'payment-event-rejected',
-        language: recipient.language,
+      payload: prerenderedTransactionalPayload(paymentEventRejectedEmail(recipient.language, {
         tenantName: tenant.name,
         eventId: rejection.eventId,
-        eventType: rejection.eventType,
         checkoutSessionId: rejection.checkoutSessionId,
         reasonCode: rejection.reasonCode,
         reasonMessage: rejection.reasonMessage,
         firstSeenAt: rejection.firstSeenAt,
         studioUrl,
-      },
+      })),
+      sourceApp: PAYMENT_EVENT_REJECTION_EMAIL_SOURCE,
+      tenantTransportRequired: false,
       now: deps.clock.nowIso(),
       onConflict: 'keep-existing',
     });

@@ -606,11 +606,11 @@ Each recorded refusal also logs one error line for the production health alarm:
 A failed record or resolve write logs
 `[payment-webhook-rejected] record failed ...` or `... resolve failed ...`.
 
-Rollback: a release older than this feature does not know the outbox kind
-`payment-event-rejected`, so after a rollback its e-mail worker fails to render
-a queued message of that kind on every attempt until the message reaches its
-terminal failure; each such failure is marked on that message alone and the
-worker goes on with the rest of the batch, so no other message is blocked.
+Rollback: the e-mail is rendered when it is queued and stored as an
+`m2m-transactional` outbox message with source app `payment-event-rejections`
+that, unlike an API-submitted message, needs no workspace mail transport. An
+older release already renders and lists that shape, so after a rollback a queued alert is still sent and shown in the sends
+list. An older release ignores the `payment_event_rejections` table.
 
 ## Test mode for staff
 

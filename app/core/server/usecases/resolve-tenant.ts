@@ -2,6 +2,7 @@ import {
   err,
   ok,
   tenantNotFound,
+  trimTrailing,
   type AppError,
   type Result,
   type Tenant,
@@ -44,7 +45,7 @@ export const authLinkBaseUrl = async (
 
 /** Matches `normalizeCustomDomain`, so a fully qualified `Host` still finds its row. */
 const hostOf = (hostHeader: string): string =>
-  (hostHeader.split(':')[0] ?? hostHeader).replace(/\.+$/, '');
+  trimTrailing(hostHeader.split(':')[0] ?? hostHeader, '.');
 
 const resolvedIfActive = (
   tenant: Tenant,

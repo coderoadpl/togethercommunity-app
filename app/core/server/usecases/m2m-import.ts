@@ -22,6 +22,7 @@ import {
   importWriteRequestSchema,
   ok,
   slugReserved,
+  trimTrailing,
   validation,
   type AccessItem,
   type AppError,
@@ -149,7 +150,7 @@ type ImportNormalizationInfo = {
 type ImportAssetUrlNormalizer = (value: string | null) => Promise<{ value: string | null; changed: boolean }>;
 
 const hostnameOf = (value: string): string =>
-  value.replace(/\.+$/, '').toLowerCase();
+  trimTrailing(value, '.').toLowerCase();
 
 const tenantHostnames = async (
   tenantId: string,

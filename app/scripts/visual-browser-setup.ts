@@ -62,6 +62,8 @@ export const settlePage = async (page: Page, waitForNetworkIdle = true): Promise
   }
   await page.evaluate(async () => {
     await document.fonts.ready;
+    // decode() never settles for a lazy image beyond Chrome's load distance, which varies with its network estimate.
+    for (const image of document.images) if (image.loading === 'lazy' && !image.complete) image.loading = 'eager';
     await Promise.all([...document.images].filter((image) => !image.complete || image.naturalWidth > 0).map((image) => image.decode()));
   });
   await page.addStyleTag({

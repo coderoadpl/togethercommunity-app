@@ -254,6 +254,8 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
     openOrder: 'Otwórz zamówienie',
     paragraphs: ({ alert, amount, orderId, mayHaveRefunded, reason, restocked, removedFromPackingList }) => {
       const checkInDashboard = `Sprawdź ten zwrot ${amount} w panelu Stripe. Jeśli ma status Succeeded, nic więcej nie trzeba robić. Jeśli ma status Pending, nie zlecaj go ponownie: nie jest już sprawdzany automatycznie, więc śledź go tam, aż będzie miał status Succeeded lub Failed. Jeśli ma status Requires action, dokończ go tam. Jeśli ma status Failed lub Canceled albo go tam nie ma, zwróć tam tylko niewypłaconą część kwoty ${amount} zleconej tutaj i nigdy więcej, niż Stripe pokazuje jako pozostałe do zwrotu z tej płatności; zamówienie zaktualizuje się, gdy Stripe zgłosi zwrot.`;
+      const refundAgainFromPage = `Zleć ponownie zwrot ${amount} na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę`;
+      const refundAgainOrByHand = `${refundAgainFromPage}, albo zwróć ręcznie w panelu Stripe najwyżej ${amount}.`;
       const unconfirmedBecause = reason === 'create_outcome_unknown'
         ? 'Zlecenie tego zwrotu mogło dotrzeć do Stripe, ale nie udało się odczytać zwrotów płatności przed końcem automatycznych ponowień, więc nie wiadomo, czy zwrot został wypłacony.'
         : reason === 'awaiting_provider'
@@ -266,11 +268,11 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
           ? 'Stripe mógł już otrzymać to zlecenie zwrotu, ale jego odpowiedź nie dotarła. To samo zlecenie jest powtarzane automatycznie przez 7 dni, więc zamówienie nigdy nie zostanie zwrócone dwa razy; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.'
           : 'Zwrot nie dotarł jeszcze do Stripe, więc na razie nic nie zostało zwrócone. Będzie ponawiany automatycznie przez 7 dni; jeśli nadal się nie uda, dostaniesz kolejną wiadomość.',
         blocked_permission: 'Stripe go odrzucił, bo ograniczony klucz Stripe tej przestrzeni nie ma uprawnienia Charges and Refunds (zapis), więc na razie nic nie zostało zwrócone. Dodaj to uprawnienie do klucza w panelu Stripe; zwrot zostanie wtedy wypłacony przy najbliższej cogodzinnej próbie. Próby są ponawiane co godzinę przez 72 godziny.',
-        blocked_permission_failed: 'Zwrot był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Nic nie zostało zwrócone. Po dodaniu uprawnienia zleć zwrot ponownie na stronie zamówienia albo zwróć płatność ręcznie w panelu Stripe.',
-        failed: 'Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło. Zleć zwrot ponownie na stronie zamówienia albo zwróć płatność ręcznie w panelu Stripe.',
+        blocked_permission_failed: `Zwrot był nadal blokowany przez brak uprawnienia Charges and Refunds (zapis) po 72 godzinach cogodzinnych prób i nie będzie już ponawiany. Nic nie zostało zwrócone. Najpierw dodaj uprawnienie do klucza. ${refundAgainOrByHand}`,
+        failed: `Zwrot nie powiódł się i nie będzie już ponawiany. To zlecenie niczego nie zwróciło. ${refundAgainOrByHand}`,
         failed_after_submission: reason === 'failed_after_order_refunded'
           ? `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zamówienie jest już oznaczone jako zwrócone, więc nie można zlecić zwrotu ponownie na jego stronie. ${checkInDashboard}`
-          : `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. Zleć ponownie zwrot ${amount} na stronie zamówienia, wpisując tę kwotę jako zwrot częściowy, a nie całą pozostałą kwotę, albo zwróć pieniądze w inny sposób.`,
+          : `Stripe zgłasza, że zwrot nie powiódł się po zleceniu, więc pieniądze nie trafiły do kupującego. ${refundAgainFromPage}, albo zwróć pieniądze w inny sposób.`,
         unconfirmed: `${unconfirmedBecause} ${checkInDashboard}`,
       } as const;
       const settled = alert !== 'retrying' && alert !== 'blocked_permission';
@@ -280,7 +282,7 @@ export const transactionalEmailMessagesPl: TransactionalEmailMessages = {
           : restocked ? 'Towar przywrócony do magazynu przy tym zwrocie pozostaje w magazynie.'
             : removedFromPackingList ? `Zamówienie zdjęte z listy do spakowania przy tym zwrocie pozostaje poza nią. ${backToPacking}` : null;
       const access = alert === 'failed_after_submission'
-        ? 'Jeśli Stripe zgłosił już wcześniej zwrot, zamówienie jest oznaczone jako zwrócone, a dostęp, który dawało, wygasł; ten dostęp nie wraca automatycznie: nadaj go ponownie na stronie uczestnika.'
+        ? 'Jeśli Stripe zgłosił zwrot, zanim ten się nie powiódł, pełny zwrot mógł zakończyć dostęp, który dawało zamówienie, i nie jest to cofane automatycznie. Sprawdź dostęp uczestnika na stronie uczestnika i przywróć go tylko wtedy, gdy został odebrany i ma zostać przywrócony: zwrot częściowy nigdy nie kończy dostępu, a dostęp mógł utrzymać inny zakup.'
         : null;
       return [`Osoba z zespołu zleciła zwrot ${amount} za zamówienie ${orderId}.`, states[alert], ...(kept === null ? [] : [kept]), ...(access === null ? [] : [access])];
     },

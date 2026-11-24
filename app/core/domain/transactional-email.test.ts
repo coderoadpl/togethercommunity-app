@@ -845,7 +845,7 @@ describe('staff refund alert email', () => {
     expect(message.subject).toBe('[Acme] Staff refund failed, nothing refunded: order-<1>');
     expect(message.text).toBe([
       'A staff member asked to refund PLN\u00a040.99 of order order-<1>.',
-      'The refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.',
+      'The refund failed and is no longer retried. Nothing was refunded by this request. Refund PLN\u00a040.99 again from the order page by entering that amount as a partial refund, not the whole remainder, or refund at most PLN\u00a040.99 by hand in the Stripe Dashboard.',
       'The goods returned to stock and the order taken off the packing list with this refund stay that way. To send the order after all, put it back on the packing list from its page.',
       'Last error: Stripe rejected the refund: <declined>',
       'https://acme.example.com/panel/sales/order-1',
@@ -861,8 +861,8 @@ describe('staff refund alert email', () => {
     expect(staffRefundAlertEmail('pl', { ...input, alert: 'failed_after_submission', restocked: false })).toEqual(expectedTransactionalEmailPl.staffRefundFailedAfterSubmissionAlertEmail);
   });
 
-  it('tells staff to grant access again only when a refund failed after it was issued', () => {
-    const access = 'that access is not given back automatically: grant it again on the member page';
+  it('tells staff to check access only when a refund failed after it was issued', () => {
+    const access = 'Check the member\'s access on the member page and restore it only if it was revoked and should be restored';
     for (const alert of ORDER_REFUND_ALERTS) {
       expect(staffRefundAlertEmail('en', { ...input, alert }).text.includes(access)).toBe(alert === 'failed_after_submission');
     }
@@ -932,6 +932,28 @@ describe('staff refund alert email', () => {
     }
     expect(staffRefundAlertEmail(language, { ...partial, alert: 'failed_after_submission', reason: 'failed_after_order_refunded' }).text).toContain(cap);
     expect(staffRefundAlertEmail(language, { ...partial, alert: 'failed_after_submission', reason: 'failed_after_submission' }).text).toContain(refundAgain);
+  });
+
+  it.each([
+    ['en', 'Refund PLN\u00a010.00 again from the order page by entering that amount as a partial refund, not the whole remainder, or refund at most PLN\u00a010.00 by hand in the Stripe Dashboard.',
+      'Refund the order again'],
+    ['pl', expectedStaffRefundAlertPl.partialByHand, expectedStaffRefundAlertPl.refundOrderAgain],
+  ] as const)('bounds the replacement of a partial refund that was never issued by the amount requested in the %s alerts, never the whole remainder', (language, refundAgain, unbounded) => {
+    for (const alert of ['failed', 'blocked_permission_failed'] as const) {
+      const text = staffRefundAlertEmail(language, { ...input, alert, amountCents: 1000, reason: null, diagnostic: '' }).text;
+      expect(text).toContain(refundAgain);
+      expect(text).not.toContain(unbounded);
+    }
+  });
+
+  it.each([
+    ['en', 'If Stripe reported the refund before it failed, a full refund may have ended the access the order gave, and that is not undone automatically. Check the member\'s access on the member page and restore it only if it was revoked and should be restored: a partial refund never ends access, and another purchase may have kept it.',
+      'grant it again'],
+    ['pl', expectedStaffRefundAlertPl.access, expectedStaffRefundAlertPl.grantAgain],
+  ] as const)('tells staff in the %s alert of a partial refund that failed after it was issued to restore access only if it was revoked', (language, access, grantAgain) => {
+    const paragraphs = staffRefundAlertEmail(language, { ...input, alert: 'failed_after_submission', reason: 'failed_after_submission', amountCents: 1000, restocked: false, removedFromPackingList: false, diagnostic: '' }).text.split('\n');
+    expect(paragraphs.at(-2)).toBe(access);
+    expect(paragraphs.join('\n')).not.toContain(grantAgain);
   });
 
   it.each([

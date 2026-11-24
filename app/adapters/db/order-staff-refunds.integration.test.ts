@@ -1023,7 +1023,7 @@ describe('staff refunds against a real database', () => {
     });
     expect(rows.map((row) => row.payload)).toStrictEqual([{ kind: 'm2m-transactional', ...rendered('en') }, { kind: 'm2m-transactional', ...rendered('pl') }]);
     expect(rendered('pl').text).not.toBe(rendered('en').text);
-    expect(textOf(rows[0]?.payload)).toBe('A staff member asked to refund PLN\u00a010.00 of order order-1.\nThe refund failed and is no longer retried. Nothing was refunded by this request. Refund the order again from its page, or by hand in the Stripe Dashboard.\nLast error: Refund declined\nhttps://acme.togethercommunity.app/panel/sales/order-1');
+    expect(textOf(rows[0]?.payload)).toBe('A staff member asked to refund PLN\u00a010.00 of order order-1.\nThe refund failed and is no longer retried. Nothing was refunded by this request. Refund PLN\u00a010.00 again from the order page by entering that amount as a partial refund, not the whole remainder, or refund at most PLN\u00a010.00 by hand in the Stripe Dashboard.\nLast error: Refund declined\nhttps://acme.togethercommunity.app/panel/sales/order-1');
   });
 
   it('names in the staff alert the amount of a full refund the provider refused and says nothing was refunded', async () => {

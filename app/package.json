@@ -55,6 +55,7 @@
     "smoke": "tsx scripts/smoke.ts",
     "smoke:remote": "tsx scripts/remote-smoke.ts",
     "smoke:staging": "tsx scripts/remote-smoke.ts --staging",
+    "e2e:purchase:remote": "tsx scripts/purchase-e2e.ts",
     "quickstart:probe": "tsx scripts/quickstart-probe.ts",
     "a11y": "tsx scripts/a11y-scan.ts",
     "shots:poc": "tsx scripts/poc-screenshots.ts",

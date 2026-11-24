@@ -46,7 +46,12 @@ export const metaCapiEventSchema = z.object({
 });
 export type MetaCapiEvent = z.infer<typeof metaCapiEventSchema>;
 export const metaCapiEventsOutputSchema = z.object({ events: z.array(metaCapiEventSchema) });
-export const metaCapiConsentsOutputSchema = z.object({ consents: z.array(metaCapiStateSchema.extend({ orderId: z.string(), consentAt: z.string().nullable() })) });
+const metaCapiMemberConsentSchema = metaCapiStateSchema.extend({
+  orderId: z.string(), consentAt: z.string().nullable(),
+  productName: z.string().nullable().default(null), purchasedAt: z.string().nullable().default(null),
+});
+export type MetaCapiMemberConsent = z.infer<typeof metaCapiMemberConsentSchema>;
+export const metaCapiConsentsOutputSchema = z.object({ consents: z.array(metaCapiMemberConsentSchema) });
 export const metaCapiBlockReason = (order: Order, state: MetaCapiState, enabled: boolean, now: string): 'blocked' | 'expired' | null => {
   if (!enabled || state.consent !== 'granted' || state.withdrawnAt !== null || order.mode !== 'live'
     || order.provider !== 'stripe' || order.providerObjectIds.checkoutSession?.startsWith('cs_live_') !== true

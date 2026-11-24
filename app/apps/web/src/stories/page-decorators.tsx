@@ -29,7 +29,7 @@ import { PanelLayout } from '../features/home/PanelLayout.js';
 import { DashboardPanel } from '../features/home/DashboardPanel.js';
 import { usePanelContext } from '../features/home/panel-context.js';
 import { StudioChecklistDock, StudioChecklistPanel } from '../features/onboarding/index.js';
-import { PanelMemberDetailRoute, PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelProposalsRoute, PanelRedirectsRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
+import { PanelMemberDetailRoute, PanelCouponCreateRoute, PanelCouponDetailRoute, PanelCouponsRoute, PanelCourseDetailRoute, PanelIntegrationsRoute, PanelLessonEditRoute, PanelOrderDetailRoute, PanelProductDetailRoute, PanelProductsRoute, PanelProposalsRoute, PanelRedirectsRoute, PanelSalesRoute, PanelSettingsRoute, PanelSpacesRoute } from '../features/home/panel-routes.js';
 import { CampaignsPanel, CampaignCreatePage, CampaignDetailPage } from '../features/home/marketing/CampaignsPanel.js';
 import { ConsentsPanel } from '../features/home/marketing/ConsentsPanel.js';
 import { DocumentsPanel } from '../features/home/marketing/DocumentsPanel.js';
@@ -103,6 +103,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
       createRoute({ getParentRoute: () => panel, path: 'proposals', component: PanelProposalsRoute }),
       createRoute({ getParentRoute: () => panel, path: 'courses/$courseId', component: PanelCourseDetailRoute }),
       createRoute({ getParentRoute: () => panel, path: 'lessons/$lessonId', component: PanelLessonEditRoute }),
+      createRoute({ getParentRoute: () => panel, path: 'sales', component: PanelSalesRoute }),
       createRoute({ getParentRoute: () => panel, path: 'sales/coupons', component: PanelCouponsRoute }),
       createRoute({ getParentRoute: () => panel, path: 'sales/coupons/new', component: PanelCouponCreateRoute }),
       createRoute({ getParentRoute: () => panel, path: 'sales/coupons/$couponId', component: PanelCouponDetailRoute }),
@@ -152,7 +153,7 @@ const PageStory = ({ parameters }: { parameters: z.infer<typeof pageParameters> 
         <LanguageProvider><ToastProvider><AppChromeProvider>
           <CssBaseline />
           <NotificationsTransportProvider><TenantBrandingBoundary>
-          <TenantGate><RouterProvider router={state.router} /></TenantGate>
+          <TenantGate pathname={new URL(parameters.fixture.route, 'http://localhost').pathname}><RouterProvider router={state.router} /></TenantGate>
         </TenantBrandingBoundary></NotificationsTransportProvider></AppChromeProvider></ToastProvider></LanguageProvider>
       </ThemeModeProvider>
     </QueryClientProvider>

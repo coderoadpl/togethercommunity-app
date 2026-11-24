@@ -27,10 +27,11 @@ import type { AuthenticationMethodsProps } from './authentication-methods-types.
 
 type Props = Pick<
   AuthenticationMethodsProps,
-  'Card' | 'enableTwoFactor' | 'verifyTotp' | 'disableTwoFactor' | 'regenerateBackupCodes'
+  'Card' | 'enableTwoFactor' | 'verifyTotp' | 'disableTwoFactor' | 'regenerateBackupCodes' | 'requestPasswordSetup'
 > & {
   backupCodes: string[];
   twoFactorEnabled: boolean;
+  hasPassword: boolean;
   onSecurityRefresh(): void;
 };
 
@@ -72,15 +73,18 @@ const TotpQrCode = ({ value, label }: { value: string; label: string }) => {
 const BackupCodes = ({
   codes,
   finishLabel,
+  saved,
+  onSavedChange,
   onFinish,
 }: {
   codes: string[];
   finishLabel: string;
+  saved: boolean;
+  onSavedChange(saved: boolean): void;
   onFinish(): void;
 }) => {
   const t = useTranslations();
   const [copied, setCopied] = useState(false);
-  const [saved, setSaved] = useState(false);
   const text = `${codes.join('\n')}\n`;
 
   const copyAll = async () => {
@@ -111,7 +115,7 @@ const BackupCodes = ({
           </Button>
         </Stack>
         <FormControlLabel
-          control={<Checkbox checked={saved} onChange={(event) => setSaved(event.target.checked)} />}
+          control={<Checkbox checked={saved} onChange={(event) => onSavedChange(event.target.checked)} />}
           label={t.security.backupCodesSaved}
         />
       </> : null}
@@ -130,8 +134,10 @@ export const TwoFactorCard = ({
   verifyTotp,
   disableTwoFactor,
   regenerateBackupCodes,
+  requestPasswordSetup,
   backupCodes,
   twoFactorEnabled,
+  hasPassword,
   onSecurityRefresh,
 }: Props) => {
   const t = useTranslations();
@@ -140,6 +146,8 @@ export const TwoFactorCard = ({
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [startedAt, setStartedAt] = useState(0);
+  const [codesSaved, setCodesSaved] = useState(false);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
   const verifiedInRun = useRef(false);
 
   useEffect(() => {
@@ -185,6 +193,8 @@ export const TwoFactorCard = ({
     setStep('password');
     setPassword('');
     setCode('');
+    setCodesSaved(false);
+    setConfirmingLeave(false);
   };
   const openEnable = () => {
     verifiedInRun.current = false;
@@ -219,6 +229,7 @@ export const TwoFactorCard = ({
       <OutlinedInput
         id="enable-2fa-password"
         type="password"
+        autoFocus
         autoComplete="current-password"
         required
         value={password}
@@ -233,7 +244,16 @@ export const TwoFactorCard = ({
     </FormControl>
   );
   const enrollment = enableTwoFactor.data;
+  const verifyError = verifyTotp.submittedAt > startedAt ? verifyTotp.error : null;
   const enrollmentCodes = enrollment?.backupCodes ?? [];
+  const closeEnrollment = () => {
+    if (step === 'codes' && enrollmentCodes.length > 0 && !codesSaved) setConfirmingLeave(true);
+    else close();
+  };
+  const closeRegenerated = () => {
+    if (backupCodes.length > 0 && !codesSaved) setConfirmingLeave(true);
+    else close();
+  };
 
   return (
     <Card
@@ -251,15 +271,29 @@ export const TwoFactorCard = ({
             {t.security.disableTwoFactor}
           </Button>
         </Stack>
-      ) : (
+      ) : hasPassword ? (
         <Box>
           <Button variant="contained" data-testid="enable-2fa-open" onClick={openEnable}>
             {t.security.enableTwoFactor}
           </Button>
         </Box>
+      ) : (
+        <Stack data-testid="two-factor-needs-password" useFlexGap spacing="0.5rem" sx={{ alignItems: 'flex-start' }}>
+          <Typography variant="body2">{t.security.twoFactorNeedsPassword}</Typography>
+          <Button
+            variant="outlined"
+            data-testid="two-factor-set-password"
+            disabled={requestPasswordSetup.pending}
+            onClick={() => requestPasswordSetup.run()}
+          >
+            {requestPasswordSetup.pending ? t.security.resetSending : t.security.setOrResetPassword}
+          </Button>
+          {requestPasswordSetup.success ? <Typography variant="body2" role="status" data-testid="two-factor-set-password-sent">{t.security.resetSent}</Typography> : null}
+          {requestPasswordSetup.error ? <Alert severity="error" data-testid="two-factor-set-password-error">{localizeError(requestPasswordSetup.error, t)}</Alert> : null}
+        </Stack>
       )}
 
-      <AccountDialog open={mode === 'enable'} title={t.security.twoFactor} pending={enableTwoFactor.pending || verifyTotp.pending} onClose={close}>
+      <AccountDialog open={mode === 'enable'} title={t.security.twoFactor} pending={enableTwoFactor.pending || verifyTotp.pending} onClose={closeEnrollment}>
         <Typography variant="body2" data-testid="two-factor-step">{t.security.wizardSteps[step]}</Typography>
         {step === 'password' ? (
           <Box component="form" onSubmit={(event) => { event.preventDefault(); submitPassword(); }} sx={{ display: 'grid', gap: '1rem' }}>
@@ -283,7 +317,7 @@ export const TwoFactorCard = ({
         ) : null}
         {step === 'verify' ? (
           <Box component="form" onSubmit={(event) => { event.preventDefault(); submitCode(code); }} sx={{ display: 'grid', gap: '1rem' }}>
-            <FormControl fullWidth error={verifyTotp.error !== null}>
+            <FormControl fullWidth error={verifyError !== null}>
               <FormLabel htmlFor="verify-totp-code">{t.security.authenticatorCodeLabel}</FormLabel>
               <OutlinedInput
                 id="verify-totp-code"
@@ -298,14 +332,19 @@ export const TwoFactorCard = ({
                 inputProps={{ 'data-testid': 'verify-totp-code', inputMode: 'numeric', maxLength: 6 }}
               />
             </FormControl>
-            {verifyTotp.error ? <Alert severity="error" data-testid="verify-totp-error">{localizeError(verifyTotp.error, t)}</Alert> : null}
-            <Box><Button variant="contained" type="submit" data-testid="verify-totp" disabled={verifyTotp.pending || code.length !== 6}>{verifyTotp.pending ? t.security.verifying : t.security.verifyCode}</Button></Box>
+            {verifyError ? <Alert severity="error" data-testid="verify-totp-error">{localizeError(verifyError, t)}</Alert> : null}
+            <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
+              <Button variant="text" data-testid="two-factor-back" disabled={verifyTotp.pending} onClick={() => { setCode(''); setStep('qr'); }}>{t.security.wizardBack}</Button>
+              <Button variant="contained" type="submit" data-testid="verify-totp" disabled={verifyTotp.pending || code.length !== 6}>{verifyTotp.pending ? t.security.verifying : t.security.verifyCode}</Button>
+            </Stack>
           </Box>
         ) : null}
         {step === 'codes' ? (
           <BackupCodes
             codes={enrollmentCodes}
             finishLabel={t.security.finishSetup}
+            saved={codesSaved}
+            onSavedChange={setCodesSaved}
             onFinish={() => {
               verifiedInRun.current = false;
               setStep('done');
@@ -320,6 +359,17 @@ export const TwoFactorCard = ({
           </Stack>
         ) : null}
       </AccountDialog>
+      <ConfirmDialog
+        open={(mode === 'enable' || mode === 'regenerated') && confirmingLeave}
+        title={t.security.leaveWithoutCodesTitle}
+        body={<Typography variant="body2">{t.security.leaveWithoutCodesBody}</Typography>}
+        confirmLabel={t.security.leaveWithoutCodesConfirm}
+        cancelLabel={t.security.leaveWithoutCodesCancel}
+        confirmTestId="two-factor-leave-confirm"
+        data-testid="two-factor-leave-dialog"
+        onConfirm={close}
+        onClose={() => setConfirmingLeave(false)}
+      />
 
       <ConfirmDialog
         open={mode === 'regenerate'}
@@ -334,8 +384,8 @@ export const TwoFactorCard = ({
         onConfirm={submitManagement}
         onClose={close}
       />
-      <AccountDialog open={mode === 'regenerated'} title={t.security.regenerateBackupCodes} onClose={close}>
-        {backupCodes.length > 0 ? <BackupCodes codes={backupCodes} finishLabel={t.common.close} onFinish={close} /> : null}
+      <AccountDialog open={mode === 'regenerated'} title={t.security.regeneratedBackupCodesTitle} onClose={closeRegenerated}>
+        {backupCodes.length > 0 ? <BackupCodes codes={backupCodes} finishLabel={t.security.regeneratedBackupCodesDone} saved={codesSaved} onSavedChange={setCodesSaved} onFinish={close} /> : null}
       </AccountDialog>
       <ConfirmDialog
         open={mode === 'disable'}

@@ -4,7 +4,7 @@ import { normalizeEmail } from './email.js';
 import { consentDefinitionVersionSchema } from './marketing-email.js';
 import { marketingTagsSchema } from './marketing-contact.js';
 
-const marketingSignupFormSlugSchema = z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+export const marketingSignupFormSlugSchema = z.string().trim().min(1).max(80).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
 
 const httpsUrlSchema = z.string().url().max(2000).refine((value) => {
   if (!URL.canParse(value)) return false;

@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -5,7 +6,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router';
-import { screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { useState, type ReactNode } from 'react';
@@ -23,13 +24,16 @@ import {
 } from '#core/domain/index.js';
 
 import { en } from '../../i18n/en.js';
+import { stylesAt } from '../../lib/stylesheet.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { ThemeModeProvider } from '../../theme-mode.js';
 import { MemberShell } from './shell/MemberShell.js';
+import { PublicSpaceFeedPage } from './PublicSpaceFeedPage.js';
 import { SpaceFeedPage } from './SpaceFeedPage.js';
 import { SpaceThreadPage } from './SpaceThreadPage.js';
 import { SpacesListPage } from './SpacesListPage.js';
+import { usePublicOfferPrice } from './visitor-actions.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -99,6 +103,32 @@ const okPublicFeed = (spaceId: string, items: SpaceFeedItem[]) =>
       data: { feed: { spaceId, items, pinned: [], nextCursor: null, isFollowing: false } },
     }),
   );
+
+const PUBLIC_FEED_PAGE_SIZE = 20;
+
+const pagedPublicFeed = (totals: Record<string, number>, requests: string[] = []) =>
+  http.get('/api/public/spaces/:spaceId/feed', ({ params, request }) => {
+    const spaceId = String(params.spaceId);
+    const search = new URL(request.url).searchParams;
+    const cursor = search.get('cursor');
+    requests.push(`${spaceId} cursor=${cursor ?? '-'} limit=${search.get('limit') ?? '-'}`);
+    const start = cursor === null ? 0 : Number(cursor);
+    const end = Math.min(start + PUBLIC_FEED_PAGE_SIZE, totals[spaceId] ?? 0);
+    const items = Array.from({ length: end - start }, (_, index) =>
+      feedItem({ id: `${spaceId}-post-${String(start + index)}`, contextId: spaceId }));
+    return HttpResponse.json({
+      ok: true,
+      data: {
+        feed: {
+          spaceId,
+          items,
+          pinned: [],
+          nextCursor: end < (totals[spaceId] ?? 0) ? String(end) : null,
+          isFollowing: false,
+        },
+      },
+    });
+  });
 
 const okPublicThread = (threads: DiscussionPost[]) =>
   http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
@@ -245,7 +275,27 @@ const countedAnonMe = (counter: { calls: number }) =>
     );
   });
 
-const okOffer = () =>
+const offerProduct = (id: string, title: string) => ({
+  id,
+  type: 'course',
+  slug: id,
+  title,
+  description: '',
+  coverUrl: null,
+  priceCents: 19_900,
+  currency: 'PLN',
+  prices: [{ id: `price-${id}`, kind: 'one_time', interval: null, amountCents: 19_900, currency: 'PLN' }],
+});
+
+const okOffer = ({
+  products = [],
+  salesLinks = [],
+  supportUrl = null,
+}: {
+  products?: ReturnType<typeof offerProduct>[];
+  salesLinks?: { id: string; slug: string; heading: string; description: string; totalCents: number; currency: string }[];
+  supportUrl?: string | null;
+} = {}) =>
   http.get('/api/public/offer', () =>
     HttpResponse.json({
       ok: true,
@@ -255,9 +305,12 @@ const okOffer = () =>
           name: 'Acme',
           branding: { logoUrl: null, accentColor: null, faviconUrl: null },
           socialLinks: [],
+          support: { url: supportUrl },
         },
         contentVersion: 1,
-        products: [],
+        products,
+        salesLinks,
+        previewLessons: [],
       },
     }),
   );
@@ -971,14 +1024,188 @@ describe('community pages', () => {
     expect(screen.getByTestId('anon-read-only')).toHaveTextContent(en.anon.readOnlyBanner);
     const cta = screen.getByTestId('anon-join-cta');
     expect(cta).toHaveAttribute('href', '/#offer');
-    expect(cta).toHaveTextContent(en.anon.joinOfferCta);
-    expect(cta).toHaveStyle({ width: '100%', minHeight: '44px' });
+    expect(cta).toHaveTextContent(en.anon.salesCta);
+    expect(cta).toHaveStyle({ minHeight: '44px' });
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
     expect(screen.queryByTestId('space-follow-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reaction-p1-👍')).not.toBeInTheDocument();
   });
 
-  it('sends a guest to the plain home page when the space is not the visitors start space', async () => {
+  it('gives the public feed avatars, plain reaction counts, named thread links and group headings', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/feed', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            feed: {
+              spaceId: 's1',
+              pinned: [
+                { ...feedItem({ id: 'pin1', body: 'House rules', pinnedAt: '2026-07-19T08:00:00.000Z', authorIsStaff: true }), reactions: [] },
+                feedItem({ id: 'pin2', body: 'Camper tips', pinnedAt: '2026-07-18T08:00:00.000Z' }),
+              ],
+              items: [
+                feedItem({
+                  id: 'p1',
+                  body: 'One two three four five six seven eight nine ten',
+                  reactions: [{ emoji: '👍', count: 3, viewerReacted: false }],
+                }),
+                feedItem({ id: 'p2', deletedAt: '2026-07-20T09:00:00.000Z', deletedBy: 'author' }),
+              ],
+              nextCursor: null,
+              isFollowing: false,
+            },
+          },
+        })),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const post = await screen.findByTestId('public-feed-post-p1');
+    expect(within(post).getByTestId('user-avatar')).toHaveTextContent('OA');
+    const reaction = within(post).getByRole('img', {
+      name: en.community.reactionCountAria({ emoji: '👍', count: 3 }),
+    });
+    expect(reaction).toHaveTextContent('👍 3');
+    expect(reaction).not.toHaveClass('MuiChip-root');
+    const openThread = within(post).getByTestId('public-open-thread-p1');
+    expect(openThread).toHaveAccessibleName(
+      en.community.openThreadAria({ author: 'Olivia Author', excerpt: 'One two three four five six seven eight…' }),
+    );
+    expect(openThread).toHaveTextContent(en.community.openThread);
+    expect(openThread.getAttribute('aria-label')?.startsWith(en.community.openThread)).toBe(true);
+    const openDeletedThread = screen.getByTestId('public-open-thread-p2');
+    expect(openDeletedThread).toHaveAccessibleName(en.community.openThreadAria({ author: 'Olivia Author', excerpt: '' }));
+    expect(openDeletedThread.getAttribute('aria-label')?.startsWith(en.community.openThread)).toBe(true);
+    const pinnedHeading = screen.getByRole('heading', { level: 2, name: en.community.pinnedHeading });
+    const latestHeading = screen.getByRole('heading', { level: 2, name: en.community.latestHeading });
+    expect(pinnedHeading.compareDocumentPosition(screen.getByTestId('public-feed-post-pin1')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(latestHeading.compareDocumentPosition(post) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('public-feed-post-pin1').compareDocumentPosition(latestHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByTestId('public-pin-chip-pin1')).toHaveTextContent(en.community.announcementChip);
+    expect(screen.getByTestId('public-feed-post-pin2')).toBeInTheDocument();
+    expect(screen.queryByTestId('public-pin-chip-pin2')).not.toBeInTheDocument();
+  });
+
+  it('loads older public posts page by page with the cursor while keeping the earlier ones', async () => {
+    const requests: string[] = [];
+    server.use(anonMe(), okPublicNavigation(), pagedPublicFeed({ s1: 25 }, requests));
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await userEvent.click(await screen.findByRole('button', { name: en.discussion.loadMore }));
+
+    expect(await screen.findByTestId('public-feed-post-s1-post-24')).toBeInTheDocument();
+    expect(screen.getByTestId('public-feed-post-s1-post-0')).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(25);
+    expect(requests).toEqual(['s1 cursor=- limit=-', 's1 cursor=20 limit=-']);
+    expect(screen.queryByTestId('public-feed-load-more')).not.toBeInTheDocument();
+  });
+
+  it('keeps loading older public posts past a hundred until the cursor runs out', async () => {
+    const requests: string[] = [];
+    server.use(anonMe(), okPublicNavigation(), pagedPublicFeed({ s1: 130 }, requests));
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await screen.findByTestId('public-feed-post-s1-post-19');
+    for (let page = 1; page < 7; page += 1) {
+      const loadMore = await screen.findByTestId('public-feed-load-more');
+      await waitFor(() => expect(loadMore).toBeEnabled());
+      await userEvent.click(loadMore);
+      await screen.findByTestId(`public-feed-post-s1-post-${String(Math.min(page * 20 + 19, 129))}`);
+    }
+
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(130);
+    expect(screen.queryByTestId('public-feed-load-more')).not.toBeInTheDocument();
+    expect(requests.at(-1)).toBe('s1 cursor=120 limit=-');
+  });
+
+  it('starts a public space again from its first page after visiting another space', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        spaces: [
+          { id: 'a', slug: 'a', name: 'Alpha', description: null, position: 0 },
+          { id: 'b', slug: 'b', name: 'Beta', description: null, position: 1 },
+        ],
+      })),
+      pagedPublicFeed({ a: 60, b: 5 }),
+    );
+    const Switcher = () => {
+      const [spaceId, setSpaceId] = useState('a');
+      return (
+        <>
+          <button type="button" onClick={() => setSpaceId('a')}>Alpha</button>
+          <button type="button" onClick={() => setSpaceId('b')}>Beta</button>
+          <PublicSpaceFeedPage spaceId={spaceId} />
+        </>
+      );
+    };
+    const rootRoute = createRootRoute({ component: Switcher });
+    const router = createRouter({ routeTree: rootRoute, history: createMemoryHistory({ initialEntries: ['/community/a'] }) });
+    await router.load();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 300_000 } } })}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: en.discussion.loadMore }));
+    await screen.findByTestId('public-feed-post-a-post-39');
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(40);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Beta' }));
+    await screen.findByTestId('public-feed-post-b-post-4');
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(5);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+    await screen.findByTestId('public-feed-post-a-post-0');
+    expect(screen.getAllByTestId(/^public-feed-post-/u)).toHaveLength(20);
+    expect(screen.queryByTestId('public-feed-post-a-post-20')).not.toBeInTheDocument();
+    expect(screen.getByTestId('public-feed-load-more')).toBeInTheDocument();
+  });
+
+  it('leaves the latest heading out when the public feed has no pinned posts', async () => {
+    server.use(anonMe(), okPublicNavigation(), okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post' })]));
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await screen.findByTestId('public-feed-post-p1');
+    expect(screen.queryByTestId('public-feed-latest-heading')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('public-feed-pinned-heading')).not.toBeInTheDocument();
+  });
+
+  it('leads a phone visitor with a compact notice, then the description and the feed, events last', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okPublicFeed('s1', [feedItem({ id: 'p1', body: 'Public post' })]),
+      http.get('/api/public/spaces/:spaceId/events', () => new Promise<never>(() => undefined)),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    await screen.findByTestId('public-feed-post-p1');
+    const leading = screen.getByTestId('member-rail-leading');
+    const trailing = screen.getByTestId('member-rail-trailing');
+    const main = screen.getByRole('main');
+    expect(within(leading).getByTestId('anon-guest-notice')).toHaveTextContent(en.anon.readOnlyBanner);
+    expect(within(leading).getByTestId('anon-join-cta')).toBeInTheDocument();
+    expect(screen.queryByText(en.anon.guestHeading)).not.toBeInTheDocument();
+    expect(within(leading).queryByRole('heading')).not.toBeInTheDocument();
+    expect(within(trailing).getByTestId('public-space-events')).toBeInTheDocument();
+    expect(stylesAt(leading, 390).order).toBe('1');
+    expect(stylesAt(main, 390).order).toBe('2');
+    expect(stylesAt(trailing, 390).order).toBe('3');
+    expect(stylesAt(main, 1440).order).toBe('1');
+    expect(stylesAt(main.parentElement?.querySelector('aside'), 1440).display).toBe('flex');
+    const description = screen.getByTestId('anon-space-description');
+    expect(description.nextElementSibling).toContainElement(screen.getByTestId('public-feed-post-p1'));
+  });
+
+  it('sends a guest to the offer section from a space that is not the visitors start space', async () => {
     server.use(
       anonMe(),
       okPublicNavigation(publicNavigation({ defaultHomeSpaceId: null })),
@@ -987,7 +1214,95 @@ describe('community pages', () => {
 
     await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
 
-    expect(await screen.findByTestId('anon-join-cta')).toHaveAttribute('href', '/');
+    const cta = await screen.findByTestId('anon-join-cta');
+    expect(cta).toHaveAttribute('href', '/#offer');
+    expect(cta).toHaveTextContent(en.anon.salesCta);
+    expect(screen.queryByRole('link', { name: /register/iu })).not.toBeInTheDocument();
+  });
+
+  it('sends a guest straight to checkout from a product space sold by exactly one product', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        spaces: [{
+          id: 's1', slug: 's1', name: 'General', description: null, position: 0,
+          visibility: 'product', publicReadOnly: true, products: [{ id: 'p7', title: 'Club pass' }],
+        }],
+      })),
+      okPublicFeed('s1', []),
+      okOffer({ products: [offerProduct('p7', 'Club pass')] }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const cta = await screen.findByTestId('anon-join-cta');
+    expect(cta).toHaveAttribute('href', '/checkout/p7');
+    expect(cta).toHaveTextContent(en.anon.unlockCta);
+  });
+
+  it('sends a guest to the offer section from a product space sold by several products', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        spaces: [{
+          id: 's1', slug: 's1', name: 'General', description: null, position: 0,
+          visibility: 'product', publicReadOnly: true,
+          products: [{ id: 'p7', title: 'Club pass' }, { id: 'p8', title: 'Annual pass' }],
+        }],
+      })),
+      okPublicFeed('s1', []),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    expect(await screen.findByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
+  });
+
+  it('offers sign-in with the way back and the creator contact when the workspace sells nothing', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({ lockedSpaces: [] })),
+      okPublicFeed('s1', []),
+      okOffer({ supportUrl: 'https://studio.example.org/contact' }),
+    );
+
+    await renderPage(() => <SpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const notice = await screen.findByTestId('anon-guest-notice');
+    expect(await within(notice).findByTestId('anon-visitor-sign-in')).toHaveAttribute(
+      'href',
+      '/login?returnTo=%2Fcommunity%2Fs1',
+    );
+    expect(within(notice).getByTestId('anon-visitor-contact')).toHaveAttribute(
+      'href',
+      'https://studio.example.org/contact',
+    );
+    expect(notice).toHaveTextContent(en.anon.readOnlyBanner);
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /register/iu })).not.toBeInTheDocument();
+  });
+
+  it('keeps only the creator contact for a signed-in visitor when the workspace sells nothing', async () => {
+    server.use(
+      http.get('/api/me', () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            userId: 'u9', email: 'visitor@acme.example', name: 'Visitor', emailVerified: true,
+            tenantAccess: 'none', tenant: null, impersonation: null,
+          },
+        })),
+      okPublicNavigation(publicNavigation({ lockedSpaces: [] })),
+      okPublicFeed('s1', []),
+      okOffer({ supportUrl: 'mailto:hello@studio.example.org' }),
+    );
+
+    await renderPage(() => <PublicSpaceFeedPage spaceId="s1" />, '/community/s1');
+
+    const contact = await screen.findByTestId('anon-visitor-contact');
+    expect(contact).toHaveAttribute('href', 'mailto:hello@studio.example.org');
+    expect(contact).not.toHaveAttribute('target');
+    await waitFor(() => expect(screen.queryByTestId('anon-visitor-sign-in')).not.toBeInTheDocument());
   });
 
   it('renders the space description under the public heading', async () => {
@@ -1010,13 +1325,59 @@ describe('community pages', () => {
     );
   });
 
-  it('points an anonymous visitor at checkout for a product-gated space', async () => {
-    server.use(anonMe(), okPublicNavigation());
+  it('shows a visitor an access card for a product-gated space with the product, price and checkout', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({
+        lockedSpaces: [{
+          id: 'gated',
+          slug: 'premium',
+          name: 'Premium',
+          description: 'Weekly reviews for students.',
+          productIds: ['p1'],
+          products: [{ id: 'p1', title: 'Premium access' }],
+        }],
+      })),
+      okOffer({ products: [offerProduct('p1', 'Premium access')] }),
+    );
 
     await renderPage(() => <SpaceFeedPage spaceId="gated" />, '/community/gated');
 
-    expect(await screen.findByTestId('anon-space-unlock')).toHaveAttribute('href', '/checkout/p1');
+    const card = await screen.findByTestId('anon-locked-space');
+    expect(screen.getAllByText('Premium')).toHaveLength(1);
+    expect(screen.getByRole('heading', { level: 1, name: 'Premium' })).toBeInTheDocument();
+    expect(within(card).getByTestId('anon-locked-space-description')).toHaveTextContent('Weekly reviews for students.');
+    expect(card).toHaveTextContent(en.anon.lockedSpaceBody);
+    expect(card).not.toHaveTextContent(en.shell.lockedSpaceHint);
+    expect(within(card).getByTestId('anon-locked-space-product')).toHaveTextContent(
+      en.community.productGatedFor({ product: 'Premium access' }),
+    );
+    expect(await within(card).findByTestId('anon-locked-space-price')).toHaveTextContent('199');
+    const unlock = within(card).getByTestId('anon-space-unlock');
+    expect(unlock).toHaveAttribute('href', '/checkout/p1');
+    expect(unlock).toHaveTextContent(en.anon.unlockCta);
+    expect(screen.queryByText(en.community.spaceNotFoundTitle)).not.toBeInTheDocument();
     expect(screen.queryByTestId(/^space-composer/u)).not.toBeInTheDocument();
+  });
+
+  it('leaves the price out of the access card when the offer does not list the product', async () => {
+    server.use(anonMe(), okPublicNavigation(), okOffer({ products: [offerProduct('other', 'Other course')] }));
+    const OfferProbe = () => {
+      const priceFor = usePublicOfferPrice();
+      return <span data-testid="offer-probe">{priceFor('other')}</span>;
+    };
+
+    await renderPage(() => (
+      <>
+        <SpaceFeedPage spaceId="gated" />
+        <OfferProbe />
+      </>
+    ), '/community/gated');
+
+    expect(await screen.findByTestId('anon-space-unlock')).toHaveAttribute('href', '/checkout/p1');
+    await waitFor(() => expect(screen.getByTestId('offer-probe')).toHaveTextContent('199'));
+    expect(screen.queryByTestId('anon-locked-space-price')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-locked-space-description')).not.toBeInTheDocument();
   });
 
   it('renders an anonymous thread read-only with its replies', async () => {
@@ -1032,6 +1393,7 @@ describe('community pages', () => {
             bodyHtml: '<p><strong>Public</strong> <a href="https://example.com">thread</a></p>',
             bodyPlainText: 'Public thread',
           }),
+          pinnedAt: '2026-07-19T08:00:00.000Z',
           replies: [{ ...feedItem({ id: 'r1', body: 'Reply' }), replies: [], replyCount: 0 }],
           replyCount: 1,
         },
@@ -1046,8 +1408,91 @@ describe('community pages', () => {
     expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Public thread');
     expect(screen.getByRole('heading', { level: 1, name: 'Public thread' })).toBeInTheDocument();
     expect(screen.getByTestId('public-reply-r1')).toHaveTextContent('Reply');
+    expect(screen.getByTestId('public-pin-chip-p1')).toHaveTextContent(en.community.pinnedChip);
     expect(screen.getByTestId('anon-join-cta')).toHaveAttribute('href', '/#offer');
+    const header = screen.getByRole('heading', { level: 1, name: 'Public thread' }).closest('header');
+    if (header === null) throw new Error('Expected the thread page header');
+    expect(within(header).getByTestId('anon-join-cta-header')).toHaveAttribute('href', '/#offer');
     expect(screen.queryByTestId('reply-composer-input')).not.toBeInTheDocument();
+  });
+
+  it('keeps a thread without replies to the header join button alone', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      okOffer({ products: [offerProduct('p1', 'Premium access')] }),
+      okPublicThread([{ ...feedItem({ id: 'p1', body: 'Lonely thread' }), replies: [], replyCount: 0 }]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    expect(await screen.findByTestId('public-post-p1')).toHaveTextContent('Lonely thread');
+    expect(await screen.findByTestId('anon-join-cta-header')).toHaveAttribute('href', '/#offer');
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+  });
+
+  it('keeps the creator contact under a thread without replies when the workspace sells nothing', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(publicNavigation({ lockedSpaces: [] })),
+      okOffer({ supportUrl: 'https://studio.example.org/contact' }),
+      okPublicThread([{ ...feedItem({ id: 'p1', body: 'Lonely thread' }), replies: [], replyCount: 0 }]),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    expect(await screen.findByTestId('anon-visitor-contact')).toHaveAttribute(
+      'href',
+      'https://studio.example.org/contact',
+    );
+    expect(screen.getByTestId('anon-visitor-sign-in')).toHaveAttribute('href', '/login?returnTo=%2Fcommunity%2Fs1%2Fposts%2Fp1');
+    expect(screen.queryByTestId('anon-join-cta-header')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+  });
+
+  it('tells a visitor a missing thread is gone and links back to the space instead of offering a retry', async () => {
+    const served = { offer: false };
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/offer', () => {
+        served.offer = true;
+        return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 });
+      }),
+      http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'Post not found' } }, { status: 404 }),
+      ),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="gone" />, '/community/s1/posts/gone');
+
+    const missing = await screen.findByTestId('public-thread-not-found');
+    expect(missing).toHaveTextContent(en.community.threadNotFoundTitle);
+    expect(missing).toHaveTextContent(en.community.threadNotFoundBody);
+    expect(within(missing).getByTestId('public-thread-back')).toHaveAttribute('href', '/community/s1');
+    expect(screen.queryByRole('button', { name: en.discussion.retry })).not.toBeInTheDocument();
+    await waitFor(() => expect(served.offer).toBe(true));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+    });
+    expect(screen.queryByTestId('anon-join-cta-header')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-join-cta')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('anon-visitor-links')).not.toBeInTheDocument();
+  });
+
+  it('keeps the retry for a public thread that failed to load', async () => {
+    server.use(
+      anonMe(),
+      okPublicNavigation(),
+      http.get('/api/public/spaces/:spaceId/posts/:postId', () =>
+        HttpResponse.json({ ok: false, error: { code: 'internal', message: 'Boom' } }, { status: 500 }),
+      ),
+    );
+
+    await renderPage(() => <SpaceThreadPage spaceId="s1" postId="p1" />, '/community/s1/posts/p1');
+
+    expect(await screen.findByRole('button', { name: en.discussion.retry })).toBeInTheDocument();
+    expect(screen.queryByTestId('public-thread-not-found')).not.toBeInTheDocument();
   });
 
   it('settles an anonymous visitor inside the shell without refetching the identity in a loop', async () => {

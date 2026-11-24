@@ -7,11 +7,13 @@ import { refreshToastStore } from './refresh-toast.js';
 
 const MAX_RETRIES = 3;
 
-const isExpectedMissingPublicOffer = (error: unknown, queryKey: readonly unknown[]): boolean =>
+const BOOT_QUERY_KEYS: readonly unknown[] = ['public-offer', 'me', 'public-navigation'];
+
+const isExpectedMissingTenant = (error: unknown, queryKey: readonly unknown[]): boolean =>
   error instanceof ApiError &&
   error.appError.code === 'tenant_not_found' &&
   queryKey.length === 1 &&
-  queryKey[0] === 'public-offer';
+  BOOT_QUERY_KEYS.includes(queryKey[0]);
 
 const isExpectedAnonymousMe = (error: unknown, queryKey: readonly unknown[]): boolean =>
   error instanceof ApiError &&
@@ -27,7 +29,7 @@ const isExpectedParcelLockerRefusal = (error: unknown, queryKey: readonly unknow
   queryKey[0] === 'parcel-locker';
 
 const isExpectedQueryFailure = (error: unknown, queryKey: readonly unknown[]): boolean =>
-  isExpectedMissingPublicOffer(error, queryKey) || isExpectedAnonymousMe(error, queryKey) ||
+  isExpectedMissingTenant(error, queryKey) || isExpectedAnonymousMe(error, queryKey) ||
   isExpectedParcelLockerRefusal(error, queryKey);
 
 /**

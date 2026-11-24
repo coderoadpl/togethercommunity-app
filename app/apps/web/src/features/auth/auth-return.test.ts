@@ -23,6 +23,7 @@ describe('auth return routing', () => {
     'http://evil.example/my',
     '//evil.example/my',
     '/\\evil.example/my',
+    '\\\\evil.example/my',
     'my/courses/course-1',
     '',
   ])('rejects unsafe returnTo value %s', (value) => {

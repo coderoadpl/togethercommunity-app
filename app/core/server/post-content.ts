@@ -7,6 +7,8 @@ import {
   type Post,
   type PostBodyFormat,
   type PublicPost,
+  trimSpacesBeforeLineBreaks,
+  trimTrailing,
 } from '#core/domain/index.js';
 
 const LINK_REL = 'noopener noreferrer nofollow ugc';
@@ -46,11 +48,16 @@ const escapeHtml = (value: string): string =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
+const TRAILING_PUNCTUATION = '.,!?;:';
+
 const trimTrailingPunctuation = (value: string): string => {
-  let trimmed = value.replace(/[.,!?;:]+$/u, '');
+  let trimmed = trimTrailing(value, TRAILING_PUNCTUATION);
   for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']] as const) {
-    while (trimmed.endsWith(close) && trimmed.split(close).length > trimmed.split(open).length) {
-      trimmed = trimmed.slice(0, -1).replace(/[.,!?;:]+$/u, '');
+    const opens = trimmed.split(open).length;
+    let closes = trimmed.split(close).length;
+    while (trimmed.endsWith(close) && closes > opens) {
+      trimmed = trimTrailing(trimmed.slice(0, -1), TRAILING_PUNCTUATION);
+      closes -= 1;
     }
   }
   return trimmed;
@@ -176,10 +183,9 @@ const blockText = (node: DefaultTreeAdapterTypes.ChildNode): string => {
 };
 
 const plainTextFromHtml = (html: string): string =>
-  parseFragment(html).childNodes
+  trimSpacesBeforeLineBreaks(parseFragment(html).childNodes
     .map(blockText)
-    .join('')
-    .replace(/[ \t]+\n/gu, '\n')
+    .join(''))
     .replace(/\n{3,}/gu, '\n\n')
     .trim();
 

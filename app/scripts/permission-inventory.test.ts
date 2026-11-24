@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest';
 import {
   collectPermissionInventory,
   collectUseCasesInSource,
-  KEY_MODE_SUBJECT_SUFFIX,
+  KEY_MODE_ROUTES,
   renderPermissionTable,
   SHOP_MANAGEMENT_KEY_PRINCIPAL,
   SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL,
+  type PermissionInventory,
 } from './permission-inventory.js';
 
 const root = join(import.meta.dirname, '..');
@@ -16,8 +17,14 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(563);
-    expect(inventory.useCases).toHaveLength(420);
+    expect(inventory.routes).toHaveLength(550);
+    expect(inventory.useCases).toHaveLength(415);
+    expect(inventory.routes.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject).sort())
+      .toEqual(Object.keys(KEY_MODE_ROUTES).sort());
+    expect(inventory.useCases.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject)).toEqual(
+      ['beginKeyDownloadUpload', 'completeKeyDownloadUpload', 'copyKeyDownloadFile', 'listKeyDownloadFiles', 'discardKeyDownloadFile']
+        .map((name) => `key-download-files.ts#${name}`),
+    );
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/parcel-lockers/:code'))
@@ -34,17 +41,26 @@ describe('permission inventory', () => {
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
       .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(73);
+    expect(shopRoutes).toHaveLength(60);
     for (const row of shopRoutes) {
-      const principals = row.subject.endsWith(KEY_MODE_SUBJECT_SUFFIX.propose) || row.subject.includes(' /api/m2m/shop/proposals')
+      const isAccessRoute = row.subject === 'POST /api/m2m/shop/products/access';
+      const principals = isAccessRoute || row.subject.includes(' /api/m2m/shop/proposals')
         ? [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
-        : row.subject === `POST /api/m2m/shop/products/access${KEY_MODE_SUBJECT_SUFFIX.direct}`
-          ? []
-          : row.subject.startsWith('GET ') && !row.subject.endsWith(KEY_MODE_SUBJECT_SUFFIX.direct)
-            ? [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
-            : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
+        : row.subject.startsWith('GET ') && row.modes === undefined
+          ? [SHOP_MANAGEMENT_KEY_PRINCIPAL, SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL]
+          : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
       expect(row, row.subject).toMatchObject({ before: principals, after: principals, derivable: true });
       expect([...row.before, ...row.after], row.subject).not.toContain('owner');
+      if (row.modes !== undefined) {
+        const directPrincipals = isAccessRoute ? [] : [SHOP_MANAGEMENT_KEY_PRINCIPAL];
+        expect(row.modes.direct, row.subject).toMatchObject({ principal: SHOP_MANAGEMENT_KEY_PRINCIPAL, before: directPrincipals, after: directPrincipals });
+        expect(row.modes.propose, row.subject).toMatchObject({
+          principal: SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL, before: [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL],
+        });
+        for (const mode of [row.modes.direct, row.modes.propose]) {
+          expect([...mode.before, ...mode.after], row.subject).not.toContain('owner');
+        }
+      }
     }
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/invoice/send'),
@@ -259,13 +275,22 @@ describe('permission inventory', () => {
 
   it('never lists a propose-mode shop management key with a live write', () => {
     const inventory = collectPermissionInventory();
+    const liveWrites = ['product:write', 'product:price:write', 'product:publish', 'order:write', 'tenant:settings:write', 'tenant:secret:write'];
     const proposeRows = inventory.routes.filter((row) =>
-      [...row.before, ...row.after].includes(SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL));
+      row.modes === undefined && [...row.before, ...row.after].includes(SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL));
     expect(proposeRows.length).toBeGreaterThan(0);
     for (const row of proposeRows) {
-      expect(row.subject, row.subject).toMatch(/^(?:GET \/api\/m2m\/shop\/|[A-Z]+ \/api\/m2m\/shop\/proposals(?:\/|$)|[A-Z]+ \/api\/m2m\/shop\/.* \(propose-mode key\)$)/u);
-      expect(['product:write', 'product:price:write', 'product:publish', 'order:write', 'tenant:settings:write', 'tenant:secret:write'], row.subject)
-        .not.toContain(row.capability);
+      expect(row.subject, row.subject).toMatch(/^(?:GET \/api\/m2m\/shop\/|[A-Z]+ \/api\/m2m\/shop\/proposals(?:\/|$))/u);
+      expect(liveWrites, row.subject).not.toContain(row.capability);
+    }
+    const modeRows = inventory.routes.filter((row) => row.modes !== undefined);
+    expect(modeRows).toHaveLength(13);
+    for (const row of modeRows) {
+      expect(row.subject, row.subject).toMatch(/^[A-Z]+ \/api\/m2m\/shop\//u);
+      expect(row.modes?.propose.capabilities.filter((capability) => liveWrites.includes(capability)), row.subject).toEqual([]);
+      if ([...row.before, ...row.after].includes(SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL)) {
+        expect(liveWrites, row.subject).not.toContain(row.capability);
+      }
     }
     for (const subject of ['POST /api/m2m/shop/products/update', 'POST /api/m2m/shop/settings', 'POST /api/m2m/shop/sales-links', 'DELETE /api/m2m/shop/sales-links/:id']) {
       expect(inventory.routes.find((row) => row.subject === subject)?.after, subject)
@@ -357,36 +382,50 @@ describe('permission inventory', () => {
       ['POST /api/m2m/shop/products/downloads/replace', 'product:write', 'proposal:submit:catalog + product:read'],
       ['POST /api/m2m/shop/products/downloads/remove', 'product:write', 'proposal:submit:catalog + product:read'],
     ] as const) {
-      expect(routes.has(route), route).toBe(false);
-      const directRow = routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.direct}`);
-      const proposeRow = routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.propose}`);
-      const directPrincipals = route === 'POST /api/m2m/shop/products/access' ? [] : directKey;
-      expect(directRow, route).toMatchObject({ capability: direct.split(' + ')[0], before: directPrincipals, after: directPrincipals });
+      const row = routes.get(route);
+      const directRow = row?.modes?.direct;
+      const proposeRow = row?.modes?.propose;
+      const isAccessRoute = route === 'POST /api/m2m/shop/products/access';
+      const directPrincipals = isAccessRoute ? [] : directKey;
+      expect(directRow, route).toMatchObject({ capability: direct.split(' + ')[0], capabilities: direct.split(' + '), before: directPrincipals, after: directPrincipals });
       expect(directRow?.evidence, route).toMatch(new RegExp(`^Shop management key, direct mode: ${direct.replaceAll('+', '\\+')}; `, 'u'));
-      expect(proposeRow, route).toMatchObject({ capability: propose.split(' + ')[0], before: proposeKey, after: proposeKey });
+      expect(directRow?.evidence, route).toBe(`Shop management key, direct mode: ${direct}; ${directRow?.effect ?? ''}`);
+      expect(proposeRow, route).toMatchObject({ capability: propose.split(' + ')[0], capabilities: propose.split(' + '), before: proposeKey, after: proposeKey });
       expect(proposeRow?.evidence, route).toMatch(new RegExp(`^Shop management key, propose mode: ${propose.replaceAll('+', '\\+')}; `, 'u'));
+      expect(proposeRow?.evidence, route).toBe(`Shop management key, propose mode: ${propose}; ${proposeRow?.effect ?? ''}`);
+      expect(row, route).toMatchObject(isAccessRoute
+        ? { capability: propose.split(' + ')[0], before: proposeKey, after: proposeKey, evidence: proposeRow?.evidence }
+        : { capability: direct.split(' + ')[0], before: directKey, after: directKey, evidence: directRow?.evidence });
     }
-    expect(routes.get(`POST /api/m2m/shop/products/access${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence).toContain('stores a product.set-access proposal');
+    expect(routes.get('POST /api/m2m/shop/products/access')?.modes?.propose.effect).toContain('stores a product.set-access proposal');
     for (const [route, operation] of [
       ['POST /api/m2m/shop/products/downloads', 'download.add'],
       ['POST /api/m2m/shop/products/downloads/replace', 'download.replace'],
       ['POST /api/m2m/shop/products/downloads/remove', 'download.remove'],
     ] as const) {
-      expect(routes.get(`${route}${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence, route).toContain(`stores a ${operation} proposal, which only an owner approval applies`);
+      expect(routes.get(route)?.modes?.propose.evidence, route).toContain(`stores a ${operation} proposal, which only an owner approval applies`);
     }
   });
 
   it('lists each key mode of the staging use-cases with the capabilities their guard authorizes', () => {
     const useCases = collectPermissionInventory().useCases.filter((row) => row.subject.startsWith('key-download-files.ts#'));
-    expect(useCases.map(({ subject, capability, after, evidence }) => [subject.replace('key-download-files.ts#', ''), capability, after, evidence.replace(/^.* mode: /u, '')])).toEqual(
+    expect(useCases.flatMap(({ subject, capability, after, modes }) => [
+      [subject.replace('key-download-files.ts#', ''), capability, after],
+      ...(modes === undefined ? [] : [modes.direct, modes.propose].map((mode) => [mode.principal, mode.capability, mode.after, mode.evidence.replace(/^.* mode: /u, '')])),
+    ])).toEqual(
       ['beginKeyDownloadUpload', 'completeKeyDownloadUpload', 'copyKeyDownloadFile', 'listKeyDownloadFiles', 'discardKeyDownloadFile'].flatMap((name) => {
         const read = name === 'copyKeyDownloadFile' ? ' + product:read' : '';
         return [
-          [`${name}${KEY_MODE_SUBJECT_SUFFIX.direct}`, 'product:write', [SHOP_MANAGEMENT_KEY_PRINCIPAL], `product:write${read}`],
-          [`${name}${KEY_MODE_SUBJECT_SUFFIX.propose}`, 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL], `proposal:asset:upload + proposal:submit:catalog${read}`],
+          [name, 'product:write', [SHOP_MANAGEMENT_KEY_PRINCIPAL]],
+          [SHOP_MANAGEMENT_KEY_PRINCIPAL, 'product:write', [SHOP_MANAGEMENT_KEY_PRINCIPAL], `product:write${read}`],
+          [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL, 'proposal:asset:upload', [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL], `proposal:asset:upload + proposal:submit:catalog${read}`],
         ];
       }),
     );
+    for (const row of useCases) {
+      expect(row.modes?.direct.capabilities.join(' + '), row.subject).toBe(row.modes?.direct.evidence.replace(/^.* mode: /u, ''));
+      expect(row.modes?.propose.capabilities.join(' + '), row.subject).toBe(row.modes?.propose.evidence.replace(/^.* mode: /u, ''));
+    }
   });
 
   it('gives the link to a proposed download file to the owner only', () => {
@@ -398,10 +437,16 @@ describe('permission inventory', () => {
 
   it('machine-checks every derivable before and after principal set', () => {
     const inventory = collectPermissionInventory();
-    const changes = [...inventory.routes, ...inventory.useCases]
+    const rows = [...inventory.routes, ...inventory.useCases];
+    const changes = rows
       .filter((row) => row.derivable)
       .filter((row) => row.before.join(',') !== row.after.join(','));
     expect(changes).toEqual([]);
+    const modeChanges = rows
+      .filter((row) => row.derivable)
+      .flatMap((row) => row.modes === undefined ? [] : [row.modes.direct, row.modes.propose].map((mode) => ({ subject: row.subject, mode })))
+      .filter(({ mode }) => mode.before.join(',') !== mode.after.join(','));
+    expect(modeChanges).toEqual([]);
   });
 
   it('classifies member self-service routes for staff and completion writes consistently', () => {
@@ -501,6 +546,43 @@ describe('permission inventory', () => {
     expect(readFileSync(join(root, 'docs', 'permission-table.md'), 'utf8')).toBe(
       renderPermissionTable(collectPermissionInventory()),
     );
+  });
+
+  const keyModeInventory = (proposeAfter: readonly (typeof SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL)[]): PermissionInventory => ({
+    routes: [{
+      subject: 'POST /probe',
+      capability: 'product:write',
+      before: [SHOP_MANAGEMENT_KEY_PRINCIPAL],
+      after: [SHOP_MANAGEMENT_KEY_PRINCIPAL],
+      derivable: true,
+      evidence: 'probe, direct mode: product:write',
+      modes: {
+        direct: {
+          principal: SHOP_MANAGEMENT_KEY_PRINCIPAL, capability: 'product:write', capabilities: ['product:write'],
+          before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL], evidence: 'probe, direct mode: product:write',
+        },
+        propose: {
+          principal: SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL, capability: 'proposal:submit:catalog', capabilities: ['proposal:submit:catalog'],
+          before: [SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL], after: proposeAfter, evidence: 'probe, propose mode: proposal:submit:catalog',
+        },
+      },
+    }],
+    useCases: [],
+    sourceEvidence: [],
+    suspicious: [],
+  });
+
+  it('renders a row with key modes as one table line per mode', () => {
+    const table = renderPermissionTable(keyModeInventory([SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL])).split('\n');
+    expect(table.filter((line) => line.startsWith('| `POST /probe'))).toEqual([
+      `| \`POST /probe (direct-mode key)\` | product:write | ${SHOP_MANAGEMENT_KEY_PRINCIPAL} | ${SHOP_MANAGEMENT_KEY_PRINCIPAL} | yes | probe, direct mode: product:write |`,
+      `| \`POST /probe (propose-mode key)\` | proposal:submit:catalog | ${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL} | ${SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL} | yes | probe, propose mode: proposal:submit:catalog |`,
+    ]);
+    expect(table.find((line) => line.startsWith('Closed capability count: '))).toMatch(/ Route rows: 2\. Exported `Ctx` use-case rows: 0\.$/u);
+  });
+
+  it('refuses a key mode whose principals change even when the row itself does not', () => {
+    expect(() => renderPermissionTable(keyModeInventory([]))).toThrow('Permission changes detected: POST /probe (propose-mode key)');
   });
 });
 

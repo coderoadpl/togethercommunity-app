@@ -53,7 +53,7 @@ import {
 import { shopManagementKeyHash, type TenantSecretResolver } from '#core/server/index.js';
 import { createObjectStorageFake, fakeStorageSecrets, type FakeObjectStorage } from '#core/server/testing/object-storage-fake.js';
 
-import { collectPermissionInventory, KEY_MODE_ROUTES, KEY_MODE_SUBJECT_SUFFIX } from '../../../scripts/permission-inventory.js';
+import { collectPermissionInventory, KEY_MODE_ROUTES } from '../../../scripts/permission-inventory.js';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
@@ -452,12 +452,15 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/products/downloads/replace': 'proposal download.replace',
       'POST /api/m2m/shop/products/downloads/remove': 'proposal download.remove',
     });
-    const rows = new Map(collectPermissionInventory().routes.map((row) => [row.subject, row]));
+    const routeRows = collectPermissionInventory().routes;
+    const rows = new Map(routeRows.map((row) => [row.subject, row]));
+    expect(routeRows.filter((row) => row.modes !== undefined).map((row) => row.subject).sort()).toEqual([...keyModeRoutes].sort());
     for (const label of keyModeRoutes) {
-      expect([rows.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.direct}`), rows.has(`${label}${KEY_MODE_SUBJECT_SUFFIX.propose}`)], label).toEqual([true, true]);
+      const modes = rows.get(label)?.modes;
+      expect([modes?.direct !== undefined, modes?.propose !== undefined], label).toEqual([true, true]);
       const operation = classes.get(label)?.replace(/^proposal /u, '');
       if (operation !== undefined && operation !== classes.get(label)) {
-        expect(rows.get(`${label}${KEY_MODE_SUBJECT_SUFFIX.propose}`)?.evidence, label).toContain(`stores a ${operation} proposal`);
+        expect(modes?.propose.evidence, label).toContain(`stores a ${operation} proposal`);
       }
     }
   });

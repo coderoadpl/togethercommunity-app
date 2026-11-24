@@ -33,6 +33,16 @@ export const SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL = 'shop-management-key in pro
 
 type InventoryPrincipal = Principal | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL | typeof SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL;
 
+export interface PermissionModeRow {
+  principal: InventoryPrincipal;
+  capability: Capability;
+  capabilities: readonly Capability[];
+  before: readonly InventoryPrincipal[];
+  after: readonly InventoryPrincipal[];
+  evidence: string;
+  effect?: string;
+}
+
 export interface PermissionRow {
   subject: string;
   capability: Capability | null;
@@ -40,6 +50,7 @@ export interface PermissionRow {
   after: readonly InventoryPrincipal[];
   derivable: boolean;
   evidence: string;
+  modes?: Readonly<Record<ShopManagementKeyMode, PermissionModeRow>>;
 }
 
 export interface SuspiciousPermission {
@@ -444,7 +455,7 @@ export interface KeyModeRoute {
   propose: KeyModeRouteBranch;
 }
 
-export const KEY_MODE_SUBJECT_SUFFIX = { direct: ' (direct-mode key)', propose: ' (propose-mode key)' } as const;
+const KEY_MODE_SUBJECT_SUFFIX = { direct: ' (direct-mode key)', propose: ' (propose-mode key)' } as const;
 
 const stagedFileBranches = (effect: string, extra: readonly Capability[] = []): KeyModeRoute => ({
   direct: { capabilities: ['product:write', ...extra], effect: `${effect}; the key attaches a staged file live` },
@@ -489,36 +500,50 @@ export const KEY_MODE_ROUTES: Readonly<Record<string, KeyModeRoute>> = {
   [`POST ${SHOP_DOWNLOAD_ROUTES.removeProductDownload.path}`]: fileProposalBranches('download.remove', 'removes a product file live'),
 };
 
-const keyModeRows = (
+const keyModeRow = (
   subject: string,
-  modes: Readonly<Record<keyof KeyModeRoute, { capabilities: readonly Capability[]; effect?: string }>>,
+  branches: Readonly<Record<ShopManagementKeyMode, { capabilities: readonly Capability[]; effect?: string }>>,
   source: string,
-): PermissionRow[] => (['direct', 'propose'] as const).map((mode) => {
-  const capability = modes[mode].capabilities[0];
-  if (capability === undefined) throw new Error(`${subject} has no ${mode}-mode capability`);
-  const principal = mode === 'direct' ? directShopManagementKey : proposeShopManagementKey;
-  const before = modes[mode].capabilities.every((held) => shopManagementKeyHolds(held, mode)) ? principal : [];
-  return {
-    subject: `${subject}${KEY_MODE_SUBJECT_SUFFIX[mode]}`,
-    capability,
-    before,
-    after: effectiveAfter(principal, capability),
-    derivable: true,
-    evidence: `${source}, ${mode} mode: ${modes[mode].capabilities.join(' + ')}${modes[mode].effect === undefined ? '' : `; ${modes[mode].effect}`}`,
+): PermissionRow => {
+  const modeRow = (mode: ShopManagementKeyMode): PermissionModeRow => {
+    const { capabilities, effect } = branches[mode];
+    const capability = capabilities[0];
+    if (capability === undefined) throw new Error(`${subject} has no ${mode}-mode capability`);
+    const principal = mode === 'direct' ? SHOP_MANAGEMENT_KEY_PRINCIPAL : SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL;
+    return {
+      principal,
+      capability,
+      capabilities,
+      before: capabilities.every((held) => shopManagementKeyHolds(held, mode)) ? [principal] : [],
+      after: effectiveAfter([principal], capability),
+      evidence: `${source}, ${mode} mode: ${capabilities.join(' + ')}${effect === undefined ? '' : `; ${effect}`}`,
+      ...(effect === undefined ? {} : { effect }),
+    };
   };
-});
+  const modes = { direct: modeRow('direct'), propose: modeRow('propose') };
+  const listed = modes.direct.before.length > 0 ? modes.direct : modes.propose;
+  return {
+    subject,
+    capability: listed.capability,
+    before: listed.before,
+    after: listed.after,
+    derivable: true,
+    evidence: listed.evidence,
+    modes,
+  };
+};
 
 const routeRows = (): PermissionRow[] =>
   collectRuntimeRoutes()
-    .flatMap((route): PermissionRow[] => {
+    .map((route): PermissionRow => {
       const keyModes = KEY_MODE_ROUTES[`${route.method} ${route.path}`];
       if (keyModes !== undefined) {
-        return keyModeRows(`${route.method} ${route.path}`, keyModes, 'Shop management key');
+        return keyModeRow(`${route.method} ${route.path}`, keyModes, 'Shop management key');
       }
       const capability = capabilityForRoute(route.method, route.path);
       const before = beforeForRoute(route.method, route.path);
       const reachable = reachableForRoute(route.method, route.path);
-      return [{
+      return {
         subject: `${route.method} ${route.path}`,
         capability,
         before,
@@ -533,7 +558,7 @@ const routeRows = (): PermissionRow[] =>
           : publicRouteManifestEntry(route) !== undefined
           ? 'public route manifest'
           : selfAuthenticatingRouteManifestEntry(route)?.mechanism ?? 'identity middleware + use-case guard',
-      }];
+      };
     });
 
 export interface KeyModeCapabilities {
@@ -905,21 +930,21 @@ const beforeForUseCase = (
 };
 
 const useCaseRows = (): PermissionRow[] =>
-  collectCtxUseCases().flatMap(({ file, name, capability, organizationContext, keyModes }): PermissionRow[] => {
+  collectCtxUseCases().map(({ file, name, capability, organizationContext, keyModes }): PermissionRow => {
     if (keyModes !== undefined) {
       const guarded = { direct: { capabilities: keyModes.direct }, propose: { capabilities: keyModes.propose } };
-      return keyModeRows(`${file}#${name}`, guarded, `${relative(appRoot, join(useCasesRoot, file))} key mode guard`);
+      return keyModeRow(`${file}#${name}`, guarded, `${relative(appRoot, join(useCasesRoot, file))} key mode guard`);
     }
     if (organizationContext === true) {
       const before = principalsForCapability(capability);
-      return [{
+      return {
         subject: `${file}#${name}`,
         capability,
         before,
         after: effectiveAfter(ORGANIZATION_PRINCIPALS, capability),
         derivable: true,
         evidence: `${relative(appRoot, join(useCasesRoot, file))} organization authorization call`,
-      }];
+      };
     }
     const before = beforeForUseCase(file, name, capability);
     const directory = ['marketing-contact-audience.ts', 'marketing-contact-campaigns.ts', 'marketing-outbox.ts', 'marketing-dispatch.ts', 'marketing-sns-inbox.ts', 'marketing-contacts.ts', 'marketing-lists.ts', 'marketing-contact-imports.ts', 'marketing-member-contacts.ts'].includes(file);
@@ -934,14 +959,14 @@ const useCaseRows = (): PermissionRow[] =>
             : before === importUsersApiKey
               ? importUsersApiKey
               : tenantActors;
-    return [{
+    return {
       subject: `${file}#${name}`,
       capability,
       before,
       after: effectiveAfter(reachable, capability),
       derivable: true,
       evidence: `${relative(appRoot, join(useCasesRoot, file))} authorization call`,
-    }];
+    };
   });
 
 const collectSourceEvidence = (): AuthorizationEvidence[] => {
@@ -1008,13 +1033,35 @@ export const collectPermissionInventory = (): PermissionInventory => ({
 const principals = (values: readonly InventoryPrincipal[]): string =>
   values.length === 0 ? 'none' : values.join(', ');
 
-const renderRows = (rows: readonly PermissionRow[]): string[] =>
+type PermissionLine = Omit<PermissionRow, 'modes'>;
+
+const tableModeOrder: readonly ShopManagementKeyMode[] = ['direct', 'propose'];
+
+const modeLines = ({ subject, derivable, modes }: PermissionRow): PermissionLine[] =>
+  modes === undefined
+    ? []
+    : tableModeOrder.map((mode) => ({
+      subject: `${subject}${KEY_MODE_SUBJECT_SUFFIX[mode]}`,
+      capability: modes[mode].capability,
+      before: modes[mode].before,
+      after: modes[mode].after,
+      derivable,
+      evidence: modes[mode].evidence,
+    }));
+
+const tableLines = (rows: readonly PermissionRow[]): PermissionLine[] =>
+  rows.flatMap((row) => row.modes === undefined ? [row] : modeLines(row));
+
+const renderRows = (rows: readonly PermissionLine[]): string[] =>
   rows.map((row) =>
     `| \`${row.subject}\` | ${row.capability ?? 'UNCLASSIFIED'} | ${principals(row.before)} | ${principals(row.after)} | ${row.derivable ? 'yes' : 'review'} | ${row.evidence} |`,
   );
 
 export const renderPermissionTable = (inventory: PermissionInventory): string => {
+  const routeLines = tableLines(inventory.routes);
+  const useCaseLines = tableLines(inventory.useCases);
   const changes = [...inventory.routes, ...inventory.useCases]
+    .flatMap((row): PermissionLine[] => [row, ...modeLines(row)])
     .filter((row) => row.derivable)
     .filter((row) => row.before.join(',') !== row.after.join(','));
   if (changes.length > 0) {
@@ -1061,7 +1108,7 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     'The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.',
     '',
-    `Closed capability count: ${CAPABILITIES.length}. Route rows: ${inventory.routes.length}. Exported \`Ctx\` use-case rows: ${inventory.useCases.length}.`,
+    `Closed capability count: ${CAPABILITIES.length}. Route rows: ${routeLines.length}. Exported \`Ctx\` use-case rows: ${useCaseLines.length}.`,
     '',
     '## Human-readable diff',
     '',
@@ -1071,13 +1118,13 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     '',
     '| Route | Required capability | BEFORE | AFTER | Machine-equivalent | Evidence |',
     '|---|---|---|---|---|---|',
-    ...renderRows(inventory.routes),
+    ...renderRows(routeLines),
     '',
     '## Use-cases',
     '',
     '| Use-case | Required capability | BEFORE | AFTER | Machine-equivalent | Evidence |',
     '|---|---|---|---|---|---|',
-    ...renderRows(inventory.useCases),
+    ...renderRows(useCaseLines),
     '',
     '## Authorization source evidence',
     '',

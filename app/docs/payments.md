@@ -564,7 +564,7 @@ for example when its metadata no longer matches the checkout snapshot, or end
 in a 500 when its processing throws. Stripe then retries the delivery for about
 three days and gives up. So that a refusal does not go unnoticed, the webhook
 route records it after the answer is decided, in `payment_event_rejections`
-(migration 0171):
+(migration 0172):
 
 - One row per workspace and Stripe event: event type, checkout session id, the
   `AppError` code, a reason, first and last sighting and the attempt count.

@@ -38,3 +38,4 @@ export * from './shop-settings.js';
 export * from './shop-integrations.js';
 export * from './shop-assets.js';
 export * from './change-proposals.js';
+export * from './member-download-navigation.js';

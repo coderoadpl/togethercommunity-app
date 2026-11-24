@@ -10,6 +10,8 @@ export const MEMBER_ROUTE_PATHS = {
 
 export const PUBLIC_OFFER_ANCHOR = 'offer';
 
+export const MY_PRODUCTS_PATH = '/my/products';
+
 export const coursePath = (courseId: string): string =>
   MEMBER_ROUTE_PATHS.course.replace('$courseId', courseId);
 

@@ -1,5 +1,5 @@
 import { createAvatarImageProcessor } from '#adapters/storage/avatar-images.js';
-import type { SurveyRepository } from '#core/server/index.js';
+import type { EntityVersionRecord, SurveyRepository } from '#core/server/index.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
@@ -4908,6 +4908,128 @@ describe('purchased product download route', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+
+  const browserAccept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+
+  it('sends a failed browser download back to My products with a fixed error code and the product', async () => {
+    const forbidden = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(forbidden.status).toBe(303);
+    expect(forbidden.headers.get('location')).toBe(`/my/products?downloadError=no_access&product=${downloadProduct.id}&asset=${asset.id}`);
+    expect(forbidden.headers.get('cache-control')).toBe('no-store');
+    expect(await forbidden.text()).toBe('');
+
+    const missing = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      downloadAssets: { ...deps().downloadAssets, findById: async () => null },
+    } }).request(path, { headers: { host: 'acme.localhost:48730', accept: browserAccept } });
+    expect(missing.status).toBe(303);
+    expect(missing.headers.get('location')).toBe(`/my/products?downloadError=not_found&product=${downloadProduct.id}&asset=${asset.id}`);
+
+    const unconfigured = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      secretResolver: { resolve: async () => err(notFound('No storage configuration')) },
+    } }).request(path, { headers: { host: 'acme.localhost:48730', accept: browserAccept } });
+    expect(unconfigured.status).toBe(303);
+    expect(unconfigured.headers.get('location')).toBe(`/my/products?downloadError=failed&product=${downloadProduct.id}&asset=${asset.id}`);
+  });
+
+  it('never reflects an unsafe product or asset reference into the failure redirect', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(
+      API_PATHS.memberProductDownload.replace(':productId', 'bad%20id%3Cscript%3E').replace(':assetId', asset.id),
+      { headers: { host: 'acme.localhost:48730', accept: browserAccept } },
+    );
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/my/products?downloadError=no_access');
+  });
+
+  it('keeps the JSON envelope for clients that ask for JSON', async () => {
+    for (const accept of ['application/json', 'application/json, text/html', '*/*', undefined]) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', ...(accept === undefined ? {} : { accept }) },
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get('content-type')).toBe('application/json');
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    }
+  });
+
+  it('keeps the JSON envelope when text/html is refused with q=0 or only named inside another media type', async () => {
+    for (const accept of ['text/html;q=0, */*', 'text/html; q=0.0, application/xml', 'application/vnd.example+text/html', 'text/html-fragment']) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
+  it('prefers a browser redirect when text/html outranks application/json', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: 'application/json;q=0.5, text/html' },
+    });
+    expect(response.status).toBe(303);
+  });
+
+  it('ranks text/html and application/json by their most specific matching range', async () => {
+    const cases = [
+      { accept: 'application/*;q=1, text/html;q=0.5', status: 403 },
+      { accept: 'text/*;q=1, application/json;q=0.5', status: 303 },
+      { accept: '*/*;q=0.1, text/html;q=0', status: 403 },
+    ];
+    for (const { accept, status } of cases) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect({ accept, status: response.status }).toEqual({ accept, status });
+      if (status === 403) expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
+  it('gives a plain representation no quality from a range that requires other media type parameters', async () => {
+    const cases = [
+      { accept: 'text/*;profile=legacy, application/json;q=0.5', status: 403 },
+      { accept: 'text/html;level=1, application/json;q=0.5', status: 403 },
+      { accept: browserAccept, status: 303 },
+      { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', status: 303 },
+      { accept: 'text/html;q=0.9;ext=1, application/json;q=0.5', status: 303 },
+      { accept: 'application/json;profile="one,text/html,two", application/json;q=0.5', status: 403 },
+      { accept: 'application/json;profile="a\\",text/html,tail", application/json;q=0.5', status: 403 },
+    ];
+    for (const { accept, status } of cases) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect({ accept, status: response.status }).toEqual({ accept, status });
+      if (status === 403) expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
+  it('sends a signed-out browser download to sign-in with a return to My products', async () => {
+    const anonymous = { authPort: { ...deps().authPort, getAuthenticatedUser: async () => null } };
+    const browser = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(browser.status).toBe(303);
+    expect(browser.headers.get('location')).toBe('/login?returnTo=%2Fmy%2Fproducts');
+    expect(new URL(browser.headers.get('location') ?? '', 'https://acme.test').origin).toBe('https://acme.test');
+
+    const api = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: 'application/json' },
+    });
+    expect(api.status).toBe(401);
+    expect(await api.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+  });
+
+  it('still redirects a successful browser download to its signed object URL', async () => {
+    const response = await scopedApp('member', { overrides: overrides(true) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+  });
+
   it('accepts legacy bodyless completion and rejects malformed version JSON', async () => {
     const app = scopedApp('owner', { overrides: overrides(true) });
     const completePath = API_PATHS.productDownloadComplete
@@ -7086,10 +7208,10 @@ describe('free lesson preview route', () => {
     const base = deps({ lessons: [preview], getAuthenticatedUser: async () => null });
     const stored = { id: 'edition-version', entityKind: 'course_lesson' as const, entityId: preview.id, schemaVersion: 3, payload: { ...preview, contents: [{ type: 'html', html: '<p>Earlier content</p>' }] }, createdAt: preview.createdAt, createdBy: null };
     const edition = { versionId: stored.id, number: '2', note: 'Updated examples', markedAt: preview.createdAt };
-    const makeApp = (isPreview: boolean) => appWithCourse({
+    const makeApp = (isPreview: boolean, version: EntityVersionRecord = stored) => appWithCourse({
       ...base,
       lessons: { ...base.lessons, findById: async () => ({ ...preview, isPreview }) },
-      lessonEditions: { ...base.lessonEditions, list: async () => [edition], find: async (_tenant, _lesson, number) => number === '2' ? stored : null },
+      lessonEditions: { ...base.lessonEditions, list: async () => [{ ...edition, version }], find: async (_tenant, _lesson, number) => number === '2' ? version : null },
     }, courseFor('edition-course', true), preview.id);
     const headers = { [TENANT_HEADER]: acme.slug };
     const listPath = API_PATHS.studentLessonEditions.replace(':lessonId', preview.id);
@@ -7097,8 +7219,10 @@ describe('free lesson preview route', () => {
     const listed = await makeApp(true).request(listPath, { headers });
     expect(listed.status).toBe(200);
     expect(await listed.json()).toEqual({ ok: true, data: { editions: [{
-      number: edition.number, note: edition.note, markedAt: edition.markedAt,
-    }] } });
+      number: edition.number, note: edition.note, markedAt: edition.markedAt, matchesLive: false,
+    }], currentEdition: null } });
+    const matching = await makeApp(true, { ...stored, payload: preview }).request(listPath, { headers });
+    expect(await matching.json()).toMatchObject({ ok: true, data: { editions: [{ number: '2', matchesLive: true }], currentEdition: '2' } });
     const opened = await makeApp(true).request(editionPath.replace(':number', '2'), { headers });
     expect(opened.status).toBe(200);
     expect(await opened.json()).toMatchObject({ data: { authenticated: false, lesson: { id: preview.id, contents: [{ html: '<p>Earlier content</p>' }] } } });

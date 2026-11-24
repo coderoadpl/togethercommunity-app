@@ -158,6 +158,7 @@ const TenantMemberShell = ({ hostname }: { hostname: string }) => {
       currentLessonId={activeCourseContext.lessonId}
       tenantName={identity.tenantName}
       notFoundFallback={memberSidebar}
+      showFilter={activeCourseContext.lessonId !== null}
     />
   );
 

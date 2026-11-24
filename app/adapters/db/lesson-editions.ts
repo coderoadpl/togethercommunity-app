@@ -14,8 +14,9 @@ export const createLessonEditionRepository = (db: Db): LessonEditionRepository =
       eq(entityVersions.tenantId, tenantId), eq(entityVersions.entityKind, 'course_lesson'),
       eq(entityVersions.entityId, lessonId), isNotNull(entityVersions.editionNumber),
     )).orderBy(desc(sql`string_to_array(${entityVersions.editionNumber}, '.')::numeric[]`)).limit(100);
-    return rows.map((row) => lessonEditionSchema.parse({
-      versionId: row.id, number: row.editionNumber, note: row.editionNote, markedAt: row.editionMarkedAt,
+    return rows.map((row) => ({
+      ...lessonEditionSchema.parse({ versionId: row.id, number: row.editionNumber, note: row.editionNote, markedAt: row.editionMarkedAt }),
+      version: row,
     }));
   },
   find: async (tenantId, lessonId, number) => {

@@ -4,6 +4,7 @@ import {
   Box,
   Button,
   Chip,
+  IconButton,
   Link as MuiLink,
   Paper,
   Skeleton,
@@ -30,15 +31,17 @@ import { SectionCard, StatusView } from '../../components/layout/index.js';
 import { CompletionMark } from '../../components/ui/CompletionMark.js';
 import { LessonLinkList, LessonSandboxEmbed } from '../../components/ui/LessonLinks.js';
 import { CollapsibleEmbed, LessonMediaEmbed, LessonMediaError } from '../../components/ui/LessonMedia.js';
-import { LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
+import { LESSON_READING_COLUMN_SX, LESSON_TEXT_REVEAL_EVENT, LessonReadingContent } from './LessonReadingContent.js';
 import { lessonHeadingDocument } from '../../components/ui/lesson-heading-document.js';
 import { localizeError, useLanguage, useTranslations, type Messages } from '../../i18n/index.js';
 import { useRedirectToLogin } from './use-login-redirect.js';
 import { formatOfferPriceTerms, type OfferPriceTerms } from '../../lib/format.js';
 import {
-  DataValue,
   Eyebrow,
   LessonActionLabel,
+  LessonAlertDetail,
+  LessonCompletionStatus,
+  LessonDestinationLabel,
   LessonFooterBar,
   LessonMediaFrame,
   LessonNavLabel,
@@ -48,14 +51,19 @@ import {
   LESSON_CARD_PADDING_X,
   LESSON_DOCUMENT_FRAME_SX,
   LESSON_VIDEO_FRAME_SX,
+  LockedLeadText,
+  LockedScopeText,
+  VisuallyHidden,
 } from '../../theme.js';
-import { LessonEditionBanner, LessonEditionControls } from './LessonEditions.js';
+import { LessonEditionControls, LessonEditionNotice } from './LessonEditions.js';
 import { DiscussionSection } from './DiscussionSection.js';
-import { LinkIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
-import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson } from './lesson-nav.js';
+import { LinkIcon, LockedLeadIcon, LockedLessonIcon, MarkCompleteIcon, NextLessonIcon, PreviousLessonIcon } from './lesson-icons.js';
+import { lessonNeighbours, lessonPath, linearizeCourse, locateLesson, type LessonNeighbours } from './lesson-nav.js';
 import { CourseLoading, CourseLoadingContent } from './CourseLoading.js';
 import { MemberSurface } from './MemberSurface.js';
 import { EmptyLessonIcon } from './overview-icons.js';
+import { CloseIcon } from './shell/shell-icons.js';
+import { resolveSupportContact, SupportContactButton } from './SupportContactButton.js';
 
 const isUnauthorized = (error: Error | null) =>
   error instanceof ApiError && error.appError.code === 'unauthorized';
@@ -89,6 +97,17 @@ const groupLabel = (t: Messages, group: LessonContentGroup): string => {
   }
 };
 
+const UnavailableVideoMessage = () => {
+  const t = useTranslations();
+  const settings = useQuery({ ...actions.memberSettings });
+  const contact = settings.data === undefined
+    ? null
+    : resolveSupportContact(settings.data.settings.supportUrl, settings.data.settings.supportConfigured === true);
+  return contact === null
+    ? <LessonMediaError message={t.lesson.videoUnavailableNoContact} />
+    : <LessonMediaError message={t.lesson.videoUnavailable} action={<SupportContactButton contact={contact} testId="lesson-video-contact" />} />;
+};
+
 const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editionNumber }: { lessonId: string; storageKey: string; autoplay: boolean; authenticated: boolean; editionNumber?: string | undefined }) => {
   const t = useTranslations();
   const playback = useQuery({ ...actions.studentLessonPlayback(lessonId, editionNumber), enabled: authenticated });
@@ -98,12 +117,11 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editi
     return <LessonMediaEmbed frameSx={LESSON_VIDEO_FRAME_SX} data-testid="lesson-video" src={withVideoAutoplay(video.embedUrl, autoplay)} title={t.lesson.videoTitle} failureMessage={t.lesson.videoFailedTitle} allow={VIDEO_ALLOW} allowFullScreen />;
   }
   if (video?.kind === 'unavailable' || playback.isError) {
-    const message = video?.kind === 'unavailable'
-      ? video.reason === 'missing_library_id' ? t.lesson.videoMissingLibrary : t.lesson.videoSecretInvalid
-      : t.lesson.videoFailedTitle;
     return (
       <LessonMediaFrame sx={{ ...LESSON_VIDEO_FRAME_SX, display: 'grid' }}>
-        <LessonMediaError message={message} onRetry={() => void playback.refetch()} />
+        {video?.kind === 'unavailable'
+          ? <UnavailableVideoMessage />
+          : <LessonMediaError message={t.lesson.videoFailedTitle} onRetry={() => void playback.refetch()} />}
       </LessonMediaFrame>
     );
   }
@@ -111,7 +129,7 @@ const UnavailableVideo = ({ lessonId, storageKey, autoplay, authenticated, editi
   return <LessonPlaceholder data-testid="lesson-video-placeholder">{t.lesson.videoPlaceholder}</LessonPlaceholder>;
 };
 
-const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumber }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
+const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumber, leading }: { block: RenderableLessonBlock; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined; leading: boolean }) => {
   const t = useTranslations();
   if (block.type === 'video') {
     if (block.embedUrl === undefined) {
@@ -172,13 +190,13 @@ const BlockBody = ({ block, autoplay, lessonId, authenticated, html, editionNumb
     return block.collapsed === true ? <CollapsibleEmbed>{frame}</CollapsibleEmbed> : frame;
   }
 
-  return <LessonReadingContent key={`${lessonId}:${editionNumber ?? ''}`} html={html ?? block.html} />;
+  return <LessonReadingContent key={`${lessonId}:${editionNumber ?? ''}`} html={html ?? block.html} startExpanded={leading} />;
 };
 
-const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined }) => {
+const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumber, leading }: { group: LessonContentGroup; autoplay: boolean; lessonId: string; authenticated: boolean; html?: string | undefined; editionNumber?: string | undefined; leading: boolean }) => {
   switch (group.kind) {
     case 'block':
-      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />;
+      return <BlockBody block={group.block} autoplay={autoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} leading={leading} />;
     case 'sandbox':
       return (
         <LessonSandboxEmbed
@@ -195,19 +213,128 @@ const GroupBody = ({ group, autoplay, lessonId, authenticated, html, editionNumb
   }
 };
 
+const TEXT_BLOCK_SELECTOR = 'address, article, blockquote, dd, div, dl, dt, figcaption, footer, h1, h2, h3, h4, h5, h6, header, li, ol, p, pre, section, table, td, th, tr, ul';
+const TEXT_BREAK = '\u2029';
+const ENDS_WITH_PUNCTUATION = /[.,;:!?…]$/u;
+
+const plainText = (html: string): string => {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  for (const block of template.content.querySelectorAll(TEXT_BLOCK_SELECTOR)) {
+    block.before(TEXT_BREAK);
+    block.after(TEXT_BREAK);
+  }
+  for (const lineBreak of template.content.querySelectorAll('br')) lineBreak.replaceWith(TEXT_BREAK);
+  const segments = (template.content.textContent ?? '')
+    .split(TEXT_BREAK)
+    .map((segment) => segment.replace(/\s+/g, ' ').trim())
+    .filter((segment) => segment !== '');
+  return segments.reduce(
+    (text, segment) => text === '' ? segment : `${text}${ENDS_WITH_PUNCTUATION.test(text) ? ' ' : ' · '}${segment}`,
+    '',
+  );
+};
+
+const LockedLead = ({ children, heading = false }: { children: string; heading?: boolean }) => (
+  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ alignItems: 'flex-start' }}>
+    <LockedLeadIcon />
+    <LockedLeadText variant={heading ? 'h2' : 'subtitle1'} component={heading ? 'h2' : 'p'} data-testid="locked-lesson-lead">
+      {children}
+    </LockedLeadText>
+  </Stack>
+);
+
+const NextLessonLabel = ({ name }: { name: string }) => {
+  const t = useTranslations();
+  return (
+    <>
+      <LessonDestinationLabel>
+        <Box component="span" sx={{ display: { xs: 'none', md: 'inline' } }}>{t.lesson.next({ name })}</Box>
+        <Box component="span" sx={{ display: { xs: 'inline', md: 'none' } }}>{name}</Box>
+      </LessonDestinationLabel>
+      <NextLessonIcon />
+    </>
+  );
+};
+
+const PreviousLessonLink = ({ courseId, lessonId }: { courseId: string; lessonId: string }) => {
+  const t = useTranslations();
+  return (
+    <Button
+      component={Link}
+      to={lessonPath(courseId, lessonId)}
+      variant="outlined"
+      data-testid="prev-lesson"
+      data-slot="compact"
+    >
+      <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
+    </Button>
+  );
+};
+
+const LockedFooter = ({ courseId, neighbours }: { courseId: string; neighbours: LessonNeighbours }) => {
+  const t = useTranslations();
+  const { previous, nextUnlocked } = neighbours;
+  if (previous === null && nextUnlocked === null) return null;
+  return (
+    <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }} data-testid="locked-lesson-footer">
+      <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', gap: { xs: '0.5rem', md: '0.75rem' } }}>
+        {previous === null ? null : <PreviousLessonLink courseId={courseId} lessonId={previous.lessonId} />}
+        <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
+        {nextUnlocked === null ? null : (
+          <Button
+            component={Link}
+            to={lessonPath(courseId, nextUnlocked.lessonId)}
+            variant="outlined"
+            data-testid="next-lesson"
+            data-slot="primary"
+            aria-label={t.lesson.next({ name: nextUnlocked.name })}
+          >
+            <NextLessonLabel name={nextUnlocked.name} />
+          </Button>
+        )}
+      </Stack>
+    </LessonFooterBar>
+  );
+};
+
+const LockedCardSkeleton = () => {
+  const t = useTranslations();
+  return (
+    <Stack role="status" aria-label={t.lesson.loading} aria-busy="true" useFlexGap spacing="1rem" data-testid="locked-lesson-skeleton">
+      <Skeleton width="70%" />
+      <Skeleton variant="text" width="40%" />
+      <Skeleton variant="rounded" height="3rem" />
+    </Stack>
+  );
+};
+
 const LockedView = ({
   courseId,
   lessonName,
   unlockProductId,
+  pending,
+  supportUrl,
+  supportConfigured,
+  neighbours,
 }: {
   courseId: string;
   lessonName?: string | undefined;
   unlockProductId?: string;
+  pending: boolean;
+  supportUrl: string | null | undefined;
+  supportConfigured: boolean;
+  neighbours: LessonNeighbours | null;
 }) => {
   const t = useTranslations();
   const { language } = useLanguage();
   const offer = useQuery({ ...actions.publicOffer, enabled: unlockProductId !== undefined });
   const product = offer.data?.products.find((candidate) => candidate.id === unlockProductId);
+  const scope = useMemo(() => {
+    if (product === undefined) return null;
+    const description = plainText(product.description);
+    return description === '' ? t.salesLinks.lineTypes[product.type] : description;
+  }, [product, t]);
   const price = product === undefined ? null : product.prices[0] ?? ({
     kind: 'one_time',
     interval: null,
@@ -222,9 +349,15 @@ const LockedView = ({
       monthly: t.common.priceMonthly,
       yearly: t.common.priceYearly,
     });
+  const loading = pending || (unlockProductId === undefined ? supportUrl === undefined : offer.isPending);
+  const supportContact = resolveSupportContact(supportUrl, supportConfigured);
+  const courseHref = `/my/courses/${encodeURIComponent(courseId)}`;
   return (
     <MemberSurface
-      title={lessonName ?? t.lesson.contentLocked}
+      title={lessonName ?? (pending
+        ? <><VisuallyHidden>{t.lesson.loading}</VisuallyHidden><Skeleton width="min(24rem, 65vw)" aria-hidden /></>
+        : t.lesson.contentLocked)}
+      documentTitle={lessonName ?? (pending ? t.lesson.loading : t.lesson.contentLocked)}
       eyebrow={t.lesson.eyebrow}
       width="wide"
     >
@@ -234,23 +367,35 @@ const LockedView = ({
           elevation={1}
           sx={{ p: '1.5rem', width: '100%', maxWidth: '28rem' }}
           data-testid="locked-lesson-upsell"
+          data-state={loading ? 'loading' : unlockProductId === undefined ? 'not-for-sale' : 'for-sale'}
         >
-          <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch', width: '100%', maxWidth: '28rem' }}>
-            <Typography variant="overline" component="p" color="text.secondary">
-              {t.lesson.lockedInProduct}
-            </Typography>
-            <Typography variant="h2" component="h2">
-              {product?.title ?? t.lesson.contentLocked}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {t.lesson.noAccessYet}
-            </Typography>
-            {priceTerms !== null ? (
-              <Typography variant="h3" component="p" data-testid="locked-product-price">
-                <DataValue>{priceTerms}</DataValue>
+          {loading ? <LockedCardSkeleton /> : unlockProductId === undefined ? (
+            <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
+              <LockedLead heading>{t.lesson.notForSaleTitle}</LockedLead>
+              <Typography variant="body2" color="text.secondary">
+                {supportContact === null ? t.lesson.notForSaleBodyNoContact : t.lesson.notForSaleBody}
               </Typography>
-            ) : null}
-            {unlockProductId === undefined ? null : (
+              <Button component={Link} to={courseHref} variant="outlined" size="large" fullWidth data-testid="locked-back-to-course">
+                {t.lesson.backToCourse}
+              </Button>
+              {supportContact === null ? null : (
+                <SupportContactButton contact={supportContact} testId="locked-contact-creator" size="large" fullWidth />
+              )}
+            </Stack>
+          ) : (
+            <Stack useFlexGap spacing="1rem" sx={{ alignItems: 'stretch' }}>
+              <LockedLead>{t.lesson.noAccess}</LockedLead>
+              {product === undefined ? null : (
+                <Stack useFlexGap spacing="0.25rem">
+                  <Typography variant="overline" component="p" color="text.secondary">
+                    {t.lesson.lockedInProduct}
+                  </Typography>
+                  <Typography variant="h2" component="h2">
+                    {product.title}
+                  </Typography>
+                  {scope === null ? null : <LockedScopeText variant="body2" data-testid="locked-product-scope">{scope}</LockedScopeText>}
+                </Stack>
+              )}
               <Button
                 component={Link}
                 to={`/checkout/${encodeURIComponent(unlockProductId)}`}
@@ -261,11 +406,12 @@ const LockedView = ({
               >
                 {priceTerms === null ? t.courseTree.unlockAccess : t.courseTree.unlockAccessWithPrice({ price: priceTerms })}
               </Button>
-            )}
-          </Stack>
+            </Stack>
+          )}
         </Paper>
-        <MuiLink component={Link} to={`/my/courses/${encodeURIComponent(courseId)}`}>{t.lesson.backToCourse}</MuiLink>
+        {!loading && unlockProductId === undefined ? null : <MuiLink component={Link} to={courseHref}>{t.lesson.backToCourse}</MuiLink>}
       </Stack>
+      {neighbours === null ? null : <LockedFooter courseId={courseId} neighbours={neighbours} />}
     </MemberSurface>
   );
 };
@@ -350,10 +496,14 @@ export const LessonPlayerPage = ({
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
+  const discussionScope = editionNumber === undefined ? lessonId : `${lessonId}/${editionNumber}`;
+  const [discussionSearch, setDiscussionSearch] = useState({ scope: discussionScope, term: '' });
+  if (discussionSearch.scope !== discussionScope) setDiscussionSearch({ scope: discussionScope, term: '' });
+  const discussionSearchTerm = discussionSearch.scope === discussionScope ? discussionSearch.term : '';
+
   const [continuing, setContinuing] = useState(false);
-  useEffect(() => {
-    setContinuing(false);
-  }, [lessonId]);
+  const [completionIntent, setCompletionIntent] = useState<'mark' | 'continue' | 'unmark'>('mark');
+  const footerBarRef = useRef<HTMLElement | null>(null);
 
   const [optimisticDone, setOptimisticDone] = useState<{
     lessonId: string;
@@ -388,6 +538,14 @@ export const LessonPlayerPage = ({
     onError: () => setOptimisticDone(null),
     onSettled: settleCompletion,
   });
+
+  const { reset: resetComplete } = complete;
+  const { reset: resetUncomplete } = uncomplete;
+  useEffect(() => {
+    setContinuing(false);
+    resetComplete();
+    resetUncomplete();
+  }, [lessonId, resetComplete, resetUncomplete]);
 
   useEffect(() => {
     if (unauthorized) void redirectToLogin();
@@ -474,6 +632,10 @@ export const LessonPlayerPage = ({
         <LockedView
           courseId={courseId}
           lessonName={lockedRow?.name}
+          pending={structure.isPending}
+          supportUrl={tenantSettings.isPending ? undefined : tenantSettings.data?.settings.supportUrl ?? null}
+          supportConfigured={tenantSettings.data?.settings.supportConfigured === true}
+          neighbours={neighbours}
           {...(lockedRow?.unlockProductId === undefined
             ? {}
             : { unlockProductId: lockedRow.unlockProductId })}
@@ -504,12 +666,13 @@ export const LessonPlayerPage = ({
         tenantSettings.data.settings,
         me.data?.tenant?.videoAutoplay ?? null,
       );
-  const hasSideErrors = [tenantSettings, structure, attachments, complete, uncomplete]
-    .some((query) => query.isError);
+  const hasSideErrors = [tenantSettings, structure, attachments].some((query) => query.isError);
+  const completionError = complete.error ?? uncomplete.error;
   const nextHref = nextLesson === null ? null : lessonPath(courseId, nextLesson.lessonId);
-  const compactCompletion = nextHref !== null;
   const previousLesson = neighbours?.previous ?? null;
-  const lockedAhead = nextLesson === null && (neighbours?.next ?? null) !== null;
+  const nextLockedLesson = nextLesson === null ? neighbours?.next ?? null : null;
+  const firstSkipped = neighbours !== null && neighbours.lockedSkipped > 0 ? neighbours.firstUnlockableSkipped ?? neighbours.next : null;
+  const completionSlot = nextHref !== null ? 'compact' : nextLockedLesson !== null ? 'wide' : 'fill';
   const atCourseEnd = neighbours !== null && neighbours.next === null;
   const lessonName = transitioning
     ? location?.row?.name ?? lesson.data.lesson.name
@@ -520,7 +683,21 @@ export const LessonPlayerPage = ({
       .map((groupIndex, htmlIndex) => [groupIndex, headingDocument.htmlBlocks[htmlIndex]] as const),
   );
 
+  const markComplete = () => {
+    setCompletionIntent('mark');
+    uncomplete.reset();
+    complete.mutate({ lessonId });
+  };
+
+  const unmarkComplete = () => {
+    setCompletionIntent('unmark');
+    complete.reset();
+    uncomplete.mutate({ lessonId });
+  };
+
   const continueToNext = () => {
+    setCompletionIntent('continue');
+    uncomplete.reset();
     setContinuing(true);
     complete.mutate(
       { lessonId },
@@ -534,13 +711,32 @@ export const LessonPlayerPage = ({
     );
   };
 
+  const retryCompletion = () => {
+    footerBarRef.current?.focus();
+    if (completionIntent === 'continue') continueToNext();
+    else if (completionIntent === 'unmark') unmarkComplete();
+    else markComplete();
+  };
+
+  const goToCurrentLesson = () => void navigate({
+    to: '/my/courses/$courseId/lessons/$lessonId',
+    params: { courseId, lessonId },
+    search: threadRootPostId === null ? {} : { thread: threadRootPostId },
+  });
+
+  const dismissCompletionError = () => {
+    footerBarRef.current?.focus();
+    resetComplete();
+    resetUncomplete();
+  };
+
   return (
     <MemberSurface
       title={lessonName}
       eyebrow={t.lesson.eyebrow}
       width="wide"
       dense
-      actions={<LessonEditionControls lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess && !transitioning} onSelect={(number) => void navigate({
+      actions={<LessonEditionControls lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess && !transitioning} onCurrent={goToCurrentLesson} onSelect={(number) => void navigate({
         to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
         params: { courseId, lessonId, number },
         search: threadRootPostId === null ? {} : { thread: threadRootPostId },
@@ -554,18 +750,12 @@ export const LessonPlayerPage = ({
           />
         ) : (
           <>
-        {editionNumber === undefined ? null : <LessonEditionBanner onCurrent={() => void navigate({
-          to: '/my/courses/$courseId/lessons/$lessonId',
-          params: { courseId, lessonId },
-          search: threadRootPostId === null ? {} : { thread: threadRootPostId },
-        })} />}
+        <LessonEditionNotice lessonId={lessonId} editionNumber={editionNumber} enabled={lesson.isSuccess} onCurrent={goToCurrentLesson} />
         {hasSideErrors ? (
           <Stack useFlexGap spacing="0.75rem" sx={{ mb: '1rem' }}>
             {tenantSettings.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(tenantSettings.error, t), retry: { label: t.common.retry, onRetry: () => void tenantSettings.refetch() } }} /> : null}
             {structure.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(structure.error, t), retry: { label: t.common.retry, onRetry: () => void structure.refetch() } }} /> : null}
             {attachments.isError ? <StatusView surface={false} state={{ kind: 'error', message: localizeError(attachments.error, t), retry: { label: t.common.retry, onRetry: () => void attachments.refetch() } }} /> : null}
-            {complete.isError ? <Alert severity="error">{localizeError(complete.error, t)}</Alert> : null}
-            {uncomplete.isError ? <Alert severity="error">{localizeError(uncomplete.error, t)}</Alert> : null}
           </Stack>
         ) : null}
         <Stack component="section" useFlexGap spacing="1.5rem">
@@ -594,10 +784,14 @@ export const LessonPlayerPage = ({
                 data-testid={`lesson-block-${index}`}
                 data-block-type={group.kind === 'block' ? group.block.type : group.kind}
               >
-                <Eyebrow variant="overline" component="p" sx={{ mb: '0.75rem' }}>
+                <Eyebrow
+                  variant="overline"
+                  component="p"
+                  sx={group.kind === 'block' && group.block.type === 'html' ? { mb: '0.75rem', ...LESSON_READING_COLUMN_SX } : { mb: '0.75rem' }}
+                >
                   {groupLabel(t, group)}
                 </Eyebrow>
-                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} />
+                <GroupBody group={group} autoplay={videoAutoplay} lessonId={lessonId} authenticated={authenticated} html={html} editionNumber={editionNumber} leading={index === 0} />
               </Paper>
               );
             })
@@ -622,7 +816,53 @@ export const LessonPlayerPage = ({
           </SectionCard>
         ) : null}
 
-        {authenticated && <LessonFooterBar component="footer" sx={{ mt: '2.5rem' }}>
+        {authenticated && <LessonFooterBar component="footer" ref={footerBarRef} tabIndex={-1} sx={{ mt: '2.5rem' }}>
+          {completionError === null ? null : (
+            <Alert
+              severity="error"
+              role="alert"
+              data-testid="lesson-completion-error"
+              sx={{ mb: '0.5rem' }}
+              action={(
+                <>
+                  <Button
+                    color="inherit"
+                    size="small"
+                    data-testid="lesson-completion-retry"
+                    onClick={retryCompletion}
+                  >
+                    {t.common.retry}
+                  </Button>
+                  <IconButton
+                    color="inherit"
+                    size="small"
+                    aria-label={t.common.close}
+                    data-testid="lesson-completion-close"
+                    onClick={dismissCompletionError}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </>
+              )}
+            >
+              <strong>{t.lesson.completionFailed}</strong>
+              <LessonAlertDetail data-testid="lesson-completion-detail"> {localizeError(completionError, t)}</LessonAlertDetail>
+            </Alert>
+          )}
+          {firstSkipped !== null && neighbours !== null ? (
+            <MuiLink
+              component={Link}
+              to={lessonPath(courseId, firstSkipped.lessonId)}
+              variant="body2"
+              data-testid="locked-lessons-skipped"
+              sx={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', mb: '0.5rem' }}
+            >
+              <LockedLessonIcon />
+              {firstSkipped.unlockable
+                ? t.lesson.lockedSkipped({ count: neighbours.lockedSkipped })
+                : t.lesson.lockedSkippedNotForSale({ count: neighbours.lockedSkipped })}
+            </MuiLink>
+          ) : null}
           <Stack
             direction="row"
             useFlexGap
@@ -638,15 +878,7 @@ export const LessonPlayerPage = ({
                   </Box>
                 </Tooltip>
               ) : (
-                <Button
-                  component={Link}
-                  to={lessonPath(courseId, previousLesson.lessonId)}
-                  variant="outlined"
-                  data-testid="prev-lesson"
-                  data-slot="compact"
-                >
-                  <PreviousLessonIcon /><LessonNavLabel>{t.lesson.previousLesson}</LessonNavLabel>
-                </Button>
+                <PreviousLessonLink courseId={courseId} lessonId={previousLesson.lessonId} />
               )
             )}
             {!continuing && !completed && nextLesson !== null && (
@@ -656,33 +888,39 @@ export const LessonPlayerPage = ({
                 variant="outlined"
                 data-testid="skip-to-next-lesson"
                 data-slot="compact"
+                sx={{ display: { xs: 'none', md: 'inline-flex' } }}
               >
                 <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLesson}</LessonNavLabel>
               </Button>
             )}
             <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
             {!continuing && progress.isSuccess && completed && (
-              <Button
-                variant="outlined"
-                data-testid="unmark-complete"
-                data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => uncomplete.mutate({ lessonId })}
-                disabled={uncomplete.isPending}
-                startIcon={<CompletionMark label={t.courseTree.completionComplete} />}
-                title={t.lesson.unmarkCompletedHint}
-              >
-                {compactCompletion ? <LessonNavLabel>{t.lesson.unmarkCompleted}</LessonNavLabel> : <LessonActionLabel>{t.lesson.unmarkCompleted}</LessonActionLabel>}
-              </Button>
+              <>
+                <LessonCompletionStatus data-testid="lesson-completed-status">
+                  <CompletionMark label={t.lesson.completed} />
+                  <LessonNavLabel aria-hidden>{t.lesson.completed}</LessonNavLabel>
+                </LessonCompletionStatus>
+                <Button
+                  variant="text"
+                  data-testid="unmark-complete"
+                  onClick={unmarkComplete}
+                  disabled={uncomplete.isPending}
+                  aria-label={t.lesson.unmarkCompleted}
+                  data-slot="undo"
+                >
+                  {t.lesson.undoCompletion}
+                </Button>
+              </>
             )}
             {!continuing && progress.isSuccess && !completed && (
               <Button
-                variant={nextHref === null ? 'contained' : 'outlined'}
+                variant={completionSlot === 'fill' ? 'contained' : 'outlined'}
                 data-testid="mark-complete"
-                data-slot={compactCompletion ? 'compact' : 'fill'}
-                onClick={() => complete.mutate({ lessonId })}
+                data-slot={completionSlot}
+                onClick={markComplete}
                 disabled={complete.isPending}
               >
-                {compactCompletion ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
+                {completionSlot === 'compact' ? <><MarkCompleteIcon /><LessonNavLabel>{t.lesson.markCompleted}</LessonNavLabel></> : <LessonActionLabel>{t.lesson.markCompleted}</LessonActionLabel>}
               </Button>
             )}
             {continuing ? (
@@ -707,18 +945,22 @@ export const LessonPlayerPage = ({
                 variant="contained"
                 data-testid="next-lesson"
                 data-slot="primary"
+                aria-label={t.lesson.next({ name: nextLesson.name })}
               >
-                <LessonActionLabel>{t.lesson.next({ name: nextLesson.name })}</LessonActionLabel>
+                <NextLessonLabel name={nextLesson.name} />
               </Button>
             )}
-            {lockedAhead && (
-              <Tooltip title={t.courseTree.lockedTooltip}>
-                <Box component="span" data-slot="compact">
-                  <Button variant="outlined" data-testid="next-locked" disabled>
-                    <NextLessonIcon /><LessonNavLabel>{t.lesson.nextLocked}</LessonNavLabel>
-                  </Button>
-                </Box>
-              </Tooltip>
+            {!continuing && nextLockedLesson !== null && (
+              <Button
+                component={Link}
+                to={lessonPath(courseId, nextLockedLesson.lessonId)}
+                variant="contained"
+                data-testid="next-locked"
+                data-slot="primary"
+                startIcon={<LockedLessonIcon />}
+              >
+                <LessonDestinationLabel>{nextLockedLesson.unlockable ? t.lesson.unlockNextLesson : t.lesson.nextLocked}</LessonDestinationLabel>
+              </Button>
             )}
             {atCourseEnd && (
               structure.data?.structure.completionStatus === 'fully-completed' ? (
@@ -732,8 +974,11 @@ export const LessonPlayerPage = ({
 
         {authenticated && (
           <DiscussionSection
-            key={threadRootPostId ?? 'all-threads'}
+            courseId={courseId}
             lessonId={lessonId}
+            editionNumber={editionNumber}
+            searchTerm={discussionSearchTerm}
+            onSearchTermChange={(term) => setDiscussionSearch({ scope: discussionScope, term })}
             {...(threadRootPostId === null
               ? {}
               : {
@@ -744,10 +989,12 @@ export const LessonPlayerPage = ({
                         to: '/my/courses/$courseId/lessons/$lessonId',
                         params: { courseId, lessonId },
                         search: {},
+                        resetScroll: false,
                       } : {
                         to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
                         params: { courseId, lessonId, number: editionNumber },
                         search: {},
+                        resetScroll: false,
                       }),
                   },
                 })}

@@ -66,6 +66,12 @@ export const MapPinIcon = (props: IconProps) => (<Glyph {...props}><path d="M20 
 
 export const ChevronDownIcon = (props: IconProps) => (<Glyph {...props}><path d="m6 9 6 6 6-6" /></Glyph>);
 
+export const ChevronRightIcon = (props: IconProps) => (<Glyph {...props}><path d="m9 18 6-6-6-6" /></Glyph>);
+
+export const ExternalLinkIcon = (props: IconProps) => (<Glyph {...props}><path d="M15 3h6v6" />
+  <path d="M10 14 21 3" />
+  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></Glyph>);
+
 export const PlusIcon = (props: IconProps) => (<Glyph {...props}><path d="M12 5v14" />
   <path d="M5 12h14" /></Glyph>);
 
@@ -75,6 +81,6 @@ export const TriangleAlertIcon = (props: IconProps) => (<Glyph {...props}><path 
   <path d="M12 9v4" />
   <path d="M12 17h.01" /></Glyph>);
 
-export const CircleAlertIcon = () => (<Glyph><circle cx="12" cy="12" r="10" />
+export const CircleAlertIcon = (props: IconProps) => (<Glyph {...props}><circle cx="12" cy="12" r="10" />
   <path d="M12 8v4" />
   <path d="M12 16h.01" /></Glyph>);

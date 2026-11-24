@@ -123,4 +123,22 @@ describe('i18n dictionaries', () => {
     expect(format('checkout · {tenant}', { tenant: 'Acme' })).toBe('checkout · Acme');
     expect(en.checkout.eyebrow({ tenant: 'Acme' })).toBe('Checkout · Acme');
   });
+
+  it('gives the Polish course progress line its own text that names both counts', () => {
+    const lines = [1, 2, 5, 22].map((done) => pl.courseOverview.completedOf({ done, total: 25 }));
+    for (const [index, done] of [1, 2, 5, 22].entries()) {
+      expect(lines[index]).toContain(String(done));
+      expect(lines[index]).toContain('25');
+      expect(lines[index]).not.toBe(en.courseOverview.completedOf({ done, total: 25 }));
+    }
+    expect(new Set(lines).size).toBe(lines.length);
+  });
+
+  it('names the course program and the discussion search the same way in English as in the UI around them', () => {
+    expect(en.courseOverview.curriculum).toBe(en.shell.programTitle);
+    expect(en.courseOverview.completedOf({ done: 2, total: 8 })).toBe('2 of 8 lessons completed');
+    expect(en.discussion.searchCoursePlaceholder).toBe('Search discussion posts…');
+    expect(pl.discussion.searchCoursePlaceholder.trim()).not.toBe('');
+    expect(pl.discussion.searchCoursePlaceholder).not.toBe(en.discussion.searchCoursePlaceholder);
+  });
 });

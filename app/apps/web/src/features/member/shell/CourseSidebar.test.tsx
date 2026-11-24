@@ -83,7 +83,7 @@ const okStructure = (body: CourseStructureWithAccess = structure) =>
     HttpResponse.json({ ok: true, data: { structure: body } }),
   );
 
-const okProgress = (lastViewedLessonId?: string) =>
+const okProgress = (lastViewedLessonId?: string, resumeTargetId?: string, isReview = false) =>
   http.get('/api/student/progress', () =>
     HttpResponse.json({
       ok: true,
@@ -92,6 +92,9 @@ const okProgress = (lastViewedLessonId?: string) =>
           courseId: 'course-1',
           completedLessonIds: ['l1'],
           ...(lastViewedLessonId === undefined ? {} : { lastViewedLessonId }),
+          ...(resumeTargetId === undefined ? {} : {
+            resume: { target: { id: resumeTargetId, name: 'Resume target' }, firstIncomplete: null, isReview },
+          }),
         },
       },
     }),
@@ -127,13 +130,14 @@ const noNotifications = () =>
   http.get('/api/notifications/unread-count', () =>
     HttpResponse.json({ ok: true, data: { unread: 0 } }));
 
-const renderSidebar = async (currentLessonId: string | null) => {
+const renderSidebar = async (currentLessonId: string | null, showFilter = true) => {
   const rootRoute = createRootRoute({
     component: () => (
       <CourseSidebar
         courseId="course-1"
         currentLessonId={currentLessonId}
         tenantName="Acme"
+        showFilter={showFilter}
       />
     ),
   });
@@ -167,6 +171,24 @@ describe('CourseSidebar', () => {
     expect(screen.getByTestId('course-sidebar-totals')).toHaveTextContent(
       `33% · ${en.shell.lessonsOf({ done: 1, total: 3 })}`,
     );
+  });
+
+  it('shows only the course name in the header of a course without lessons', async () => {
+    const empty: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({ ...chapter, lessons: [] })),
+      })),
+    };
+    server.use(okStructure(empty), okProgress(), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    const header = await screen.findByTestId('course-sidebar-header');
+    expect(header).toHaveTextContent('JavaScript Foundations');
+    expect(within(header).queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('course-sidebar-totals')).not.toBeInTheDocument();
   });
 
   it('marks a finished course to the right of its title, without a text label', async () => {
@@ -239,6 +261,33 @@ describe('CourseSidebar', () => {
     expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('lesson-button-l1')).not.toBeInTheDocument();
+  });
+
+  it('opens and scrolls to the branch of the next lesson when the last viewed one is completed and ends its chapter', async () => {
+    const lastDone: CourseStructureWithAccess = {
+      ...structure,
+      modules: structure.modules.map((module) => ({
+        ...module,
+        chapters: module.chapters.map((chapter) => ({
+          ...chapter,
+          lessons: chapter.lessons.map((lesson) => ({ ...lesson, completionStatus: lesson.lessonId === 'l3' ? 'not-completed' : 'fully-completed' })),
+        })),
+      })),
+    };
+    server.use(okStructure(lastDone), okProgress('l2', 'l3'), okNavigation(), noNotifications());
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    try {
+      await renderSidebar(null);
+
+      const next = await screen.findByTestId('lesson-button-l3');
+      expect(screen.getByTestId('lesson-next-l3')).toBeInTheDocument();
+      expect(screen.getByTestId('module-toggle-m2').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByTestId('module-toggle-m1').closest('[role="treeitem"]')).toHaveAttribute('aria-expanded', 'false');
+      expect(scrollIntoView.mock.instances).toEqual([next]);
+    } finally {
+      scrollIntoView.mockRestore();
+    }
   });
 
   it('opens the branch of the first lesson when nothing was viewed yet', async () => {
@@ -394,6 +443,50 @@ describe('CourseSidebar', () => {
     expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-pinned'));
     expect(scroller).not.toContainElement(screen.getByTestId('lesson-search'));
     expect(scroller).not.toContainElement(screen.getByTestId('course-sidebar-back'));
+  });
+
+  it('stays a compact navigator without its own filter when the page carries the program', async () => {
+    server.use(okStructure(), okProgress('l3'), okNavigation(), noNotifications());
+
+    await renderSidebar(null, false);
+
+    const scroller = await screen.findByTestId('course-tree-scroll');
+    expect(within(scroller).getByTestId('course-tree')).toBeInTheDocument();
+    expect(await screen.findByTestId('lesson-button-l3')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-search-hint')).not.toBeInTheDocument();
+  });
+
+  it('marks the resume target as the next lesson on the course overview', async () => {
+    server.use(okStructure(), okProgress('l2', 'l2'), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    const chip = await screen.findByTestId('lesson-next-l2');
+    expect(chip).toHaveTextContent(en.courseTree.nextLesson);
+    expect(screen.getByTestId('lesson-button-l2').closest('[role="treeitem"]')).toHaveAccessibleName(
+      expect.stringContaining(en.courseTree.nextLesson),
+    );
+    expect(screen.getAllByText(en.courseTree.nextLesson)).toHaveLength(1);
+  });
+
+  it('leaves the next-lesson mark out when every lesson is done and the resume is a review', async () => {
+    server.use(okStructure(), okProgress('l2', 'l2', true), okNavigation(), noNotifications());
+
+    await renderSidebar(null);
+
+    expect(await screen.findByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-next-l2')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.courseTree.nextLesson)).not.toBeInTheDocument();
+  });
+
+  it('leaves the next-lesson mark out while a lesson is open', async () => {
+    server.use(okStructure(), okProgress('l2', 'l2'), okNavigation(), noNotifications());
+
+    await renderSidebar('l1');
+
+    expect(await screen.findByTestId('lesson-button-l2')).toBeInTheDocument();
+    expect(screen.queryByTestId('lesson-next-l2')).not.toBeInTheDocument();
   });
 
   it('ends with the lesson tree, leaving notifications and the account to the app bar', async () => {

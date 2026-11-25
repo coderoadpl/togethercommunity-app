@@ -13,7 +13,7 @@ import {
   type Tenant,
   type TenantSecret,
 } from '#core/domain/index.js';
-import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
+import type { CheckoutDeps, PaymentProvider, PaymentSourceReader } from '#core/server/index.js';
 
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
@@ -1014,6 +1014,49 @@ it.each(['succeeds', 'fails'] as const)('surfaces the SPA coupon binding failure
     expect(logger.error).not.toHaveBeenCalled();
     expect(held.stock.levels.get(tenant.id, 'physical-1')).toMatchObject({ onHand: 1, reserved: 0 });
   }
+});
+
+describe('a checkout started directly through the use-case for a mode inherited from the organization', () => {
+  const inheritedLive: PaymentSourceReader = {
+    read: async () => ({ source: 'organization', keyPresent: true, webhookReady: false, keyMode: 'live' }),
+  };
+
+  const orderFixture = (order: 'free' | 'coupon', paymentSource: PaymentSourceReader) => {
+    const h = bundleCheckout();
+    h.deps.paymentSource = paymentSource;
+    const held = trackPrintedItem(h.deps);
+    if (order === 'free') for (const item of h.products) item.priceCents = 0;
+    const coupon = { ...freeCoupon, code: 'SAVE', value: 50 };
+    const couponSessions: CouponCheckoutSession[] = [];
+    const ensurePromotion = vi.fn(async () => ok({ stripeCouponId: 'stripe-coupon', stripePromotionCodeId: 'promotion-save' }));
+    let nextId = 0;
+    h.deps.ids = { nextId: () => `id-${++nextId}` };
+    h.deps.coupons = { findByCode: async () => coupon, findById: async () => coupon, cacheStripeIds: async () => coupon };
+    h.deps.couponRedemptions = { counts: async () => ({ total: 0, member: 0 }), createOrderAndClaim: async () => true };
+    h.deps.couponCheckoutSessions = { create: async (_, session) => { couponSessions.push(session); }, attachProviderSession: async () => undefined, findById: async () => null };
+    h.deps.priceHistory = { lowestSince: async (_, input) => input.currentAmountCents };
+    h.deps.payment.ensureCouponPromotion = ensurePromotion;
+    const input = { productId: product.id, salesLinkId: h.link.id, email: 'buyer@example.test', ...(order === 'coupon' ? { couponCode: 'SAVE' } : {}) };
+    const writes = () => ({
+      snapshots: h.snapshots.length, stockHolds: held.stock.reservations.length, couponSessions: couponSessions.length,
+      providerSessions: h.calls.length, promotions: ensurePromotion.mock.calls.length,
+    });
+    return { h, input, writes };
+  };
+
+  it.each(['free', 'coupon'] as const)('refuses a %s order before it writes a snapshot, a stock hold or a coupon session or calls the provider', async (order) => {
+    const { createCheckoutSession } = await import('./checkout.js');
+    const inherited = orderFixture(order, inheritedLive);
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', inherited.input, inherited.h.deps))
+      .toEqual({ ok: false, error: { code: 'validation', message: 'Stripe is not configured for this tenant' } });
+    expect(inherited.writes()).toEqual({ snapshots: 0, stockHolds: 0, couponSessions: 0, providerSessions: 0, promotions: 0 });
+
+    const workspace = orderFixture(order, workspaceOnlyPaymentSource);
+    expect(await createCheckoutSession(tenant, 'https://workspace.example.com', workspace.input, workspace.h.deps)).toMatchObject({ ok: true, value: { free: order === 'free' } });
+    expect(workspace.writes()).toEqual(order === 'free'
+      ? { snapshots: 1, stockHolds: 1, couponSessions: 0, providerSessions: 0, promotions: 0 }
+      : { snapshots: 1, stockHolds: 1, couponSessions: 1, providerSessions: 1, promotions: 1 });
+  });
 });
 
 it('surfaces the original failure when releasing the stock hold after a failed Stripe session creation fails too', async () => {

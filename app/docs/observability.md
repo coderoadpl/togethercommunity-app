@@ -497,6 +497,64 @@ travels with the fixture:
   the message. Sends are recorded with the `platform` transport, because no
   tenant integration ran.
 
+### Purchase smoke fixtures and machine key
+
+Set `SMOKE_PURCHASE_STRIPE_TEST_KEY` to an `rk_test_` restricted key from a
+sandbox dedicated to the synthetic workspace. The operator reseed seeds two
+shipping rates (courier: 15.99 PLN; parcel locker: 12.99 PLN), terms and privacy
+URLs, the 25.00 PLN physical product with its active price and 1000 units of
+stock, the course VAT rate (23%), and the unlisted parcel-and-course bundle
+sales link. It configures only the TEST payment slot through the shared Stripe
+configuration path, including provider-managed webhook registration. Without
+this variable, the normal smoke seed is unchanged. A malformed key is ignored
+with a warning. The reseed response includes `testPayments`: `configured`,
+`not-configured`, or `failed`; check this field before running purchases.
+
+A verified owner of `tenant-acme` issues a shop management key with
+`purpose: "purchase-smoke"`, `scopes: []`, `mode: "direct"`, a name and
+an absolute expiry no more than 30 days away. The existing owner key-revocation
+and purge controls apply. The secret is returned once. Neither issuance nor
+renewal is available to machine keys. Issue it signed in as the seeded fixture
+owner: authentication checks that the issuer still owns the workspace, and the
+reseed re-creates only that owner's grant, so a key issued by another owner
+stops authenticating after the next reseed.
+
+The key grants only two routes:
+
+- `POST /api/m2m/shop/purchase-smoke/checkouts`: JSON `{runId, scenario}`;
+  scenario is `digital-course`, `parcel-courier`, `parcel-locker`, or
+  `bundle-locker`. Returns `{runId, scenario, reference, sessionId, url}`.
+- `GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result`: returns
+  that key's checkout identity, paid state, refund state, the largest cumulative
+  refunded amount among applied refund events, and applied-event receipts
+  (received event id, type and API version, application time and observed refund
+  amount). A missing version remains null, not an inferred provider version.
+
+All checkouts use the existing synthetic smoke member, TEST mode and fixed
+fixtures. Locker scenarios use `WAW01M`. No caller-selected buyer, product,
+price, amount, workspace, return URL or payment mode is accepted. A missing test
+slot or any configured live slot refuses checkout. The workspace cap is 40
+checkouts per UTC day, including pending checkouts; a repeated key/run/scenario
+returns the existing checkout rather than creating another.
+
+Reseeding preserves existing purchase-purpose keys, revocation state, original
+absolute expiry, request and lifecycle audit, rate-limit buckets and checkout
+bindings inside the same transaction. It does not mint, extend or un-revoke a
+key. Other shop keys are removed. Key mutations and checkout creation serialize
+with reseeding. The reseed still removes orders: an old binding is not a fresh
+purchase, and its result is unavailable after that order is removed. Use a new
+run id after reseeding; retained bindings keep the daily cap from resetting.
+
+Receipts are written in the same transaction that applies a payment or refund
+event to that order (a state change, or a larger cumulative refunded amount),
+never on signature acceptance or event handling alone. A late partial
+refund after a full refund and a duplicate full refund produce no new receipt.
+A provider refund tests
+inbound refund reconciliation, not staff refund authorization or dispatch.
+The runner needs a separate restricted provider key from this same exclusive
+sandbox, without webhook-configuration permissions. It does not receive the
+operator secret or server configuration credential.
+
 ### Reseeding the smoke tenant
 
 `POST /api/internal/reseed-acme`, authenticated by the

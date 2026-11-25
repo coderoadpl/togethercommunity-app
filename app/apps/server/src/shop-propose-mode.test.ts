@@ -1,3 +1,4 @@
+import { purchaseSmokeRoutes } from './purchase-smoke-routes.js';
 import { createHash } from 'node:crypto';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -178,7 +179,7 @@ const routeClass = (route: ShopMachineRoute): string => {
 
 const registeredShopRoutes = (): readonly ShopMachineRoute[] => [
   ...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps),
-  ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps),
+  ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps), ...purchaseSmokeRoutes(deps),
 ];
 
 const concretePath = (path: string): string => path
@@ -426,6 +427,8 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/integrations/storage/configure': 'refuse secret',
       'GET /api/m2m/shop/integrations/shipx': 'read',
       'POST /api/m2m/shop/integrations/shipx/configure': 'refuse secret',
+      'POST /api/m2m/shop/purchase-smoke/checkouts': 'purchase-smoke',
+      'GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result': 'purchase-smoke',
       'GET /api/m2m/shop/proposals': 'proposal-management',
       'GET /api/m2m/shop/proposals/:id': 'proposal-management',
       'POST /api/m2m/shop/proposals/:id/withdraw': 'proposal-management',
@@ -514,7 +517,7 @@ describe('a propose-mode key on every registered shop route', () => {
     expect(imageStorage.keysUnder('acme/product-downloads/').filter((key) => !key.includes(`/${proposer.apiKey.id}/`))).toEqual([OWNER_FILE.key]);
     expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(18);
     expect(outcomes.filter((outcome) => outcome.endsWith('quarantined'))).toHaveLength(8);
-    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(14);
+    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(16);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
     expect(stored).toHaveLength(18);
   });

@@ -507,6 +507,7 @@ import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
 import { shopProposalRoutes } from './shop-proposal-routes.js';
 import { registerChangeProposalRoutes } from './change-proposal-routes.js';
+import { purchaseSmokeRoutes } from './purchase-smoke-routes.js';
 import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
@@ -1371,7 +1372,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps), ...purchaseSmokeRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -2806,6 +2807,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        logger: deps.logger,
       },
     ));
   });

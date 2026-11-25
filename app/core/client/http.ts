@@ -1,3 +1,5 @@
+import { PURCHASE_SMOKE_ROUTES, purchaseSmokeContracts } from '#core/contract/index.js';
+import type { PurchaseSmokeStart } from '#core/domain/index.js';
 import type { Language, OrderChangeFeed } from '#core/domain/index.js';
 import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
@@ -3263,6 +3265,10 @@ export const createShopManagementClient = (shopOptions: ShopManagementClientOpti
       request(options, routes.adjustProductStock.method, routes.adjustProductStock.path, proposable.adjustProductStock, input, signal, proposalHeaders(proposal)),
     setProductStockThreshold: (input: ShopCatalogInput<'setProductStockThreshold'>, signal?: AbortSignal, proposal?: ProposalRequestOptions) =>
       request(options, routes.setProductStockThreshold.method, routes.setProductStockThreshold.path, proposable.setProductStockThreshold, input, signal, proposalHeaders(proposal)),
+    startPurchaseSmokeCheckout: (input: PurchaseSmokeStart, signal?: AbortSignal) =>
+      request(options, PURCHASE_SMOKE_ROUTES.start.method, PURCHASE_SMOKE_ROUTES.start.path, purchaseSmokeContracts.start.output, input, signal),
+    getPurchaseSmokeResult: (reference: string, signal?: AbortSignal) =>
+      request(options, PURCHASE_SMOKE_ROUTES.result.method, PURCHASE_SMOKE_ROUTES.result.path.replace(':reference', encodeURIComponent(reference)), purchaseSmokeContracts.result.output, undefined, signal),
     ...shopOrderMethods(options),
     ...shopSettingsMethods(options),
     ...shopAssetsMethods(options),

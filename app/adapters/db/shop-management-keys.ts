@@ -6,10 +6,15 @@ import type { ShopManagementKeyRateLimitRepository, ShopManagementKeyRepository 
 import { deleteEmptyGroupsOfKey } from './change-proposal-groups.js';
 import { withdrawPendingChangeProposalsOfKey } from './change-proposals.js';
 import type { Db } from './client.js';
+import { lockSmokeFixture } from './smoke-fixture-lock.js';
 import { shopManagementKeyRateLimitBuckets, shopManagementKeys } from './schema.js';
 import { insertShopManagementKeyEvent } from './shop-management-key-events.js';
 
-const parseKey = (key: ShopManagementKey): ShopManagementKey => shopManagementKeySchema.parse(key);
+const parseKey = (key: typeof shopManagementKeys.$inferSelect): ShopManagementKey => shopManagementKeySchema.parse({
+  ...key,
+  purpose: key.purpose ?? undefined,
+  ...(key.purpose === 'purchase-smoke' ? { scopes: [], expiresAt: key.purposeExpiresAt } : {}),
+});
 
 const withoutKeyHashInErrors = async <T>(message: string, query: () => PromiseLike<T>): Promise<T> => {
   try {
@@ -30,10 +35,14 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
         .orderBy(asc(shopManagementKeys.createdAt), asc(shopManagementKeys.id))
     ).map(parseKey),
   create: async (tenantId, key, event) => {
-    const parsed = parseKey(key);
+    const parsed = shopManagementKeySchema.parse(key);
     if (parsed.tenantId !== tenantId) throw new Error('Shop management key belongs to another tenant');
     await withoutKeyHashInErrors('API key write failed', () => db.transaction(async (tx) => {
-      await tx.insert(shopManagementKeys).values(parsed);
+      await lockSmokeFixture(tx, tenantId);
+      // A previous release must still parse this row and must refuse it, so the legacy expiry stays permanently in the past.
+      await tx.insert(shopManagementKeys).values(parsed.purpose === 'purchase-smoke' ? {
+        ...parsed, scopes: ['shop:catalog:read'], expiresAt: '1970-01-01T00:00:00.000Z', purposeExpiresAt: parsed.expiresAt,
+      } : parsed);
       await insertShopManagementKeyEvent(tx, tenantId, event);
     }));
   },
@@ -47,6 +56,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     return row ? parseKey(row) : null;
   },
   revoke: async (tenantId, id, revokedAt, event, withdrawal) => db.transaction(async (tx) => {
+    await lockSmokeFixture(tx, tenantId);
     const rows = await tx
       .update(shopManagementKeys)
       .set({ revokedAt })
@@ -64,6 +74,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     return parseKey(row);
   }),
   purge: async (tenantId, event, withdrawal) => db.transaction(async (tx) => {
+    await lockSmokeFixture(tx, tenantId);
     const purged = await tx
       .delete(shopManagementKeys)
       .where(eq(shopManagementKeys.tenantId, tenantId))
@@ -91,9 +102,10 @@ const storedWindowIsOlder = (windowStartedAt: string): SQL =>
   sql`${shopManagementKeyRateLimitBuckets.windowStartedAt} < ${windowStartedAt}::timestamptz`;
 
 export const createShopManagementKeyRateLimitRepository = (db: Db): ShopManagementKeyRateLimitRepository => ({
-  claim: async (tenantId, input) => {
-    if (input.limit < 1 || !await ownsKey(db, tenantId, input.apiKeyId)) return false;
-    const [row] = await db.insert(shopManagementKeyRateLimitBuckets).values({
+  claim: async (tenantId, input) => db.transaction(async (tx) => {
+    await lockSmokeFixture(tx, tenantId);
+    if (input.limit < 1 || !await ownsKey(tx, tenantId, input.apiKeyId)) return false;
+    const [row] = await tx.insert(shopManagementKeyRateLimitBuckets).values({
       apiKeyId: input.apiKeyId,
       period: input.period,
       windowStartedAt: input.windowStartedAt,
@@ -110,10 +122,11 @@ export const createShopManagementKeyRateLimitRepository = (db: Db): ShopManageme
       ) ?? sql`false`,
     }).returning({ count: shopManagementKeyRateLimitBuckets.count });
     return row !== undefined;
-  },
-  release: async (tenantId, input) => {
-    if (!await ownsKey(db, tenantId, input.apiKeyId)) return;
-    await db
+  }),
+  release: async (tenantId, input) => db.transaction(async (tx) => {
+    await lockSmokeFixture(tx, tenantId);
+    if (!await ownsKey(tx, tenantId, input.apiKeyId)) return;
+    await tx
       .update(shopManagementKeyRateLimitBuckets)
       .set({ count: sql`greatest(0, ${shopManagementKeyRateLimitBuckets.count} - 1)` })
       .where(and(
@@ -121,5 +134,5 @@ export const createShopManagementKeyRateLimitRepository = (db: Db): ShopManageme
         eq(shopManagementKeyRateLimitBuckets.period, input.period),
         eq(shopManagementKeyRateLimitBuckets.windowStartedAt, input.windowStartedAt),
       ));
-  },
+  }),
 });

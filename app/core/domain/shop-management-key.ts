@@ -45,7 +45,8 @@ export const shopManagementKeySchema = z.object({
   tenantId: z.string().min(1),
   name: z.string(),
   keyHash: z.string().min(1),
-  scopes: z.array(shopManagementScopeSchema).min(1),
+  scopes: z.array(shopManagementScopeSchema),
+  purpose: z.literal('purchase-smoke').optional(),
   mode: shopManagementKeyModeSchema,
   issuedByUserId: z.string().min(1),
   createdAt: z.string().datetime(),
@@ -65,6 +66,7 @@ export const toShopManagementKeyPublic = (key: ShopManagementKey): ShopManagemen
   name: key.name,
   scopes: key.scopes,
   mode: key.mode,
+  ...(key.purpose === undefined ? {} : { purpose: key.purpose }),
   issuedByUserId: key.issuedByUserId,
   createdAt: key.createdAt,
   expiresAt: key.expiresAt,
@@ -73,10 +75,18 @@ export const toShopManagementKeyPublic = (key: ShopManagementKey): ShopManagemen
 
 export const createShopManagementKeyInputSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  scopes: z.array(shopManagementScopeSchema).min(1),
+  scopes: z.array(shopManagementScopeSchema),
+  purpose: z.literal('purchase-smoke').optional(),
   expiresAt: z.string().datetime(),
   mode: shopManagementKeyModeSchema.default('direct'),
 }).strict().superRefine((input, context) => {
+  if (input.purpose === 'purchase-smoke') {
+    if (input.scopes.length !== 0 || input.mode !== 'direct') {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Purchase smoke purpose requires direct mode and no scopes' });
+    }
+    return;
+  }
+  if (input.scopes.length === 0) context.addIssue({ code: z.ZodIssueCode.custom, path: ['scopes'], message: 'Choose at least one scope' });
   if (input.mode !== 'propose') return;
   input.scopes.forEach((scope, index) => {
     if (scopeRefusedInProposeMode(scope)) {

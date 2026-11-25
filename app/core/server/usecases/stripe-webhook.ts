@@ -1,5 +1,6 @@
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
+  SMOKE_TENANT_MEMBER_EMAIL,
   appError,
   emailBrandingFrom,
   emailContactUrl,
@@ -47,6 +48,7 @@ import type {
   OrderStaffRefundRepository,
   PaymentProvider,
   PaymentTransactionPort,
+  PurchaseSmokeRefundAdvance,
   StripeWebhookOwnershipReader,
   TenantAccessReader,
 } from '../ports.js';
@@ -104,6 +106,7 @@ interface EventApplication {
   emailsQueued?: boolean;
   consumed?: boolean;
   paidOrder?: Order;
+  refundEvidence?: { order: Order; advanceInState?: PurchaseSmokeRefundAdvance['status'] };
   pendingConsent?: string;
   refundQueued?: boolean;
 }
@@ -949,11 +952,15 @@ const applyPaymentAdjustment = async (
   if (order.mode !== (event.mode ?? 'live')) return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
 
   if (adjustment.refund != null && !adjustment.refund.full) {
-    if (order.status === 'paid') {
-      await deps.paymentRefunds.markOrderPartiallyRefunded(tenant.id, order.id);
-    }
+    const refundedOrder = order.status === 'paid'
+      ? await deps.paymentRefunds.markOrderPartiallyRefunded(tenant.id, order.id) : null;
     const staffRefundsDue = await noteStaffRefundsDue(tenant, order, event, deps);
-    return ok({ processed: true, ...(staffRefundsDue ? { refundQueued: true } : {}) });
+    const refundEvidence: EventApplication['refundEvidence'] = refundedOrder !== null
+      ? { order: refundedOrder }
+      : order.status === 'paid' || order.status === 'partially_refunded'
+        ? { order, advanceInState: 'partially_refunded' }
+        : undefined;
+    return ok({ processed: true, ...(refundEvidence === undefined ? {} : { refundEvidence }), ...(staffRefundsDue ? { refundQueued: true } : {}) });
   }
 
   const providerSubscriptionId = order.providerObjectIds['subscription'];
@@ -983,10 +990,9 @@ const applyPaymentAdjustment = async (
     }
   }
 
-  if (order.status !== 'refunded') {
-    const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
-    if (!refunded) return ok({ processed: false });
-  }
+  const refundedOrder = order.status !== 'refunded'
+    ? await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id) : null;
+  if (order.status !== 'refunded' && refundedOrder === null) return ok({ processed: false });
   let refundQueued = false;
   if (order.cancelReason == null) {
     await revokeRefundedAccess(tenant, order, deps);
@@ -1008,7 +1014,10 @@ const applyPaymentAdjustment = async (
       deps,
     );
   }
-  return ok({ processed: true, ...(refundQueued ? { refundQueued } : {}) });
+  const refundEvidence: EventApplication['refundEvidence'] = refundedOrder !== null
+    ? { order: refundedOrder }
+    : { order, advanceInState: 'refunded' };
+  return ok({ processed: true, refundEvidence, ...(refundQueued ? { refundQueued } : {}) });
 };
 
 const asyncPaymentFailed = (
@@ -1322,6 +1331,7 @@ export const fulfillStripeWebhook = async (
     if (subscription === null) return ok({ processed: false });
   }
   if (!await paymentModeMatches(tenant, event, deps)) return ok({ processed: false });
+  const receivedEventId = event.id;
   if (event.mode === 'test') event = { ...event, id: `test:${event.id}` };
   if (!event.objectId) return err(validation('Payment event is missing its object id'));
   await deps.authPort.initialize();
@@ -1376,6 +1386,11 @@ export const fulfillStripeWebhook = async (
   try {
     applied = await deps.paymentTransaction.run(async (transactionDeps) => {
       const branchDeps = { ...deps, ...transactionDeps };
+      if (event.mode === 'test' && event.checkoutSession !== null && event.objectId !== null
+        && await transactionDeps.purchaseSmoke?.hasCheckout(tenant.id, event.objectId)
+        && (event.checkoutSession.email ?? event.checkoutSession.metadata.memberEmail) !== SMOKE_TENANT_MEMBER_EMAIL) {
+        return err(validation('Purchase smoke checkout must retain its synthetic buyer'));
+      }
       const result: Result<EventApplication, AppError> =
         event.type === 'checkout.session.async_payment_failed'
           ? asyncPaymentFailed(tenant, event, deps)
@@ -1387,7 +1402,22 @@ export const fulfillStripeWebhook = async (
                 ? await applyPaymentAdjustment(tenant, event, branchDeps)
                 : await applySubscriptionEvent(tenant, event, branchDeps);
       if (result.ok && (result.value.processed || result.value.consumed === true)) {
-        if (result.value.processed) await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
+        if (result.value.processed) {
+          await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
+          if (event.mode === 'test' && provider === 'stripe' && transactionDeps.purchaseSmoke !== undefined
+            && (event.type === 'checkout.session.completed' || event.type === 'charge.refunded')) {
+            const refundEvidence = event.type === 'charge.refunded' ? result.value.refundEvidence : undefined;
+            const order = event.type === 'checkout.session.completed' ? result.value.paidOrder : refundEvidence?.order;
+            const sessionId = order?.providerObjectIds['checkoutSession'];
+            if (order?.mode === 'test' && sessionId !== undefined) {
+              await transactionDeps.purchaseSmoke.recordAppliedEvent(tenant.id, sessionId, {
+                eventId: receivedEventId, type: event.type, apiVersion: event.apiVersion ?? null,
+                appliedAt: deps.clock.nowIso(),
+                refundedAmountCents: event.type === 'charge.refunded' ? event.adjustment?.refund?.amountRefundedCents ?? null : null,
+              }, refundEvidence?.advanceInState === undefined ? undefined : { orderId: order.id, status: refundEvidence.advanceInState });
+            }
+          }
+        }
         await transactionDeps.processedPaymentEvents.finalize(
           tenant.id,
           event.id,

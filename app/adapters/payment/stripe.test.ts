@@ -635,6 +635,7 @@ describe('verifyWebhookEvent', () => {
   it('accepts a valid signature and rejects payload or secret tampering', async () => {
     const payload = JSON.stringify({
       id: 'evt_checkout',
+      api_version: '2025-09-30.clover',
       type: 'checkout.session.completed',
       data: {
         object: {
@@ -654,6 +655,7 @@ describe('verifyWebhookEvent', () => {
       ok: true,
       value: {
         id: 'evt_checkout',
+        apiVersion: '2025-09-30.clover',
         type: 'checkout.session.completed',
         objectId: 'cs_1',
         checkoutSession: {
@@ -822,7 +824,7 @@ describe('verifyWebhookEvent', () => {
         payments: { data: [{ status: type === 'invoice.paid' ? 'paid' : 'open', payment }] },
       }));
       expect(await api.verify(invoiceWebhook(type, payments))).toEqual(ok({
-        id: 'evt_clover_renewal', type, objectId: 'in_renewal', livemode: true, checkoutSession: null,
+        id: 'evt_clover_renewal', apiVersion: '2025-09-30.clover', type, objectId: 'in_renewal', livemode: true, checkoutSession: null,
         invoice: {
           subscriptionId: 'sub_1', chargeId: null, paymentIntentId: 'pi_renewal',
           amountCents: type === 'invoice.paid' ? 4900 : 5900,
@@ -932,7 +934,7 @@ describe('verifyWebhookEvent', () => {
     const preflight = vi.fn(async () => ok('foreign' as const));
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, preflight);
     expect(await api.verify(invoiceWebhook(type))).toEqual(ok({
-      id: 'evt_clover_renewal', type, livemode: true, objectId: 'in_renewal', checkoutSession: null, foreignTenant: true,
+      id: 'evt_clover_renewal', apiVersion: '2025-09-30.clover', type, livemode: true, objectId: 'in_renewal', checkoutSession: null, foreignTenant: true,
     }));
     expect(preflight).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       invoice: expect.objectContaining({ subscriptionId: 'sub_1' }),
@@ -1092,12 +1094,32 @@ describe('verifyWebhookEvent', () => {
       ok: true,
       value: {
         id: 'evt_unknown',
+        apiVersion: null,
+        livemode: undefined,
         type: 'payment_intent.created',
         objectId: 'pi_unknown',
         checkoutSession: null,
       },
     });
   });
+});
+
+it('uses a supplied checkout credential for creation and cleanup without resolving it again', async () => {
+  const resolve = vi.fn(async (): Promise<never> => { throw new Error('Unexpected credential lookup'); });
+  const clientFactory = vi.fn((key: string) => new Stripe(key, { maxNetworkRetries: 0,
+    httpClient: Stripe.createFetchHttpClient(async () => stripeJson({ id: 'cs_test_fixed', url: 'https://checkout.stripe.test/session' })),
+  }));
+  const payment = createStripePaymentProvider({ resolver: { resolve }, clientFactory });
+  const input = { tenantId: 'tenant-1', mode: 'test' as const, productId: 'product-1', productName: 'Course', priceCents: 1000,
+    currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel' };
+  const credential = { restrictedKey: 'rk_test_fixed' };
+  expect((await payment.createCheckoutSession(input, credential)).ok).toBe(true);
+  expect((await payment.expireCheckoutSession({ tenantId: input.tenantId, mode: 'test', sessionId: 'cs_test_fixed' }, credential)).ok).toBe(true);
+  expect(clientFactory.mock.calls).toEqual([['rk_test_fixed'], ['rk_test_fixed']]);
+  expect(resolve).not.toHaveBeenCalled();
+  expect(await payment.createCheckoutSession(input, { restrictedKey: 'rk_live_wrong' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(await payment.expireCheckoutSession({ tenantId: input.tenantId, mode: 'live', sessionId: 'cs_test_fixed' }, credential)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(clientFactory).toHaveBeenCalledTimes(2);
 });
 
 it('selects the sandbox key for test checkout and cancellation', async () => {

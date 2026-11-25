@@ -15,6 +15,7 @@ import {
   selectDomainProvisioner,
   selectPlatformReset,
   selectSmokeTenantReseed,
+  selectSmokeTenantTestPaymentsKey,
   selectOperatorSecret,
   selectTenantCreationMode,
   selectTenantRouting,
@@ -731,6 +732,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_CREATOR_PASSWORD: 'production-only-creator-password',
       },
       create,
+      { warn: vi.fn() },
     );
 
     expect(create).toHaveBeenCalledWith({
@@ -756,6 +758,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_CREATOR_PASSWORD: creator,
       },
       create,
+      { warn: vi.fn() },
     )).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
   });
@@ -772,6 +775,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_CREATOR_PASSWORD: undefined,
       },
       create,
+      { warn: vi.fn() },
     );
 
     expect(create).toHaveBeenCalledWith({ member: 'demo-password-15', creator: 'demo-password-15' });
@@ -790,6 +794,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_CREATOR_PASSWORD: undefined,
       },
       create,
+      { warn: vi.fn() },
     )).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
   });
@@ -949,4 +954,19 @@ describe('import record limits', () => {
       }
     },
   );
+});
+
+describe('purchase fixture Stripe key selection', () => {
+  it('enables test fixtures with only the restricted test key', () => {
+    expect(selectSmokeTenantTestPaymentsKey({ SMOKE_PURCHASE_STRIPE_TEST_KEY: ' rk_test_fixture ' }, { warn: vi.fn() })).toBe('rk_test_fixture');
+  });
+  it.each([undefined, ''])('leaves normal seeding unchanged without a key: %s', (value) => {
+    expect(selectSmokeTenantTestPaymentsKey({ SMOKE_PURCHASE_STRIPE_TEST_KEY: value }, { warn: vi.fn() })).toBeUndefined();
+  });
+  it.each(['sk_test_fixture', 'rk_live_fixture'])('refuses %s without logging its value', (value) => {
+    const warn = vi.fn();
+    expect(selectSmokeTenantTestPaymentsKey({ SMOKE_PURCHASE_STRIPE_TEST_KEY: value }, { warn })).toBeUndefined();
+    expect(warn).toHaveBeenCalledOnce();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(value);
+  });
 });

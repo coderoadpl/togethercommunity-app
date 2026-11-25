@@ -463,6 +463,12 @@ describe('approveChangeProposal applies exactly what the owner saw', () => {
     expect(await h.approve(reordered)).toMatchObject({ ok: true, value: { status: 'applied' } });
     expect(liveProduct(h, 'product-mug')?.images).toEqual([back, front]);
 
+    const added = await submitChangeProposal(keyCtx(), {
+      operation: 'product.update',
+      input: { id: 'product-mug', images: [back, front, { url: 'https://cdn.example.test/new.jpg', alt: '' }] },
+    }, { ...h.deps, changeProposals: h.store.repository });
+    expect(added).toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { images: [expect.stringContaining('cannot be proposed yet')] } } } });
+
     const cleared = await h.submit('product.update', { id: 'product-mug', images: [] });
     Object.assign(liveProduct(h, 'product-mug') ?? {}, { images: [front] });
     const before = structuredClone(h.state);
@@ -557,9 +563,11 @@ describe('product proposals stored by this release and read by the release witho
 
   it('stores the gallery key the previous release refuses only when a proposal sends images or deletes a product that has them', async () => {
     const h = harness();
+    const back = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000002.webp', alt: 'Back' };
     Object.assign(liveProduct(h, 'product-draft') ?? {}, { images: gallery });
-    const created = stored(h, await h.submit('product.create', { title: 'Teapot', slug: 'teapot', priceCents: 0, images: gallery }));
-    const updated = stored(h, await h.submit('product.update', { id: 'product-mug', images: gallery }));
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { images: [...gallery, back] });
+    const created = stored(h, await h.submit('product.create', { title: 'Teapot', slug: 'teapot', priceCents: 0, images: [] }));
+    const updated = stored(h, await h.submit('product.update', { id: 'product-mug', images: [back, ...gallery] }));
     const deleted = stored(h, await h.submit('product.delete-draft', { productId: 'product-draft' }));
 
     expect(unknownKeys(created.input, PREVIOUS_RELEASE_PRODUCT_CREATE_INPUT_KEYS)).toEqual(['images']);

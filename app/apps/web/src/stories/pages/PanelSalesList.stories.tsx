@@ -158,7 +158,7 @@ export const FilterPopoverOpen: Story = {
   parameters: { locale: 'en' },
   play: async ({ canvasElement }) => {
     const grid = await ready(canvasElement);
-    await userEvent.click(within(grid).getByRole('columnheader', { name: 'Invoice data' }));
+    await userEvent.click(within(grid).getByRole('columnheader', { name: 'Invoice' }));
     await userEvent.keyboard('{Control>}{Enter}{/Control}');
     await userEvent.click(await within(document.body).findByRole('menuitem', { name: 'Filter' }));
   },

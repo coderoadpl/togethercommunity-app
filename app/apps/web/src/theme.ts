@@ -4835,6 +4835,7 @@ export const StudioGridHint = styled('span')(({ theme }) => ({
   '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
 }));
 export const StudioGridMutedHint = styled(StudioGridHint)(({ theme }) => ({ color: theme.palette.text.secondary }));
+export const StudioGridCaptionHint = styled(StudioGridMutedHint)(({ theme }) => ({ ...theme.typography.caption, display: 'block', marginTop: '-0.25rem' }));
 export const StudioGridCount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
 export const StudioGridColumnRow = styled('li')(({ theme }) => ({
   display: 'flex',

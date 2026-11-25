@@ -3,7 +3,7 @@ import { Tooltip } from '@mui/material';
 import type { OrderListItem } from '#core/domain/index.js';
 
 import { useTranslations } from '../../../i18n/index.js';
-import { StudioGridHint, StudioGridMutedHint } from '../../../theme.js';
+import { StudioGridCaptionHint, StudioGridHint, StudioGridMutedHint } from '../../../theme.js';
 
 type OrderBillingKind = 'company' | 'private' | 'none';
 
@@ -31,13 +31,13 @@ export const OrderInvoiceState = ({ order }: { order: Pick<OrderListItem, 'invoi
   );
 };
 
-export const OrderBillingState = ({ order }: { order: Pick<OrderListItem, 'billing'> }) => {
+export const OrderBillingState = ({ order, caption = false }: { order: Pick<OrderListItem, 'billing'>; caption?: boolean }) => {
   const t = useTranslations();
   const kind = orderBillingKind(order);
-  const Hint = kind === 'none' ? StudioGridMutedHint : StudioGridHint;
+  const Hint = caption ? StudioGridCaptionHint : kind === 'none' ? StudioGridMutedHint : StudioGridHint;
   return (
     <Tooltip title={t.sales.billingHints[kind]} describeChild>
-      <Hint tabIndex={0} data-testid="sales-billing-state">{t.sales.billings[kind]}</Hint>
+      <Hint tabIndex={0} data-testid={caption ? 'sales-billing-caption' : 'sales-billing-state'}>{t.sales.billings[kind]}</Hint>
     </Tooltip>
   );
 };

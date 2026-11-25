@@ -129,6 +129,33 @@ describe('orders grid', () => {
     expect(within(rows[1] ?? document.body).getByTestId('sales-invoice-state')).toHaveAccessibleDescription(en.sales.noInvoiceHint);
     expect(within(rows[2] ?? document.body).getByTestId('sales-billing-state')).toHaveAccessibleDescription(en.sales.billingHints.private);
     expect(screen.getByTestId('studio-grid-count')).toHaveTextContent(en.sales.orderCount({ count: 4 }));
+    expect(screen.queryAllByTestId('sales-billing-caption')).toEqual([]);
+  });
+
+  it('hides the invoice data column below the widest screens and shows it as a caption under the invoice state', async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('max-width') && !query.includes('599'), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined,
+      addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
+    }));
+    const recorded = serve(null);
+    await render();
+    const rows = await screen.findAllByTestId('sales-row');
+    expect(headers().slice(1)).toEqual([
+      en.sales.date, en.sales.member, en.sales.product, en.sales.amount, en.sales.status, en.shipping.fulfilmentColumn, en.sales.invoiceColumn,
+    ]);
+    expect(screen.queryAllByTestId('sales-billing-state')).toEqual([]);
+    expect(rows.map((row) => within(row).getByTestId('sales-billing-caption').textContent))
+      .toEqual([en.sales.billings.company, en.sales.billings.company, en.sales.billings.private, en.sales.billings.none]);
+    expect(within(rows[2] ?? document.body).getByTestId('sales-billing-caption')).toHaveAccessibleDescription(en.sales.billingHints.private);
+    await user.click(screen.getByRole('columnheader', { name: en.sales.invoiceColumn }));
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    await user.click(await screen.findByRole('menuitem', { name: en.dataGrid.filter }));
+    const popover = await screen.findByRole('dialog', { name: en.dataGrid.filterTitle({ column: en.sales.invoiceColumn }) });
+    within(popover).getByRole('combobox', { name: en.sales.invoiceData }).focus();
+    await user.keyboard('{ArrowDown}');
+    await user.click(await screen.findByRole('option', { name: en.sales.billings.company }));
+    await waitFor(() => expect(recorded.list.at(-1)?.get('billing')).toBe('company'));
   });
 
   it('applies the saved layout, drops an unknown column and filter, appends a new column, and sends the saved sort and filter', async () => {

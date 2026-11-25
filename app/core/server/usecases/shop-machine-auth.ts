@@ -68,6 +68,7 @@ interface ShopMachineAuthOutcome {
 const PROPOSE_MODE_HASH_DOMAIN = 'together:shop-management-key:propose:';
 const PURCHASE_SMOKE_HASH_DOMAIN = 'together:shop-management-key:purchase-smoke:';
 
+// A release that predates propose mode hashes the presented secret plainly, so it never finds a propose-mode row and refuses the key instead of granting live writes.
 export const shopManagementKeyHash = (
   apiKeyCrypto: Pick<ApiKeyCrypto, 'hash'>,
   secret: string,

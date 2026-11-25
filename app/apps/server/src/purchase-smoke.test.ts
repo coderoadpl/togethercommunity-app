@@ -174,7 +174,7 @@ describe('purchase key issuance, rollback and reseed', () => {
     expect((await createShopManagementKey(owner, { ...input, expiresAt: '2027-11-20T12:00:00.000Z' }, deps)).ok).toBe(false);
   });
 
-  it('keeps old-reader fields valid and permanently expired, including transformed-secret lookup', async () => {
+  it('stores previous-release fields valid and permanently expired, under its own hash domain', async () => {
     const [raw] = await database.db.query.shopManagementKeys.findMany({ where: (table, { eq }) => eq(table.id, key.id) });
     expect(raw).toMatchObject({ scopes: ['shop:catalog:read'], mode: 'direct', expiresAt: '1970-01-01T00:00:00.000Z', purposeExpiresAt: EXPIRES });
     expect(Date.parse(raw?.expiresAt ?? '')).toBeLessThan(Date.parse(NOW));

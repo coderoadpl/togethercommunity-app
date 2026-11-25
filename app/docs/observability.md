@@ -509,7 +509,7 @@ An event fetched from the Events API is the provider's stored object, not the
 body the endpoint received; the receipt's event id and API version are what
 the server recorded on application.
 The production refund check proves inbound refund reconciliation (a
-provider-side refund reaches the order), **not** the staff refund flow.
+provider-side refund reaches the order), NOT the staff refund flow.
 
 #### Not verified on production
 

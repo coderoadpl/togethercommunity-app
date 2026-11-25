@@ -678,6 +678,7 @@ describe('production purchase machine run', () => {
     ].map((name) => [name, 'ok']));
     expect(checkByName(result, 'delivery')?.detail).toContain('pending_webhooks=5');
     expect(checkByName(result, 'api version')?.detail).toContain('test endpoint: 2025-09-30.clover; checkout receipts: digital-course: 2025-09-30.clover');
+    expect(checkByName(result, 'refund full')?.detail).toContain('The production refund check proves inbound refund reconciliation (a provider-side refund reaches the order), NOT the staff refund flow.');
     expect(calls.filter(({ url }) => url.pathname === API_PATHS.publicCheckoutSessionStatus)).toHaveLength(8);
     expect(calls.filter(({ method, url }) => method === 'POST' && url.pathname === '/v1/refunds').map(({ init }) => [
       new Headers(init?.headers).get('idempotency-key'), String(init?.body),

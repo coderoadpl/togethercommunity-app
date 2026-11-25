@@ -52,6 +52,6 @@ The reseed never mints, extends or reactivates a key.
 
 The separate runner Stripe credentials come from the production fixture's own
 test sandbox. Its provider-side refund check proves inbound refund
-reconciliation (a provider-side refund reaches the order), not the staff refund
+reconciliation (a provider-side refund reaches the order), NOT the staff refund
 flow. See [Purchase end-to-end on a deployed host](../observability.md#purchase-end-to-end-on-a-deployed-host)
 for the sandbox permissions and receipt requirements.

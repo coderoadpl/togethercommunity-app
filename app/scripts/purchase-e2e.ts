@@ -763,7 +763,7 @@ const runProductionPurchaseE2e = async (
         return result.refundState === state && result.refundedAmountCents === amount ? applied ?? null : null;
       }, () => `no applied ${state} refund of ${String(amount)} cents for ${purchase.checkout.sessionId} (${latest})`);
       return receipt.eventId;
-    }, (eventId) => `applied ${eventId}; proves inbound refund reconciliation (a provider-side refund reaches the order), not the staff refund flow`);
+    }, (eventId) => `applied ${eventId}. The production refund check proves inbound refund reconciliation (a provider-side refund reaches the order), NOT the staff refund flow.`);
   };
   await refund('digital-course', 'full', null);
   await refund('parcel-courier', 'partial', FIXTURE.partialRefundCents);

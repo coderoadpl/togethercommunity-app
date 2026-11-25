@@ -602,7 +602,8 @@ recorded** (`GET /api/orders/rejected-payments`, capability `order:reconcile`);
 the CLI reads the same list with `together orders rejected-payments [--limit
 <n>]`, and `--json` prints one envelope.
 
-Each recorded refusal also logs one error line for the production health alarm:
+Each recorded refusal also logs one error line with a stable marker that
+operators can search for or attach a log-drain alert to:
 `[payment-webhook-rejected] tenant=<id> event=<id> type=<type> reason=<code>`.
 A failed record or resolve write logs
 `[payment-webhook-rejected] record failed ...` or `... resolve failed ...`, and a

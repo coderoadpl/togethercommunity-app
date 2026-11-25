@@ -1086,6 +1086,7 @@ export interface Messages {
     shipmentStatus: (params: { status: string }) => string;
     paymentPending: string;
     labelCanceled: string;
+    labelCanceledEarlier: string;
     attemptUnconfirmed: string;
     discardAttempt: string;
     discardConfirmTitle: string;

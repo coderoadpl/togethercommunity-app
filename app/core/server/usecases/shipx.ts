@@ -446,6 +446,7 @@ const pollUntilBought = async (
     const failure = shipxPurchaseFailure(latest, run.service, failuresBefore);
     const saved = await saveRemote(run, latest, failure === null ? null : paymentFailed(latest.status, failure), deps);
     if (!saved.ok) return saved;
+    if (latest.status === SHIPX_STATUS_CANCELED) return err(labelCanceled(latest.trackingNumber, shipmentId));
     if (shipxShipmentBought(latest)) return ok(latest);
     if (failure !== null) return err(failure);
     const offerId = allowBuy && !buyAttempted ? shipxOfferToBuy(latest, run.service) : null;
@@ -460,6 +461,12 @@ const pollUntilBought = async (
   }
   return err(pendingPayment(shipmentId, latest?.status ?? null));
 };
+
+const labelCanceled = (trackingNumber: string | null, shipxShipmentId: string): AppError => shipxStateError(
+  'conflict',
+  `The InPost label${trackingNumber === null ? '' : ` ${trackingNumber}`} was canceled in Manager Paczek; create a new label there and mark the order as shipped by hand`,
+  { state: 'label_canceled', trackingNumber, shipxShipmentId },
+);
 
 const createRemote = async (run: ShipmentRun, client: ShipxClient, deps: CreateInpostShipmentDeps): Promise<Result<ShipxRemoteShipment, AppError>> => {
   const request = buildShipxShipmentRequest({
@@ -552,6 +559,7 @@ const runShipment = async (
     shipmentId = remote.id;
   }
 
+  if (run.shipment.status === SHIPX_STATUS_CANCELED) return err(labelCanceled(run.shipment.trackingNumber, shipmentId));
   let labelShipment: Pick<ShipxShipment, 'status' | 'trackingNumber'> = run.shipment;
   if (remote !== null || !shipxShipmentBought(run.shipment)) {
     const bought = remote !== null && shipxShipmentBought(remote)
@@ -562,13 +570,7 @@ const runShipment = async (
   }
   const { trackingNumber } = labelShipment;
   if (trackingNumber === null) return err(pendingPayment(shipmentId, null));
-  if (run.shipment.status === SHIPX_STATUS_CANCELED || labelShipment.status === SHIPX_STATUS_CANCELED) {
-    return err(shipxStateError(
-      'conflict',
-      `The InPost label ${trackingNumber} was canceled in Manager Paczek; create a new label there and mark the order as shipped by hand`,
-      { state: 'label_canceled', trackingNumber, shipxShipmentId: shipmentId },
-    ));
-  }
+  if (labelShipment.status === SHIPX_STATUS_CANCELED) return err(labelCanceled(trackingNumber, shipmentId));
 
   const dispatch = markShipped ? await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship) : null;
   const order = dispatch?.ok === true

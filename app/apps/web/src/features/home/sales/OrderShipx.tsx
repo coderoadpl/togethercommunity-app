@@ -32,7 +32,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const labelCanceled = shipment?.status === SHIPX_STATUS_CANCELED;
   const labelReady = !labelCanceled && (order.label != null || (shipment?.shipxShipmentId != null && shipxLabelUsable(shipment)));
   const canPrint = labelReady && (order.fulfilmentStatus !== 'shipped' || (
-    order.shipment?.carrier === 'inpost' && order.shipment.trackingNumber.trim() === shipment?.trackingNumber?.trim()
+    order.shipment?.carrier === 'inpost' && order.shipment.trackingNumber.trim() === (shipment?.trackingNumber ?? order.label?.trackingNumber)?.trim()
   ));
   const showCreate = canCreate && view?.available === true && view.service !== null && !labelReady && !labelCanceled;
   if (!showCreate && confirming !== null) setConfirming(null);
@@ -75,7 +75,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
         <Typography color="text.secondary" data-testid="order-shipx-status">{t.shipx.shipmentStatus({ status: shipment.status })}</Typography>
       )}
       {unconfirmed ? <Alert severity="warning" data-testid="order-shipx-unconfirmed">{t.shipx.attemptUnconfirmed}</Alert> : null}
-      {labelCanceled ? <Alert severity="warning">{t.shipx.labelCanceled}</Alert> : null}
+      {labelCanceled ? <Alert severity="warning" data-testid="order-shipx-label-canceled">{order.fulfilmentStatus === 'to_pack' ? t.shipx.labelCanceled : t.shipx.labelCanceledEarlier}</Alert> : null}
       {awaitingPayment ? <Typography color="text.secondary" data-testid="order-shipx-pending">{t.shipx.paymentPending}</Typography> : null}
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
         {showCreate ? (

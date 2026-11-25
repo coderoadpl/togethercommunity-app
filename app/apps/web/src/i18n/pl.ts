@@ -1307,6 +1307,7 @@ export const pl: Messages = {
     downloadingLabel: 'Pobieranie etykiety…',
     shipmentStatus: ({ status }) => `Status przesyłki InPost: ${status}`,
     labelCanceled: 'Ta etykieta InPost została anulowana w Managerze Paczek. Utwórz tam nową etykietę i oznacz zamówienie jako wysłane ręcznie.',
+    labelCanceledEarlier: 'Pierwotna etykieta InPost tego zamówienia została anulowana w Managerze Paczek.',
     paymentPending: 'InPost nie potwierdził jeszcze płatności. Odśwież zamówienie za chwilę i kliknij ponownie Utwórz przesyłkę InPost, aby dokończyć.',
     attemptUnconfirmed: 'ShipX nie potwierdził poprzedniej próby; sprawdź Manager Paczek. Utwórz przesyłkę InPost najpierw ponownie szuka przesyłki w ShipX i niczego nie tworzy, jeśli ją znajdzie.',
     discardAttempt: 'Odrzuć próbę i utwórz ponownie',

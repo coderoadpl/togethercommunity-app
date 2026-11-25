@@ -1493,6 +1493,27 @@ describe('label creation without dispatch', () => {
       expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
       expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'failed' } });
     });
+
+    it.each(['stored', 'polled'])('refuses a %s canceled shipment without a tracking number instead of waiting for payment', async (source) => {
+      const real = createScriptedShipxClient({
+        polls: [(id) => ok(remoteShipment(id, { status: 'canceled', trackingNumber: null }))],
+      });
+      const h = harness({ real });
+      h.seed(source === 'stored'
+        ? { shipxShipmentId: '1001', status: 'canceled', trackingNumber: null }
+        : { shipxShipmentId: '1001', status: 'offer_selected' });
+      expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toEqual({
+        ok: false,
+        error: {
+          code: 'conflict',
+          message: 'The InPost label was canceled in Manager Paczek; create a new label there and mark the order as shipped by hand',
+          details: { state: 'label_canceled', trackingNumber: null, shipxShipmentId: '1001' },
+        },
+      });
+      expect(real.calls.get).toEqual(source === 'polled' ? ['1001'] : []);
+      expect(h.ship).not.toHaveBeenCalled();
+      expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'failed' } });
+    });
   });
 
   it('defaults to no fulfilment write and no buyer email', async () => {

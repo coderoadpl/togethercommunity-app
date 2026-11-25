@@ -803,9 +803,10 @@ order id (cut to 100 characters).
    `conflict` with `details: { trackingNumber, shipxShipmentId }` and tells staff
    to cancel the label in Manager Paczek. Both conflicts preserve the bought
    shipment and record the operation outcome as `bought`. If the stored or
-   newly read status of the label is `canceled`, both create modes return
-   `conflict` with `details.state: 'label_canceled'`, `trackingNumber` and
-   `shipxShipmentId`. The operation ends as `failed`, with no dispatch or
+   newly read status of the label is `canceled`, with or without a tracking
+   number, both create modes return `conflict` with
+   `details.state: 'label_canceled'`, `trackingNumber` (or `null`) and
+   `shipxShipmentId`, without waiting for a payment. The operation ends as `failed`, with no dispatch or
    e-mail. Staff must create a new label in Manager Paczek and mark the order
    as shipped by hand.
 
@@ -822,7 +823,8 @@ buyer e-mail will be sent now (never for test orders). Studio shows no shipped
 date or staff name until dispatch, and no second **Create InPost shipment**
 button. A stale ShipX view cannot hide a label already stored on the order
 unless it reports `canceled`, in which case Studio warns staff and clears the
-tracking prefill. Cancellation is only known here if a ShipX read recorded it
+tracking prefill; on an order that is no longer to pack the warning only says
+that the original label was canceled. Cancellation is only known here if a ShipX read recorded it
 before purchase completed in Together; status changes after purchase are not
 tracked yet.
 When the ShipX view discovers a label that the order detail did not have,

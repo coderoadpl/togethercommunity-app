@@ -1261,6 +1261,7 @@ export const en: Messages = {
     downloadingLabel: 'Downloading label…',
     shipmentStatus: ({ status }) => `InPost shipment status: ${status}`,
     labelCanceled: 'This InPost label was canceled in Manager Paczek. Create a new label there and mark the order as shipped by hand.',
+    labelCanceledEarlier: 'The original InPost label for this order was canceled in Manager Paczek.',
     paymentPending: 'InPost has not confirmed the payment yet. Refresh the order in a moment, then click Create InPost shipment again to finish.',
     attemptUnconfirmed: 'ShipX did not confirm the previous attempt; check Manager Paczek. Create InPost shipment looks the shipment up in ShipX again before creating anything.',
     discardAttempt: 'Discard the attempt and create again',

@@ -88,6 +88,25 @@ describe('OrderShipx', () => {
     expect(screen.queryByTestId('order-shipx-pending')).toBeNull();
   });
 
+  it('only notes a canceled original label on an order that was shipped by hand', () => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, fulfilmentStatus: 'shipped', shipment: { carrier: 'other', trackingNumber: 'NEWLABEL1', shippedAt: '2026-11-08T10:00:00.000Z', shippedBy: 'staff' } }}
+      view={{ ...ready, available: false, reason: 'not_to_pack', shipment: shipment({ status: 'canceled' }) }}
+    />);
+    expect(screen.getByTestId('order-shipx-label-canceled')).toHaveTextContent('The original InPost label for this order was canceled in Manager Paczek.');
+    expect(screen.queryByRole('button', { name: 'Print label' })).toBeNull();
+  });
+
+  it('prints from the order label while the ShipX view has no shipment yet', () => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, fulfilmentStatus: 'shipped', label: { carrier: 'inpost', trackingNumber: '520000011395200025754311' }, shipment: { carrier: 'inpost', trackingNumber: '520000011395200025754311', shippedAt: '2026-11-08T10:00:00.000Z', shippedBy: 'staff' } }}
+      view={{ ...ready, available: false, reason: 'not_to_pack', shipment: null }}
+    />);
+    expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
+  });
+
   it.each([
     ['matching InPost dispatch', { carrier: 'inpost', trackingNumber: ' 520000011395200025754311 ' }, true],
     ['different InPost tracking', { carrier: 'inpost', trackingNumber: 'LABEL1234' }, false],

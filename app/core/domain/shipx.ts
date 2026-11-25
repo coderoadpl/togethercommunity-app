@@ -190,7 +190,7 @@ export const shipxErrorStateSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('lost_lock') }),
   z.object({ state: z.literal('lease_held') }),
   z.object({ state: z.literal('manual_shipped'), ...shipxBoughtLabelDetailsSchema.shape }),
-  z.object({ state: z.literal('label_canceled'), ...shipxBoughtLabelDetailsSchema.shape }),
+  z.object({ state: z.literal('label_canceled'), trackingNumber: z.string().nullable(), shipxShipmentId: z.string() }),
   z.object({ state: z.literal('environment_mismatch'), environment: shipxEnvironmentSchema, settingsEnvironment: shipxEnvironmentSchema }),
   z.object({ state: z.literal('organization_mismatch') }),
   z.object({ state: z.literal('setup_missing'), reason: z.enum(SHIPX_SETUP_GAPS), environment: shipxEnvironmentSchema }),

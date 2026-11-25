@@ -1,6 +1,7 @@
 import {
   err,
   integrationUnavailable,
+  PROPOSAL_IMAGE_QUARANTINE_PREFIX,
   ok,
   storageListPageSchema,
   storageOrphanReportInputSchema,
@@ -25,7 +26,7 @@ const collectReferences = (tenantId: string, documents: JsonDocument[]): Set<str
         || value.startsWith('lesson-attachments/') || value.startsWith('product-downloads/')) {
         keys.add(value);
       }
-      for (const match of value.matchAll(/\/api\/public\/assets\/(course-cover|product-cover|product-image|logo-dark|logo|favicon|share-image|avatar)\/([0-9a-f-]{36}\.(?:png|jpg|webp|svg|ico))/gi)) {
+      for (const match of value.matchAll(/\/api\/public\/assets\/(course-cover|product-cover|product-image|logo-dark|logo|favicon|share-image|avatar)\/((?:[0-9a-f]{64}|[0-9a-f-]{36})\.(?:png|jpg|webp|svg|ico))/gi)) {
         keys.add(`image-assets/${tenantId}/${match[1]}/${match[2]}`);
       }
     } else if (Array.isArray(value)) {
@@ -59,6 +60,8 @@ export const reportStorageOrphans = async (
   for (const attachment of inventory.attachments) {
     (attachment.status === 'pending' ? pending : current).add(attachment.storageKey);
   }
+  for (const image of inventory.quarantinedImages) pending.add(image.storageKey);
+  for (const staged of inventory.stagedDownloads) pending.add(staged.storageKey);
   for (const download of inventory.downloads) {
     const references = download.status === 'pending' ? pending
       : download.supersededAt === null ? current : history;
@@ -67,6 +70,7 @@ export const reportStorageOrphans = async (
   const prefixes = [...new Set([
     `image-assets/${tenantId}/`,
     `image-asset-candidates/${tenantId}/`,
+    `${PROPOSAL_IMAGE_QUARANTINE_PREFIX}/${tenantId}/`,
     `${tenantId}/lesson-attachments/`,
     `${tenantId}/product-downloads/`,
     ...inventory.lessonIds.map((id) => `lesson-attachments/${id}/`),
@@ -119,6 +123,7 @@ export const reportStorageOrphans = async (
         seen.add(object.key);
         const ownedNamespace = object.key.startsWith(`image-assets/${tenantId}/`)
           || object.key.startsWith(`image-asset-candidates/${tenantId}/`)
+          || object.key.startsWith(`${PROPOSAL_IMAGE_QUARANTINE_PREFIX}/${tenantId}/`)
           || object.key.startsWith(`${tenantId}/`);
         const classification: StorageObjectClassification = current.has(object.key) ? 'referenced'
           : history.has(object.key) ? 'referenced-by-history'

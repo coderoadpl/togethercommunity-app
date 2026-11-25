@@ -1,5 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
-import { check, foreignKey, index, integer, jsonb, pgTable, text, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { bigserial, check, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 
 import type {
   ChangeProposalEffect,
@@ -7,6 +7,11 @@ import type {
   ChangeProposalInput,
   ChangeProposalStatus,
   ChangeProposalTargetKind,
+  KeyDownloadContentType,
+  KeyDownloadRecordEventKind,
+  KeyDownloadRecordState,
+  ProposalImageExtension,
+  ProposalImageKind,
 } from '#core/domain/index.js';
 
 import { tenants } from './app-schema.js';
@@ -107,4 +112,178 @@ export const changeProposalEvents = pgTable('change_proposal_events', {
   check('change_proposal_events_note_length_check', sql`char_length(${table.note}) <= 500`),
   check('change_proposal_events_at_check', isoMillisecondTimestamp(table.at)),
   check('change_proposal_events_actor_check', sql`${table.actorUserId} IS NOT NULL OR ${table.apiKeyId} IS NOT NULL`),
+]);
+
+export const changeProposalImages = pgTable('change_proposal_images', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  apiKeyId: text('api_key_id').notNull(),
+  kind: text('kind').$type<ProposalImageKind>().notNull(),
+  digest: text('digest').notNull(),
+  extension: text('extension').$type<ProposalImageExtension>().notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  createdAt: text('created_at').notNull(),
+  releasedAt: text('released_at'),
+  sweepAttemptedAt: text('sweep_attempted_at'),
+  deleteUnresolvedAt: text('delete_unresolved_at'),
+  pendingSince: text('pending_since'),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_images_pkey', columns: [table.tenantId, table.apiKeyId, table.kind, table.digest, table.extension] }),
+  index('change_proposal_images_created_idx').on(table.createdAt),
+  check('change_proposal_images_kind_check', sql`${table.kind} IN ('product-cover', 'logo', 'logo-dark', 'favicon', 'share-image')`),
+  check('change_proposal_images_digest_check', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
+  check('change_proposal_images_extension_check', sql`${table.extension} IN ('png', 'jpg', 'webp', 'svg', 'ico')`),
+  check('change_proposal_images_size_check', sql`${table.sizeBytes} BETWEEN 1 AND 5242880`),
+  check('change_proposal_images_created_at_check', isoMillisecondTimestamp(table.createdAt)),
+  check('change_proposal_images_released_at_check', sql`${table.releasedAt} IS NULL OR ${isoMillisecondTimestamp(table.releasedAt)}`),
+  check('change_proposal_images_delete_unresolved_at_check', sql`${table.deleteUnresolvedAt} IS NULL OR ${isoMillisecondTimestamp(table.deleteUnresolvedAt)}`),
+  check('change_proposal_images_pending_since_check', sql`${table.pendingSince} IS NULL OR ${isoMillisecondTimestamp(table.pendingSince)}`),
+]);
+
+export const changeProposalImageUploads = pgTable('change_proposal_image_uploads', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  apiKeyId: text('api_key_id').notNull(),
+  objectKey: text('object_key').notNull(),
+  createdAt: text('created_at').notNull(),
+  sweepAttemptedAt: text('sweep_attempted_at'),
+  firstDeletedAt: text('first_deleted_at'),
+  completedDigest: text('completed_digest'),
+  completedExtension: text('completed_extension').$type<ProposalImageExtension>(),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_image_uploads_pkey', columns: [table.tenantId, table.objectKey] }),
+  index('change_proposal_image_uploads_key_idx').on(table.tenantId, table.apiKeyId, table.createdAt),
+  index('change_proposal_image_uploads_created_idx').on(table.createdAt),
+  check('change_proposal_image_uploads_object_key_check', sql`${table.objectKey} LIKE 'image-asset-candidates/%'`),
+  check('change_proposal_image_uploads_created_at_check', isoMillisecondTimestamp(table.createdAt)),
+  check('change_proposal_image_uploads_first_deleted_at_check', sql`${table.firstDeletedAt} IS NULL OR ${isoMillisecondTimestamp(table.firstDeletedAt)}`),
+  check('change_proposal_image_uploads_completed_digest_check', sql`${table.completedDigest} IS NULL OR ${table.completedDigest} ~ '^[0-9a-f]{64}$'`),
+  check('change_proposal_image_uploads_completed_extension_check', sql`${table.completedExtension} IS NULL OR ${table.completedExtension} IN ('png', 'jpg', 'webp', 'svg', 'ico')`),
+  check('change_proposal_image_uploads_completed_check', sql`(${table.completedDigest} IS NULL) = (${table.completedExtension} IS NULL)`),
+]);
+
+export const changeProposalImagePublications = pgTable('change_proposal_image_publications', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  attemptId: text('attempt_id').notNull(),
+  kind: text('kind').$type<ProposalImageKind>().notNull(),
+  digest: text('digest').notNull(),
+  extension: text('extension').$type<ProposalImageExtension>().notNull(),
+  startedAt: text('started_at').notNull(),
+  sweepAttemptedAt: text('sweep_attempted_at'),
+  deleteUnresolvedAt: text('delete_unresolved_at'),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_image_publications_pkey', columns: [table.tenantId, table.attemptId, table.kind, table.digest, table.extension] }),
+  index('change_proposal_image_publications_started_idx').on(table.startedAt),
+  check('change_proposal_image_publications_kind_check', sql`${table.kind} IN ('product-cover', 'logo', 'logo-dark', 'favicon', 'share-image')`),
+  check('change_proposal_image_publications_digest_check', sql`${table.digest} ~ '^[0-9a-f]{64}$'`),
+  check('change_proposal_image_publications_extension_check', sql`${table.extension} IN ('png', 'jpg', 'webp', 'svg', 'ico')`),
+  check('change_proposal_image_publications_started_at_check', isoMillisecondTimestamp(table.startedAt)),
+  check('change_proposal_image_publications_delete_unresolved_at_check', sql`${table.deleteUnresolvedAt} IS NULL OR ${isoMillisecondTimestamp(table.deleteUnresolvedAt)}`),
+]);
+
+const KEY_DOWNLOAD_CONTENT_TYPE_CHECK = sql.raw(`'application/pdf', 'application/epub+zip', 'application/zip', 'audio/mpeg', 'audio/mp4', 'video/mp4', 'image/png', 'image/jpeg'`);
+
+export const changeProposalDownloadFiles = pgTable('change_proposal_download_files', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  id: text('id').notNull(),
+  apiKeyId: text('api_key_id').notNull(),
+  fileName: text('file_name').notNull(),
+  contentType: text('content_type').$type<KeyDownloadContentType>().notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  sha256: text('sha256').notNull(),
+  objectKey: text('object_key').notNull(),
+  copiedFromProductId: text('copied_from_product_id'),
+  copiedFromAssetId: text('copied_from_asset_id'),
+  copiedFromVersion: integer('copied_from_version'),
+  proposalId: text('proposal_id'),
+  createdAt: text('created_at').notNull(),
+  sweepAttemptedAt: text('sweep_attempted_at'),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_download_files_pkey', columns: [table.tenantId, table.id] }),
+  uniqueIndex('change_proposal_download_files_object_key_uidx').on(table.tenantId, table.objectKey),
+  index('change_proposal_download_files_key_idx').on(table.tenantId, table.apiKeyId),
+  index('change_proposal_download_files_created_idx').on(table.createdAt),
+  index('change_proposal_download_files_proposal_idx').on(table.tenantId, table.proposalId),
+  check('change_proposal_download_files_file_name_check', sql`char_length(${table.fileName}) BETWEEN 1 AND 255`),
+  check('change_proposal_download_files_content_type_check', sql`${table.contentType} IN (${KEY_DOWNLOAD_CONTENT_TYPE_CHECK})`),
+  check('change_proposal_download_files_size_check', sql`${table.sizeBytes} BETWEEN 1 AND 268435456`),
+  check('change_proposal_download_files_sha256_check', sql`${table.sha256} ~ '^[0-9a-f]{64}$'`),
+  check('change_proposal_download_files_object_key_check', sql`${table.objectKey} LIKE '%/product-downloads/key-files/%'`),
+  check('change_proposal_download_files_created_at_check', isoMillisecondTimestamp(table.createdAt)),
+  check('change_proposal_download_files_sweep_attempted_at_check', sql`${table.sweepAttemptedAt} IS NULL OR ${isoMillisecondTimestamp(table.sweepAttemptedAt)}`),
+  check('change_proposal_download_files_copied_from_check', sql`(${table.copiedFromProductId} IS NULL) = (${table.copiedFromAssetId} IS NULL) AND (${table.copiedFromAssetId} IS NULL) = (${table.copiedFromVersion} IS NULL)`),
+]);
+
+export const changeProposalDownloadUploads = pgTable('change_proposal_download_uploads', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  id: text('id').notNull(),
+  apiKeyId: text('api_key_id').notNull(),
+  kind: text('kind').$type<'upload' | 'copy'>().notNull(),
+  state: text('state').$type<KeyDownloadRecordState>().notNull(),
+  fileId: text('file_id').notNull(),
+  fileName: text('file_name').notNull(),
+  contentType: text('content_type').$type<KeyDownloadContentType>().notNull(),
+  declaredBytes: integer('declared_bytes').notNull(),
+  candidateKey: text('candidate_key'),
+  stagedKey: text('staged_key'),
+  copiedFromProductId: text('copied_from_product_id'),
+  copiedFromAssetId: text('copied_from_asset_id'),
+  copiedFromVersion: integer('copied_from_version'),
+  attemptId: text('attempt_id'),
+  attemptAt: text('attempt_at'),
+  createdAt: text('created_at').notNull(),
+  completedAt: text('completed_at'),
+  sweepAttemptedAt: text('sweep_attempted_at'),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_download_uploads_pkey', columns: [table.tenantId, table.id] }),
+  uniqueIndex('change_proposal_download_uploads_file_uidx').on(table.tenantId, table.fileId),
+  index('change_proposal_download_uploads_key_idx').on(table.tenantId, table.apiKeyId, table.createdAt),
+  index('change_proposal_download_uploads_created_idx').on(table.createdAt),
+  check('change_proposal_download_uploads_kind_check', sql`${table.kind} IN ('upload', 'copy')`),
+  check('change_proposal_download_uploads_state_check', sql`${table.state} IN ('started', 'completing', 'interrupted', 'completed', 'failed', 'settled')`),
+  check('change_proposal_download_uploads_file_name_check', sql`char_length(${table.fileName}) BETWEEN 1 AND 255`),
+  check('change_proposal_download_uploads_content_type_check', sql`${table.contentType} IN (${KEY_DOWNLOAD_CONTENT_TYPE_CHECK})`),
+  check('change_proposal_download_uploads_declared_bytes_check', sql`${table.declaredBytes} BETWEEN 1 AND 268435456`),
+  check('change_proposal_download_uploads_candidate_key_check', sql`${table.candidateKey} LIKE '%/product-downloads/key-uploads/%'`),
+  check('change_proposal_download_uploads_staged_key_check', sql`${table.stagedKey} LIKE '%/product-downloads/key-files/%'`),
+  check('change_proposal_download_uploads_attempt_at_check', sql`${table.attemptAt} IS NULL OR ${isoMillisecondTimestamp(table.attemptAt)}`),
+  check('change_proposal_download_uploads_created_at_check', isoMillisecondTimestamp(table.createdAt)),
+  check('change_proposal_download_uploads_completed_at_check', sql`${table.completedAt} IS NULL OR ${isoMillisecondTimestamp(table.completedAt)}`),
+  check('change_proposal_download_uploads_sweep_attempted_at_check', sql`${table.sweepAttemptedAt} IS NULL OR ${isoMillisecondTimestamp(table.sweepAttemptedAt)}`),
+  check('change_proposal_download_uploads_shape_check', sql`(${table.kind} = 'upload') = (${table.copiedFromAssetId} IS NULL) AND (${table.copiedFromProductId} IS NULL) = (${table.copiedFromAssetId} IS NULL) AND (${table.copiedFromAssetId} IS NULL) = (${table.copiedFromVersion} IS NULL)`),
+  check('change_proposal_download_uploads_attempt_check', sql`(${table.attemptId} IS NULL) = (${table.attemptAt} IS NULL)`),
+]);
+
+export const changeProposalDownloadDeletions = pgTable('change_proposal_download_deletions', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  objectKey: text('object_key').notNull(),
+  apiKeyId: text('api_key_id').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  createdAt: text('created_at').notNull(),
+  sweepAttemptedAt: text('sweep_attempted_at'),
+  notBefore: text('not_before'),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_download_deletions_pkey', columns: [table.tenantId, table.objectKey] }),
+  index('change_proposal_download_deletions_created_idx').on(table.createdAt),
+  check('change_proposal_download_deletions_object_key_check', sql`${table.objectKey} LIKE '%/product-downloads/key-files/%' OR ${table.objectKey} LIKE '%/product-downloads/key-uploads/%'`),
+  check('change_proposal_download_deletions_size_check', sql`${table.sizeBytes} BETWEEN 1 AND 268435456`),
+  check('change_proposal_download_deletions_created_at_check', isoMillisecondTimestamp(table.createdAt)),
+  check('change_proposal_download_deletions_sweep_attempted_at_check', sql`${table.sweepAttemptedAt} IS NULL OR ${isoMillisecondTimestamp(table.sweepAttemptedAt)}`),
+  check('change_proposal_download_deletions_not_before_check', sql`${table.notBefore} IS NULL OR ${isoMillisecondTimestamp(table.notBefore)}`),
+]);
+
+export const changeProposalDownloadUploadEvents = pgTable('change_proposal_download_upload_events', {
+  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  sequence: bigserial('sequence', { mode: 'number' }).notNull(),
+  recordId: text('record_id').notNull(),
+  apiKeyId: text('api_key_id').notNull(),
+  kind: text('kind').$type<KeyDownloadRecordEventKind>().notNull(),
+  attemptId: text('attempt_id'),
+  reason: text('reason'),
+  at: text('at').notNull(),
+}, (table) => [
+  primaryKey({ name: 'change_proposal_download_upload_events_pkey', columns: [table.tenantId, table.sequence] }),
+  index('change_proposal_download_upload_events_record_idx').on(table.tenantId, table.recordId, table.sequence),
+  index('change_proposal_download_upload_events_at_idx').on(table.tenantId, table.at),
+  check('change_proposal_download_upload_events_kind_check', sql`${table.kind} IN ('started', 'claimed', 'completed', 'failed', 'interrupted', 'settled', 'purged')`),
+  check('change_proposal_download_upload_events_reason_check', sql`${table.reason} IS NULL OR ${table.reason} ~ '^[a-z_]{1,64}$'`),
+  check('change_proposal_download_upload_events_at_check', isoMillisecondTimestamp(table.at)),
 ]);

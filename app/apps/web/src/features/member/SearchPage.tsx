@@ -41,6 +41,7 @@ const withCourseLessons = (
   for (const module of structure.modules) {
     for (const chapter of module.chapters) {
       for (const lesson of chapter.lessons) {
+        if (lesson.accessStatus !== 'fully-accessible') continue;
         placements.set(lesson.lessonId, { courseId, lessonName: lesson.name });
       }
     }

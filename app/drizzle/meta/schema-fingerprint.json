@@ -1,8 +1,13 @@
 {
-  "hash": "14928e7ccb97f2800eccc033c1d1ffb8815019848d0f16a3744ec5b4a4c16b52",
-  "shortId": "14928e7ccb97",
+  "hash": "60516d92cc79421abd5d7390cafadb8093ed22d32f3b8dd97ff89f6dcdbb9787",
+  "shortId": "60516d92cc79",
   "schema": {
     "constraints": [
+      {
+        "definition": "CHECK ((((copied_from_product_id IS NULL) = (copied_from_asset_id IS NULL)) AND ((copied_from_asset_id IS NULL) = (copied_from_version IS NULL))))",
+        "name": "change_proposal_download_files_copied_from_check",
+        "table": "change_proposal_download_files"
+      },
       {
         "definition": "CHECK ((((kind = 'amount'::text) AND (currency ~ '^[A-Z]{3}$'::text)) OR ((kind = 'percent'::text) AND (currency IS NULL))))",
         "name": "coupons_amount_currency_check",
@@ -17,6 +22,11 @@
         "definition": "CHECK ((((kind = 'static'::text) AND (rule IS NULL)) OR ((kind = 'dynamic'::text) AND (rule IS NOT NULL) AND ((rule ->> 'kind'::text) = ANY (ARRAY['tag'::text, 'product_grant'::text, 'consent_definition'::text])))))",
         "name": "marketing_lists_rule_check",
         "table": "marketing_lists"
+      },
+      {
+        "definition": "CHECK ((((kind = 'upload'::text) = (copied_from_asset_id IS NULL)) AND ((copied_from_product_id IS NULL) = (copied_from_asset_id IS NULL)) AND ((copied_from_asset_id IS NULL) = (copied_from_version IS NULL))))",
+        "name": "change_proposal_download_uploads_shape_check",
+        "table": "change_proposal_download_uploads"
       },
       {
         "definition": "CHECK ((((status = 'failed'::text) AND (failure_code IS NOT NULL)) OR ((status <> 'failed'::text) AND (failure_code IS NULL) AND (failure_message IS NULL))))",
@@ -39,6 +49,16 @@
         "table": "change_proposal_events"
       },
       {
+        "definition": "CHECK (((attempt_at IS NULL) OR (attempt_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_download_uploads_attempt_at_check",
+        "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CHECK (((attempt_id IS NULL) = (attempt_at IS NULL)))",
+        "name": "change_proposal_download_uploads_attempt_check",
+        "table": "change_proposal_download_uploads"
+      },
+      {
         "definition": "CHECK (((char_length(applied_resource_id) >= 1) AND (char_length(applied_resource_id) <= 200)))",
         "name": "change_proposals_applied_resource_id_length_check",
         "table": "change_proposals"
@@ -47,6 +67,16 @@
         "definition": "CHECK (((char_length(failure_code) >= 1) AND (char_length(failure_code) <= 64)))",
         "name": "change_proposals_failure_code_length_check",
         "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((char_length(file_name) >= 1) AND (char_length(file_name) <= 255)))",
+        "name": "change_proposal_download_files_file_name_check",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CHECK (((char_length(file_name) >= 1) AND (char_length(file_name) <= 255)))",
+        "name": "change_proposal_download_uploads_file_name_check",
+        "table": "change_proposal_download_uploads"
       },
       {
         "definition": "CHECK (((char_length(operation) <= 64) AND (operation ~ '^[a-z]+(-[a-z]+)*[.][a-z]+(-[a-z]+)*$'::text)))",
@@ -69,9 +99,49 @@
         "table": "change_proposal_groups"
       },
       {
+        "definition": "CHECK (((completed_at IS NULL) OR (completed_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_download_uploads_completed_at_check",
+        "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CHECK (((completed_digest IS NULL) = (completed_extension IS NULL)))",
+        "name": "change_proposal_image_uploads_completed_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CHECK (((completed_digest IS NULL) OR (completed_digest ~ '^[0-9a-f]{64}$'::text)))",
+        "name": "change_proposal_image_uploads_completed_digest_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CHECK (((completed_extension IS NULL) OR (completed_extension = ANY (ARRAY['png'::text, 'jpg'::text, 'webp'::text, 'svg'::text, 'ico'::text]))))",
+        "name": "change_proposal_image_uploads_completed_extension_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CHECK (((declared_bytes >= 1) AND (declared_bytes <= 268435456)))",
+        "name": "change_proposal_download_uploads_declared_bytes_check",
+        "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CHECK (((delete_unresolved_at IS NULL) OR (delete_unresolved_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_image_publications_delete_unresolved_at_check",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CHECK (((delete_unresolved_at IS NULL) OR (delete_unresolved_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_images_delete_unresolved_at_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK (((discount_cents >= 0) AND ((discount_cents + amount_cents) >= discount_cents)))",
         "name": "orders_discount_check",
         "table": "orders"
+      },
+      {
+        "definition": "CHECK (((first_deleted_at IS NULL) OR (first_deleted_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_image_uploads_first_deleted_at_check",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "CHECK (((group_id IS NULL) = (group_position IS NULL)))",
@@ -109,6 +179,31 @@
         "table": "shop_management_keys"
       },
       {
+        "definition": "CHECK (((not_before IS NULL) OR (not_before ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_download_deletions_not_before_check",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((object_key ~~ '%/product-downloads/key-files/%'::text) OR (object_key ~~ '%/product-downloads/key-uploads/%'::text)))",
+        "name": "change_proposal_download_deletions_object_key_check",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((pending_since IS NULL) OR (pending_since ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_images_pending_since_check",
+        "table": "change_proposal_images"
+      },
+      {
+        "definition": "CHECK (((reason IS NULL) OR (reason ~ '^[a-z_]{1,64}$'::text)))",
+        "name": "change_proposal_download_upload_events_reason_check",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
+        "definition": "CHECK (((released_at IS NULL) OR (released_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_images_released_at_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK (((row_count >= 1) AND (row_count <= 10000)))",
         "name": "marketing_contact_imports_row_count_check",
         "table": "marketing_contact_imports"
@@ -119,6 +214,21 @@
         "table": "survey_responses"
       },
       {
+        "definition": "CHECK (((size_bytes >= 1) AND (size_bytes <= 268435456)))",
+        "name": "change_proposal_download_deletions_size_check",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((size_bytes >= 1) AND (size_bytes <= 268435456)))",
+        "name": "change_proposal_download_files_size_check",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CHECK (((size_bytes >= 1) AND (size_bytes <= 5242880)))",
+        "name": "change_proposal_images_size_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK (((starts_at IS NULL) OR (ends_at IS NULL) OR (starts_at < ends_at)))",
         "name": "coupons_validity_check",
         "table": "coupons"
@@ -127,6 +237,21 @@
         "definition": "CHECK (((status = 'applied'::text) OR (applied_resource_id IS NULL)))",
         "name": "change_proposals_applied_shape_check",
         "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK (((sweep_attempted_at IS NULL) OR (sweep_attempted_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_download_deletions_sweep_attempted_at_check",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK (((sweep_attempted_at IS NULL) OR (sweep_attempted_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_download_files_sweep_attempted_at_check",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CHECK (((sweep_attempted_at IS NULL) OR (sweep_attempted_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text)))",
+        "name": "change_proposal_download_uploads_sweep_attempted_at_check",
+        "table": "change_proposal_download_uploads"
       },
       {
         "definition": "CHECK (((valid_from IS NULL) OR (valid_to IS NULL) OR (valid_from < valid_to)))",
@@ -155,6 +280,11 @@
       },
       {
         "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_download_upload_events_at_check",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
+        "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposal_events_at_check",
         "table": "change_proposal_events"
       },
@@ -167,6 +297,11 @@
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
         "name": "posts_body_format_check",
         "table": "posts"
+      },
+      {
+        "definition": "CHECK ((candidate_key ~~ '%/product-downloads/key-uploads/%'::text))",
+        "name": "change_proposal_download_uploads_candidate_key_check",
+        "table": "change_proposal_download_uploads"
       },
       {
         "definition": "CHECK ((char_length(decision_note) <= 500))",
@@ -199,9 +334,44 @@
         "table": "tenant_config_sources"
       },
       {
+        "definition": "CHECK ((content_type = ANY (ARRAY['application/pdf'::text, 'application/epub+zip'::text, 'application/zip'::text, 'audio/mpeg'::text, 'audio/mp4'::text, 'video/mp4'::text, 'image/png'::text, 'image/jpeg'::text])))",
+        "name": "change_proposal_download_files_content_type_check",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CHECK ((content_type = ANY (ARRAY['application/pdf'::text, 'application/epub+zip'::text, 'application/zip'::text, 'audio/mpeg'::text, 'audio/mp4'::text, 'video/mp4'::text, 'image/png'::text, 'image/jpeg'::text])))",
+        "name": "change_proposal_download_uploads_content_type_check",
+        "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_download_deletions_created_at_check",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_download_files_created_at_check",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_download_uploads_created_at_check",
+        "table": "change_proposal_download_uploads"
+      },
+      {
         "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposal_groups_created_at_check",
         "table": "change_proposal_groups"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_image_uploads_created_at_check",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_images_created_at_check",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CHECK ((created_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
@@ -229,6 +399,16 @@
         "table": "products"
       },
       {
+        "definition": "CHECK ((digest ~ '^[0-9a-f]{64}$'::text))",
+        "name": "change_proposal_image_publications_digest_check",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CHECK ((digest ~ '^[0-9a-f]{64}$'::text))",
+        "name": "change_proposal_images_digest_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK ((email = lower(btrim(email))))",
         "name": "marketing_contacts_normalized_email_check",
         "table": "marketing_contacts"
@@ -252,6 +432,16 @@
         "definition": "CHECK ((expires_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposals_expires_at_check",
         "table": "change_proposals"
+      },
+      {
+        "definition": "CHECK ((extension = ANY (ARRAY['png'::text, 'jpg'::text, 'webp'::text, 'svg'::text, 'ico'::text])))",
+        "name": "change_proposal_image_publications_extension_check",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CHECK ((extension = ANY (ARRAY['png'::text, 'jpg'::text, 'webp'::text, 'svg'::text, 'ico'::text])))",
+        "name": "change_proposal_images_extension_check",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CHECK ((group_position >= 1))",
@@ -289,6 +479,16 @@
         "table": "shop_management_key_events"
       },
       {
+        "definition": "CHECK ((kind = ANY (ARRAY['product-cover'::text, 'logo'::text, 'logo-dark'::text, 'favicon'::text, 'share-image'::text])))",
+        "name": "change_proposal_image_publications_kind_check",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['product-cover'::text, 'logo'::text, 'logo-dark'::text, 'favicon'::text, 'share-image'::text])))",
+        "name": "change_proposal_images_kind_check",
+        "table": "change_proposal_images"
+      },
+      {
         "definition": "CHECK ((kind = ANY (ARRAY['proposed'::text, 'applied'::text, 'rejected'::text, 'stale'::text, 'withdrawn'::text, 'expired'::text, 'apply_failed'::text])))",
         "name": "change_proposal_events_kind_check",
         "table": "change_proposal_events"
@@ -297,6 +497,16 @@
         "definition": "CHECK ((kind = ANY (ARRAY['remainder'::text, 'amount'::text])))",
         "name": "order_staff_refunds_kind_check",
         "table": "order_staff_refunds"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['started'::text, 'claimed'::text, 'completed'::text, 'failed'::text, 'interrupted'::text, 'settled'::text, 'purged'::text])))",
+        "name": "change_proposal_download_upload_events_kind_check",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['upload'::text, 'copy'::text])))",
+        "name": "change_proposal_download_uploads_kind_check",
+        "table": "change_proposal_download_uploads"
       },
       {
         "definition": "CHECK ((ksef_submission_mode = ANY (ARRAY['automatic'::text, 'manual'::text])))",
@@ -352,6 +562,16 @@
         "definition": "CHECK ((mode = ANY (ARRAY['live'::text, 'test'::text])))",
         "name": "product_grants_mode_check",
         "table": "product_grants"
+      },
+      {
+        "definition": "CHECK ((object_key ~~ '%/product-downloads/key-files/%'::text))",
+        "name": "change_proposal_download_files_object_key_check",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CHECK ((object_key ~~ 'image-asset-candidates/%'::text))",
+        "name": "change_proposal_image_uploads_object_key_check",
+        "table": "change_proposal_image_uploads"
       },
       {
         "definition": "CHECK ((on_hand >= 0))",
@@ -449,6 +669,11 @@
         "table": "change_proposal_events"
       },
       {
+        "definition": "CHECK ((sha256 ~ '^[0-9a-f]{64}$'::text))",
+        "name": "change_proposal_download_files_sha256_check",
+        "table": "change_proposal_download_files"
+      },
+      {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "organizations_shipx_environment_check",
         "table": "organizations"
@@ -462,6 +687,21 @@
         "definition": "CHECK ((source = 'organization'::text))",
         "name": "tenant_config_sources_source_check",
         "table": "tenant_config_sources"
+      },
+      {
+        "definition": "CHECK ((staged_key ~~ '%/product-downloads/key-files/%'::text))",
+        "name": "change_proposal_download_uploads_staged_key_check",
+        "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CHECK ((started_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
+        "name": "change_proposal_image_publications_started_at_check",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CHECK ((state = ANY (ARRAY['started'::text, 'completing'::text, 'interrupted'::text, 'completed'::text, 'failed'::text, 'settled'::text])))",
+        "name": "change_proposal_download_uploads_state_check",
+        "table": "change_proposal_download_uploads"
       },
       {
         "definition": "CHECK ((status = ANY (ARRAY['active'::text, 'archived'::text])))",
@@ -870,6 +1110,26 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_download_deletions_tenant_id_fkey",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_download_files_tenant_id_fkey",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_download_upload_events_tenant_id_fkey",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_download_uploads_tenant_id_fkey",
+        "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "change_proposal_events_tenant_id_fkey",
         "table": "change_proposal_events"
       },
@@ -877,6 +1137,21 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "change_proposal_groups_tenant_id_fkey",
         "table": "change_proposal_groups"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_image_publications_tenant_id_fkey",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_image_uploads_tenant_id_fkey",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "change_proposal_images_tenant_id_fkey",
+        "table": "change_proposal_images"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -2304,6 +2579,16 @@
         "table": "tenant_transactional_email_pools"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, api_key_id, kind, digest, extension)",
+        "name": "change_proposal_images_pkey",
+        "table": "change_proposal_images"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, attempt_id, kind, digest, extension)",
+        "name": "change_proposal_image_publications_pkey",
+        "table": "change_proposal_image_publications"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, checkout_session_id)",
         "name": "checkout_consent_jobs_pkey",
         "table": "checkout_consent_jobs"
@@ -2312,6 +2597,16 @@
         "definition": "PRIMARY KEY (tenant_id, config_group)",
         "name": "tenant_config_sources_pkey",
         "table": "tenant_config_sources"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "change_proposal_download_files_pkey",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, id)",
+        "name": "change_proposal_download_uploads_pkey",
+        "table": "change_proposal_download_uploads"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, id)",
@@ -2379,6 +2674,16 @@
         "table": "marketing_member_sync_jobs"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, object_key)",
+        "name": "change_proposal_download_deletions_pkey",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, object_key)",
+        "name": "change_proposal_image_uploads_pkey",
+        "table": "change_proposal_image_uploads"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, order_id, decision)",
         "name": "meta_capi_consent_evidence_pkey",
         "table": "meta_capi_consent_evidence"
@@ -2397,6 +2702,11 @@
         "definition": "PRIMARY KEY (tenant_id, sales_link_id, revision)",
         "name": "sales_link_events_pkey",
         "table": "sales_link_events"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, sequence)",
+        "name": "change_proposal_download_upload_events_pkey",
+        "table": "change_proposal_download_upload_events"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, snapshot_id, contact_id)",
@@ -2673,9 +2983,69 @@
         "table": "campaigns"
       },
       {
+        "definition": "CREATE INDEX change_proposal_download_deletions_created_idx ON change_proposal_download_deletions USING btree (created_at)",
+        "name": "change_proposal_download_deletions_created_idx",
+        "table": "change_proposal_download_deletions"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_files_created_idx ON change_proposal_download_files USING btree (created_at)",
+        "name": "change_proposal_download_files_created_idx",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_files_key_idx ON change_proposal_download_files USING btree (tenant_id, api_key_id)",
+        "name": "change_proposal_download_files_key_idx",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_files_proposal_idx ON change_proposal_download_files USING btree (tenant_id, proposal_id)",
+        "name": "change_proposal_download_files_proposal_idx",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_upload_events_at_idx ON change_proposal_download_upload_events USING btree (tenant_id, at)",
+        "name": "change_proposal_download_upload_events_at_idx",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_upload_events_record_idx ON change_proposal_download_upload_events USING btree (tenant_id, record_id, sequence)",
+        "name": "change_proposal_download_upload_events_record_idx",
+        "table": "change_proposal_download_upload_events"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_uploads_created_idx ON change_proposal_download_uploads USING btree (created_at)",
+        "name": "change_proposal_download_uploads_created_idx",
+        "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_download_uploads_key_idx ON change_proposal_download_uploads USING btree (tenant_id, api_key_id, created_at)",
+        "name": "change_proposal_download_uploads_key_idx",
+        "table": "change_proposal_download_uploads"
+      },
+      {
         "definition": "CREATE INDEX change_proposal_groups_tenant_key_idx ON change_proposal_groups USING btree (tenant_id, proposed_by_key_id, created_at)",
         "name": "change_proposal_groups_tenant_key_idx",
         "table": "change_proposal_groups"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_image_publications_started_idx ON change_proposal_image_publications USING btree (started_at)",
+        "name": "change_proposal_image_publications_started_idx",
+        "table": "change_proposal_image_publications"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_image_uploads_created_idx ON change_proposal_image_uploads USING btree (created_at)",
+        "name": "change_proposal_image_uploads_created_idx",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_image_uploads_key_idx ON change_proposal_image_uploads USING btree (tenant_id, api_key_id, created_at)",
+        "name": "change_proposal_image_uploads_key_idx",
+        "table": "change_proposal_image_uploads"
+      },
+      {
+        "definition": "CREATE INDEX change_proposal_images_created_idx ON change_proposal_images USING btree (created_at)",
+        "name": "change_proposal_images_created_idx",
+        "table": "change_proposal_images"
       },
       {
         "definition": "CREATE INDEX change_proposals_tenant_key_created_idx ON change_proposals USING btree (tenant_id, proposed_by_key_id, created_at)",
@@ -3278,6 +3648,16 @@
         "table": "campaign_sends"
       },
       {
+        "definition": "CREATE UNIQUE INDEX change_proposal_download_files_object_key_uidx ON change_proposal_download_files USING btree (tenant_id, object_key)",
+        "name": "change_proposal_download_files_object_key_uidx",
+        "table": "change_proposal_download_files"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX change_proposal_download_uploads_file_uidx ON change_proposal_download_uploads USING btree (tenant_id, file_id)",
+        "name": "change_proposal_download_uploads_file_uidx",
+        "table": "change_proposal_download_uploads"
+      },
+      {
         "definition": "CREATE UNIQUE INDEX change_proposal_events_tenant_proposal_sequence_uidx ON change_proposal_events USING btree (tenant_id, proposal_id, sequence)",
         "name": "change_proposal_events_tenant_proposal_sequence_uidx",
         "table": "change_proposal_events"
@@ -3764,6 +4144,15 @@
       }
     ],
     "sequences": [
+      {
+        "cycle": false,
+        "dataType": "bigint",
+        "increment": "1",
+        "maximum": "9223372036854775807",
+        "minimum": "1",
+        "name": "change_proposal_download_upload_events_sequence_seq",
+        "start": "1"
+      },
       {
         "cycle": false,
         "dataType": "bigint",
@@ -7079,6 +7468,14 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "sha256",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "size_bytes",
             "notNull": true,
             "type": "integer"
@@ -9547,6 +9944,75 @@
       {
         "columns": [
           {
+            "default": "nextval('change_proposal_download_upload_events_sequence_seq'::regclass)",
+            "generated": "",
+            "identity": "",
+            "name": "sequence",
+            "notNull": true,
+            "type": "bigint"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attempt_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "record_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_download_upload_events"
+      },
+      {
+        "columns": [
+          {
             "default": "nextval('coupon_events_sequence_seq'::regclass)",
             "generated": "",
             "identity": "",
@@ -11666,6 +12132,349 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "attempt_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attempt_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "candidate_key",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "completed_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "content_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copied_from_asset_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copied_from_product_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copied_from_version",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "declared_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "staged_key",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "state",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_download_uploads"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "completed_digest",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "completed_extension",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "first_deleted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "object_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_image_uploads"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "content_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copied_from_asset_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copied_from_product_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "copied_from_version",
+            "notNull": false,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "file_name",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "object_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "proposal_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sha256",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "size_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_download_files"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "count",
             "notNull": true,
             "type": "integer"
@@ -11725,6 +12534,160 @@
           }
         ],
         "name": "shop_management_key_rate_limit_buckets"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "delete_unresolved_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "digest",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "extension",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "pending_since",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "released_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "size_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_images"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "not_before",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "object_key",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "size_bytes",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_download_deletions"
       },
       {
         "columns": [
@@ -12100,6 +13063,75 @@
           }
         ],
         "name": "download_copies"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "attempt_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "delete_unresolved_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "digest",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "extension",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "started_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "sweep_attempted_at",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "change_proposal_image_publications"
       },
       {
         "columns": [

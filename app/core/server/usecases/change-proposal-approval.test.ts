@@ -24,7 +24,9 @@ import {
   createChangeProposalStoreFake,
   changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
+  fakeContentHash,
   emptyCatalogState,
   failingSalesLinkSaves,
   type FakeCatalogState,
@@ -137,7 +139,7 @@ const recordingStorage = (deletes: string[]): StorageProvider => {
       deletes.push(input.url);
       return ok({ deleted: true });
     },
-    list: refuse, getObject: refuse, putObject: refuse, probe: refuse, probeCors: refuse, presignPut: refuse,
+    list: refuse, getObject: refuse, putObject: refuse, probe: refuse, copyObject: refuse, digestObject: refuse, probeCors: refuse, presignPut: refuse,
     presignGet: refuse, head: refuse, healthcheck: refuse, test: refuse,
   };
 };
@@ -189,6 +191,9 @@ const harness = (keys: ShopManagementKey[] = [shopKey()]): Harness => {
     ...notificationFakes,
     ...changeProposalOwnerViewFakes(state, accounts),
     storage: recordingStorage(deletes),
+    quarantinedImages: createQuarantinedImagesFake(state, store).repository,
+    secretResolver: storageSecrets,
+    contentHash: fakeContentHash,
     logger: { error: vi.fn<(message: string) => void>() },
     ids: { nextId: () => `generated-${String(++sequence)}` },
     clock: { nowIso: () => clock.now },
@@ -246,6 +251,7 @@ const advancingDuringTargetLock = (h: Harness, to: string): ChangeProposalTransa
     repositories: {
       ...scope.repositories,
       targets: {
+        ...scope.repositories.targets,
         lock: async (lockTenantId, target, purpose) => {
           const locked = await scope.repositories.targets.lock(lockTenantId, target, purpose);
           h.clock.now = to;
@@ -516,8 +522,10 @@ describe('product proposals stored by this release and read by the release witho
 
   it('stores a product creation without gallery images with input and effect keys the previous release knows', async () => {
     const h = harness();
+    const coverUrl = '/api/public/assets/product-cover/00000000-0000-4000-8000-000000000009.png';
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { coverUrl });
     const proposal = stored(h, await h.submit('product.create', {
-      title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0, vatRate: 23, coverUrl: 'https://cdn.example.test/teapot.jpg',
+      title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0, vatRate: 23, coverUrl,
     }));
 
     expect(Object.keys(proposal.effect)).toContain('coverUrl');

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 
-import { lockWaitMs } from './bounded-advisory-lock.js';
+import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
 import type { Db } from './client.js';
 import { deadlockDetected, lockNotAvailable, queryCanceled } from './pg-errors.js';
 
@@ -58,3 +58,7 @@ export const busyAfterRollback = async <T, B>(work: () => Promise<T>, busy: B): 
     throw cause;
   }
 };
+
+/** Every proposal insert and every quarantined image release of a workspace queues here, so a release never misses a proposal being stored. */
+export const lockWorkspaceProposals = (executor: Db, tenantId: string, bounds: Pick<ChangeProposalBounds, 'lockWaitMs'>): Promise<boolean> =>
+  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs });

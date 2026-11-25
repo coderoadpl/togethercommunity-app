@@ -5,6 +5,8 @@ import {
   imageAssetCompleteRequestSchema,
   imageAssetUploadOutputSchema,
   imageAssetUploadRequestSchema,
+  shopImageAssetCompleteOutputSchema,
+  shopImageAssetUploadOutputSchema,
 } from './routes.js';
 import { salesLinkContracts } from './sales-links.js';
 
@@ -24,8 +26,8 @@ export const SHOP_ASSETS_ROUTES = {
 } as const;
 
 export const shopAssetsContracts = {
-  productCoverUpload: { input: strictInput(imageAssetUploadRequestSchema), output: imageAssetUploadOutputSchema },
-  productCoverComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: imageAssetCompleteOutputSchema },
+  productCoverUpload: { input: strictInput(imageAssetUploadRequestSchema), output: shopImageAssetUploadOutputSchema },
+  productCoverComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: shopImageAssetCompleteOutputSchema },
   productImageUpload: { input: strictInput(imageAssetUploadRequestSchema), output: imageAssetUploadOutputSchema },
   productImageComplete: { input: strictInput(imageAssetCompleteRequestSchema), output: imageAssetCompleteOutputSchema },
   listSalesLinks: salesLinkContracts.listSalesLinks,

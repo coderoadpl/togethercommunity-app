@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CourseStructureWithAccess, PublicPost } from '#core/domain/index.js';
 
+import { actions } from '../../api.js';
 import { en } from '../../i18n/en.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -71,9 +72,20 @@ const post = (id: string, lessonId: string, body: string): PublicPost => ({
   pinnedAt: null,
 });
 
-const renderSearch = () => {
+const lockedIn = (source: CourseStructureWithAccess, lessonIds: readonly string[]): CourseStructureWithAccess => ({
+  ...source,
+  modules: source.modules.map((module) => ({
+    ...module,
+    chapters: module.chapters.map((chapter) => ({
+      ...chapter,
+      lessons: chapter.lessons.map((lesson) => lessonIds.includes(lesson.lessonId) ? { ...lesson, accessStatus: 'not-accessible' as const } : lesson),
+    })),
+  })),
+});
+
+const renderSearch = (shown: CourseStructureWithAccess = structure) => {
   const root = createRootRoute({
-    component: () => <CourseDiscussionSearch courseId="course-1" structure={structure} />,
+    component: () => <CourseDiscussionSearch courseId="course-1" structure={shown} />,
   });
   const router = createRouter({
     routeTree: root,
@@ -131,6 +143,65 @@ describe('CourseDiscussionSearch', () => {
     const url = new URL(requestedUrls[requestedUrls.length - 1] ?? '');
     expect(url.searchParams.get('query')).toBe('engine');
     expect(url.searchParams.getAll('lessonId')).toEqual(['l1', 'l2']);
+  });
+
+  it('searches only the lessons this course opens, so no hit links into a course where its lesson is locked', async () => {
+    const requestedUrls: string[] = [];
+    server.use(
+      http.get('/api/posts/search', ({ request }) => {
+        requestedUrls.push(request.url);
+        return HttpResponse.json({
+          ok: true,
+          data: { hits: [{ post: post('h1', 'l1', 'Engine'), lessonId: 'l1', snippet: 'Engine' }] },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderSearch(lockedIn(structure, ['l2']));
+    await user.type(await screen.findByTestId('course-discussion-search-input'), 'engine');
+
+    expect(await screen.findByTestId('course-search-hit-h1')).toBeInTheDocument();
+    expect(new URL(requestedUrls[requestedUrls.length - 1] ?? '').searchParams.getAll('lessonId')).toEqual(['l1']);
+  });
+
+  it('shows the empty note without asking the server when the course opens none of its lessons', async () => {
+    const requestedUrls: string[] = [];
+    server.use(
+      http.get('/api/posts/search', ({ request }) => {
+        requestedUrls.push(request.url);
+        return HttpResponse.json({ ok: true, data: { hits: [] } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderSearch(lockedIn(structure, ['l1', 'l2']));
+    await user.type(await screen.findByTestId('course-discussion-search-input'), 'engine');
+
+    expect(await screen.findByTestId('course-search-empty')).toHaveTextContent(en.discussion.searchCourseEmpty);
+    expect(requestedUrls).toEqual([]);
+  });
+
+  it('shows the empty note and no cached workspace-wide hit when the course opens none of its lessons', async () => {
+    const requestedUrls: string[] = [];
+    server.use(
+      http.get('/api/posts/search', ({ request }) => {
+        requestedUrls.push(request.url);
+        return HttpResponse.json({ ok: true, data: { hits: [] } });
+      }),
+    );
+
+    const user = userEvent.setup();
+    const { queryClient } = renderSearch(lockedIn(structure, ['l1', 'l2']));
+    const workspaceWide = actions.postsSearch({ query: 'engine' }).queryKey;
+    queryClient.setQueryDefaults(workspaceWide, { gcTime: Infinity });
+    queryClient.setQueryData(workspaceWide, { hits: [{ post: post('elsewhere', 'other-lesson', 'Engine elsewhere'), lessonId: 'other-lesson', snippet: 'Engine elsewhere' }] });
+    await user.type(await screen.findByTestId('course-discussion-search-input'), 'engine');
+
+    expect(await screen.findByTestId('course-search-empty')).toHaveTextContent(en.discussion.searchCourseEmpty);
+    expect(screen.queryByTestId('course-search-hit-elsewhere')).toBeNull();
+    expect(screen.queryByRole('button', { name: en.common.retry })).toBeNull();
+    expect(requestedUrls).toEqual([]);
   });
 
   it('shows an empty note when nothing matches', async () => {

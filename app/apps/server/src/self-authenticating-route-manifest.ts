@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_DOWNLOAD_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
@@ -90,6 +90,7 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_CATALOG_ROUTES.publishProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:publish' },
   { path: SHOP_CATALOG_ROUTES.unpublishProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:publish' },
   { path: SHOP_CATALOG_ROUTES.deleteProductDraft.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_CATALOG_ROUTES.setProductAccess.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:access:write' },
   { path: SHOP_CATALOG_ROUTES.listProductPrices.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:price:read' },
   { path: SHOP_CATALOG_ROUTES.createProductPrice.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:price:write' },
   { path: SHOP_CATALOG_ROUTES.deactivateProductPrice.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:price:write' },
@@ -122,6 +123,15 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: SHOP_ASSETS_ROUTES.createSalesLink.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_ASSETS_ROUTES.updateSalesLink.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_ASSETS_ROUTES.deleteSalesLink.path, methods: ['DELETE'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.copyStagedDownload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.listStagedDownloads.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.discardStagedDownload.path, methods: ['DELETE'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.listProductDownloads.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
+  { path: SHOP_DOWNLOAD_ROUTES.addProductDownload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.replaceProductDownload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
+  { path: SHOP_DOWNLOAD_ROUTES.removeProductDownload.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_INTEGRATION_ROUTES.listSecrets.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'tenant:secret:read' },
   { path: SHOP_INTEGRATION_ROUTES.setSecret.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },
   { path: SHOP_INTEGRATION_ROUTES.deleteSecret.path, methods: ['DELETE'], mechanism: 'Shop management key', capability: 'tenant:secret:write' },

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const IMAGE_ASSET_MAX_BYTES = 5 * 1024 * 1024;
+
+export const IMAGE_ASSET_UPLOAD_TTL_SECONDS = 15 * 60;
 export const AVATAR_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
 
 const IMAGE_ASSET_KINDS = [

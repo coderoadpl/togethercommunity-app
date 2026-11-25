@@ -27,6 +27,8 @@ export const storageWithDeletesAfterCommit = (
   presignPut: () => { throw unavailable('presignPut'); },
   presignGet: () => { throw unavailable('presignGet'); },
   head: () => Promise.reject(unavailable('head')),
+  copyObject: () => Promise.reject(unavailable('copyObject')),
+  digestObject: () => Promise.reject(unavailable('digestObject')),
   healthcheck: () => Promise.reject(unavailable('healthcheck')),
   test: () => Promise.reject(unavailable('test')),
 });

@@ -1,7 +1,12 @@
 import { useId, useState, type ReactNode } from 'react';
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 
-import { stockAdjustmentEventType, type ChangeProposalOwnerView, type ChangeProposalTargetKind } from '#core/domain/index.js';
+import {
+  changeProposalAccessChange,
+  stockAdjustmentEventType,
+  type ChangeProposalOwnerView,
+  type ChangeProposalTargetKind,
+} from '#core/domain/index.js';
 
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatFileSize, formatPrice } from '../../../lib/format.js';
@@ -10,8 +15,10 @@ import { FieldDiffEmpty, FieldDiffImage, FieldDiffList, FieldDiffRow, FieldDiffT
 import {
   priceOf,
   proposalCreatesRecord,
+  proposalFileChanges,
   proposalRemovesRecord,
   proposalRows,
+  shortProposedImagePath,
   stockAdjustmentReason,
   type DisplayRow,
   type DisplayValue,
@@ -19,8 +26,16 @@ import {
   type GroupReferences,
 } from './proposal-display.js';
 import { enumValueLabel, fieldLabel, Isolated, priceTerms } from './proposal-text.js';
+import { AccessChangeRow } from './ProposedAccess.js';
+import { FileChangeRows } from './ProposedFiles.js';
+import { ContentAddress, ProposedImage } from './ProposedImage.js';
 
 const COLLAPSED_LENGTH = 280;
+
+const contentAddressCaption = (path: string): ReactNode => {
+  const short = shortProposedImagePath(path);
+  return short === null ? undefined : <ContentAddress path={path} short={short} />;
+};
 
 export const ReferenceText = ({ reference }: { reference: GroupItemReference }) => {
   const t = useTranslations().changeProposals;
@@ -113,7 +128,9 @@ const ProposalValue = ({ value, initiallyExpanded = false }: { value: DisplayVal
         ? <LongText text={value.text} initiallyExpanded={initiallyExpanded} />
         : <FieldDiffText breakAnywhere={value.breakAnywhere}><bdi>{value.text}</bdi></FieldDiffText>;
     case 'image':
-      return <FieldDiffImage key={value.path} url={value.path} failedNote={t.imageNotShown} />;
+      return value.awaitingApproval === null
+        ? <FieldDiffImage key={value.path} url={value.path} failedNote={t.imageNotShown} caption={contentAddressCaption(value.path)} />
+        : <ProposedImage image={value.awaitingApproval} path={value.path} />;
     case 'list':
       return <FieldDiffList items={value.items.map((item, index) => ({ key: String(index), content: <ValueText value={item} /> }))} />;
     case 'record':
@@ -231,22 +248,27 @@ export const ProposalFieldRows = ({
   references,
   stockNow,
   labelComponent = 'h3',
+  pendingProposalId = null,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation'>>;
+  proposal: Pick<ChangeProposalOwnerView, 'effect' | 'input'> & Partial<Pick<ChangeProposalOwnerView, 'operation' | 'proposedFiles' | 'accessLabels'>>;
   targetKind?: ChangeProposalTargetKind;
   references?: GroupReferences;
   stockNow?: StockNow | undefined;
   labelComponent?: HeadingLevel;
+  pendingProposalId?: string | null;
 }) => {
   const t = useTranslations().changeProposals;
   const { language } = useLanguage();
-  const rows = proposalRows(proposal, references);
+  const files = proposalFileChanges(proposal);
+  const access = proposal.operation === undefined ? null : changeProposalAccessChange({ operation: proposal.operation, effect: proposal.effect });
+  const rows = proposalRows(proposal, references, pendingProposalId)
+    .filter((row) => (files?.complete !== true || row.field !== 'files') && (access === null || row.field !== 'accessItems'));
   const removal = proposalRemovesRecord(proposal);
   const newPrice = proposal.operation === 'price.create' ? priceOf(proposal.input) : null;
   if (newPrice !== null) {
     return <NewRecord entries={[{ field: 'price', label: t.fields.priceCents, value: <FieldDiffText breakAnywhere>{priceTerms(t, newPrice, language)}</FieldDiffText> }]} />;
   }
-  if (rows.length === 0) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
+  if (rows.length === 0 && files === null && access === null) return <FinePrint component="p">{t.noFieldChanges}</FinePrint>;
   if (proposalCreatesRecord(proposal)) {
     const entries = rows.flatMap((row): NewRecordEntry[] => row.kind === 'change' && row.after !== null
       ? [{ field: row.field, label: fieldLabel(t, row.field, targetKind), value: <ProposalValue value={row.after} /> }]
@@ -255,6 +277,24 @@ export const ProposalFieldRows = ({
   }
   return (
     <Stack useFlexGap spacing="0.5rem" data-testid="proposal-field-rows">
+      {access === null ? null : (
+        <AccessChangeRow
+          change={access}
+          labels={proposal.accessLabels}
+          label={fieldLabel(t, 'accessItems', targetKind)}
+          labelComponent={labelComponent}
+          pending={pendingProposalId !== null}
+        />
+      )}
+      {files === null ? null : (
+        <FileChangeRows
+          files={files}
+          proposedFiles={proposal.proposedFiles ?? []}
+          pendingProposalId={pendingProposalId}
+          label={fieldLabel(t, 'files', targetKind)}
+          labelComponent={labelComponent}
+        />
+      )}
       {rows.map((row) => {
         if (row.kind === 'delta') {
           return <StockDeltaRow key={row.field} row={row} proposal={proposal} stockNow={stockNow} labelComponent={labelComponent} />;

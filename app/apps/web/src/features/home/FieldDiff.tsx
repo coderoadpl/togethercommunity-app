@@ -61,7 +61,7 @@ export const FieldDiffList = ({ items }: { items: readonly { key: string; conten
   </Stack>
 );
 
-export const FieldDiffImage = ({ url, failedNote }: { url: string; failedNote?: ReactNode }) => {
+export const FieldDiffImage = ({ url, failedNote, caption }: { url: string; failedNote?: ReactNode; caption?: ReactNode }) => {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const failed = failedUrl === url;
   return (
@@ -71,9 +71,11 @@ export const FieldDiffImage = ({ url, failedNote }: { url: string; failedNote?: 
           <CoverImageElement frame="card" src={url} alt="" onError={() => setFailedUrl(url)} />
         </Box>
       )}
-      <BreakAnywhereText component="p" variant="caption">
-        {url}
-      </BreakAnywhereText>
+      {caption ?? (
+        <BreakAnywhereText component="p" variant="caption">
+          {url}
+        </BreakAnywhereText>
+      )}
       {failed && failedNote !== undefined ? <FinePrint component="p">{failedNote}</FinePrint> : null}
     </Stack>
   );

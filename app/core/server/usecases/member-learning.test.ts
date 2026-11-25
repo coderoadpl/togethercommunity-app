@@ -288,7 +288,7 @@ const deps = (input: {
     addCompletedLesson: async () => {
       throw new Error('not used');
     },
-    removeCompletedLesson: async () => null,
+    removeCompletedLesson: async () => [],
     setLastViewed: async () => {
       throw new Error('not used');
     },

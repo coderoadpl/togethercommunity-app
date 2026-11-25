@@ -56,6 +56,7 @@ interface Hoisted {
   listShopManagementKeyEvents: ReturnType<typeof vi.fn>;
   listChangeProposals: ReturnType<typeof vi.fn>;
   getChangeProposal: ReturnType<typeof vi.fn>;
+  getChangeProposalFileLink: ReturnType<typeof vi.fn>;
   rejectChangeProposal: ReturnType<typeof vi.fn>;
   approveChangeProposal: ReturnType<typeof vi.fn>;
   getChangeProposalGroup: ReturnType<typeof vi.fn>;
@@ -166,6 +167,7 @@ const h = vi.hoisted(
     listShopManagementKeyEvents: vi.fn(),
     listChangeProposals: vi.fn(),
     getChangeProposal: vi.fn(),
+    getChangeProposalFileLink: vi.fn(),
     rejectChangeProposal: vi.fn(),
     approveChangeProposal: vi.fn(),
     getChangeProposalGroup: vi.fn(),
@@ -324,6 +326,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     listShopManagementKeyEvents: h.listShopManagementKeyEvents,
     listChangeProposals: h.listChangeProposals,
     getChangeProposal: h.getChangeProposal,
+    getChangeProposalFileLink: h.getChangeProposalFileLink,
     rejectChangeProposal: h.rejectChangeProposal,
     approveChangeProposal: h.approveChangeProposal,
     getChangeProposalGroup: h.getChangeProposalGroup,
@@ -2759,6 +2762,96 @@ describe('owner change proposal commands', () => {
     expect(printed).toContain('proposed by key: Catalogue agent (shop-key, active), issued by owner-1');
     expect(printed).toContain('  1998-08-01T00:00:00.000Z\tproposed\tshop-key');
   });
+  it('lists the file a proposal attaches, its copy source and, while it is pending, whether it is held and how to download it', async () => {
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', events: [], proposedFiles: [
+      { id: 'staged-1', available: true, copiedFrom: { productId: 'product-2', productTitle: 'Field guide', versionNumber: 2 } },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    const printed = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(printed).toContain('files:');
+    expect(printed).toContain('  staged-1: held by this proposal; copy of version 2 of Field guide (product-2)');
+    expect(printed).toContain('    download it with: together proposals file proposal-1 staged-1 --out <path>');
+    logSpy.mockClear();
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', events: [], proposedFiles: [
+      { id: 'staged-1', available: false, copiedFrom: null },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    const gone = String(logSpy.mock.calls[0]?.[0]);
+    expect(gone).toContain('  staged-1: no longer available; approving changes nothing');
+    expect(gone).not.toContain('download it with');
+    logSpy.mockClear();
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'download.add', status: 'applied', events: [], proposedFiles: [
+      { id: 'staged-1', available: false, copiedFrom: null },
+    ] } }));
+    await run('proposals', 'show', 'proposal-1');
+    const applied = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(applied).toContain('  staged-1');
+    expect(applied.join('\n')).not.toContain('no longer available');
+  });
+  it('names the courses, modules and lessons of a proposed access change and says which no longer exist', async () => {
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, operation: 'product.set-access', events: [],
+      effect: { accessItems: { before: [{ level: 'course', courseId: 'course-1' }], after: [{ level: 'lessons', courseId: 'course-1', lessonIds: ['lesson-1', 'lesson-2'] }] } },
+      accessLabels: { courses: [{ id: 'course-1', title: 'Intro course' }], modules: [], lessons: [{ id: 'lesson-1', title: 'Welcome' }, { id: 'lesson-2', title: null }] },
+    } }));
+    await run('proposals', 'show', 'proposal-1');
+    const printed = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(printed).toEqual(expect.arrayContaining([
+      'names:', '  course course-1: Intro course', '  lesson lesson-1: Welcome', '  lesson lesson-2: no longer exists',
+    ]));
+    logSpy.mockClear();
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, events: [] } }));
+    await run('proposals', 'show', 'proposal-1');
+    expect(String(logSpy.mock.calls[0]?.[0])).not.toContain('names:');
+  });
+  it('downloads a proposed file through the short-lived link to --out, never printing the link, and refuses to overwrite without --force', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'proposal-file-cli-'));
+    const bytes = new TextEncoder().encode('%PDF-1.7\nreviewed\n');
+    const url = 'https://storage.example.test/acme/file?X-Amz-Signature=secret-signature';
+    const fetchSpy = vi.fn<typeof fetch>(async () => new Response(bytes));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      const out = join(directory, 'review.pdf');
+      h.getChangeProposalFileLink.mockReset().mockResolvedValue(ok({ download: { url, expiresAt: '1998-08-01T00:01:00.000Z', fileName: 'workbook.pdf', sizeBytes: bytes.byteLength } }));
+      await run('proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(h.getChangeProposalFileLink).toHaveBeenCalledWith({ id: 'proposal-1', fileId: 'staged-1' });
+      expect(fetchSpy).toHaveBeenCalledWith(url, { redirect: 'error', credentials: 'omit' });
+      expect(new Uint8Array(await readFile(out))).toEqual(bytes);
+      expect(logSpy).toHaveBeenCalledWith(`wrote workbook.pdf (${String(bytes.byteLength)} bytes) to ${out}`);
+      expect(JSON.stringify(logSpy.mock.calls)).not.toContain('secret-signature');
+      await writeFile(out, 'kept');
+      logSpy.mockClear();
+      fetchSpy.mockClear();
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(await readFile(out, 'utf8')).toBe('kept');
+      logSpy.mockClear();
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out, '--force');
+      expect(soleJson()).toEqual({ ok: true, data: { fileName: 'workbook.pdf', sizeBytes: bytes.byteLength, out } });
+      expect(new Uint8Array(await readFile(out))).toEqual(bytes);
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true });
+    }
+  });
+  it('writes nothing when the proposed file is gone or the storage sends a different size', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'proposal-file-cli-'));
+    try {
+      const out = join(directory, 'review.pdf');
+      h.getChangeProposalFileLink.mockReset().mockResolvedValue(err(appError('not_found', 'No proposed file awaiting approval under this address')));
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+      logSpy.mockClear();
+      vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response(new Uint8Array(3))));
+      h.getChangeProposalFileLink.mockReset().mockResolvedValue(ok({ download: { url: 'https://storage.example.test/f', expiresAt: '1998-08-01T00:01:00.000Z', fileName: 'workbook.pdf', sizeBytes: 9 } }));
+      await run('--json', 'proposals', 'file', 'proposal-1', 'staged-1', '--out', out);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'unavailable' } });
+      await expect(readFile(out)).rejects.toThrow();
+    } finally {
+      vi.unstubAllGlobals();
+      await rm(directory, { recursive: true });
+    }
+  });
   it('rejects a proposal with an optional note', async () => {
     h.rejectChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'rejected', decisionNote: 'Not now' } }));
     await run('--json', 'proposals', 'reject', 'proposal-1', '--note', 'Not now');
@@ -2789,6 +2882,22 @@ describe('owner change proposal commands', () => {
     process.exitCode = 0;
     await run('--json', 'proposals', 'approve', 'proposal-1');
     expect(soleJson()).toMatchObject({ ok: true, data: { proposal: fields } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
+  });
+  it.each([
+    ['file', 'file_unavailable: The proposed file staged-1 is no longer available, so the proposal cannot be applied; nothing was changed'],
+    ['image', 'image_unavailable: The proposed image /proposal-images/logo.png is no longer available, so the proposal cannot be applied; nothing was changed'],
+  ] as const)('prints why an approval ended stale when its %s is gone, without the note code', async (_kind, note) => {
+    h.approveChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'stale' } }));
+    h.getChangeProposal.mockReset().mockResolvedValue(ok({ proposal: { ...ownerProposal, status: 'stale', events: [
+      { sequence: 1, kind: 'proposed', actorUserId: null, apiKeyId: 'shop-key', note: null, at: '1998-08-01T00:00:00.000Z' },
+      { sequence: 2, kind: 'stale', actorUserId: 'owner-1', apiKeyId: null, note, at: '1998-08-02T00:00:00.000Z' },
+    ] } }));
+    await run('proposals', 'approve', 'proposal-1');
+    const printed = String(logSpy.mock.calls[0]?.[0]);
+    expect(printed.split('\n')[0]).toBe(`stale: ${note.slice(note.indexOf(': ') + 2)}`);
+    expect(printed).not.toContain('_unavailable');
+    expect(printed).not.toContain('the live state changed');
     expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
   it('answers a repeated approve with the conflict error and its exit code', async () => {
@@ -2864,6 +2973,46 @@ describe('owner change proposal group commands', () => {
         error: { code: 'conflict', details: { changeProposalGroupItemIds: ['proposal-1', 'proposal-2', 'proposal-3'], itemsDigest: grownDigest } },
       });
     }
+  });
+
+  const withFile = ownerGroup('open', [
+    pending.items[0] ?? groupItem(1),
+    groupItem(2, { operation: 'download.add', input: { productId: '$proposal:proposal-1', stagedFileId: 'staged-1' }, effect: { files: { before: [], after: [{ id: 'staged-1' }] } },
+      proposedFiles: [{ id: 'staged-1', available: true, copiedFrom: { productId: 'product-2', productTitle: 'Field guide', versionNumber: 2 } }] }),
+  ]);
+  const fileLines = [
+    '  files:',
+    '    staged-1: held by this proposal; copy of version 2 of Field guide (product-2)',
+    '      download it with: together proposals file proposal-2 staged-1 --out <path>',
+  ];
+
+  it('shows, before the group is approved, which staged file an item attaches, that it is a copy and how to download it', async () => {
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: withFile }));
+    await run('proposals', 'group', 'show', 'group-1');
+    const shown = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    const item = shown.indexOf('item 2: download.add [pending] product product-1 (proposal-2)');
+    expect(shown.slice(item + 2, item + 5)).toEqual(fileLines);
+
+    logSpy.mockClear();
+    h.approveChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: ownerGroup('applied', [groupItem(1, { status: 'applied' }), groupItem(2, { status: 'applied' })]) }));
+    await run('proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    const approving = String(logSpy.mock.calls[0]?.[0]).split('\n');
+    expect(approving[0]).toBe('approving:');
+    expect(approving).toEqual(expect.arrayContaining(fileLines));
+  });
+
+  it('prints the item whose file is gone as the reason a group approval ended stale, without the note code', async () => {
+    const note = 'file_unavailable: The proposed file staged-1 is no longer available, so the proposal cannot be applied; nothing was changed';
+    h.getChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: withFile }));
+    h.approveChangeProposalGroup.mockReset().mockResolvedValue(ok({ group: ownerGroup('stale', [
+      groupItem(1, { status: 'stale', events: [{ sequence: 2, kind: 'stale', actorUserId: 'owner-1', apiKeyId: null, note: 'Not applied: item 2 (proposal-2) of this group could not be applied, so nothing in the group was changed', at: '1998-08-02T00:00:00.000Z' }] }),
+      groupItem(2, { status: 'stale', events: [{ sequence: 2, kind: 'stale', actorUserId: 'owner-1', apiKeyId: null, note, at: '1998-08-02T00:00:00.000Z' }] }),
+    ]) }));
+    await run('proposals', 'group', 'approve', 'group-1', '--items-digest', shownDigest);
+    const outcome = String(logSpy.mock.calls[1]?.[0]);
+    expect(outcome.split('\n')[0]).toBe('stale: item 2: The proposed file staged-1 is no longer available, so the proposal cannot be applied; nothing was changed; nothing in the group was applied');
+    expect(outcome).not.toContain('file_unavailable');
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.conflict);
   });
 
   it('refuses an approval without a well-formed items digest before reading the group', async () => {

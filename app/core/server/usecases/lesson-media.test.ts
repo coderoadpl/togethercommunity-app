@@ -191,7 +191,7 @@ const progressRepo: MemberCourseProgressRepository = {
   addCompletedLesson: async () => {
     throw new Error('not used');
   },
-  removeCompletedLesson: async () => null,
+  removeCompletedLesson: async () => [],
   setLastViewed: async () => {
     throw new Error('not used');
   },
@@ -260,6 +260,8 @@ const recordingSigner = (): { signer: StorageProvider; calls: { url: string; exp
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => {
@@ -448,6 +450,8 @@ describe('getPlayableLesson', () => {
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
       probe: async () => err(validation('bad url')),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'blocked' })),
       presignPut: () => err(validation('bad url')),
       presignGet: () => err(validation('bad url')),

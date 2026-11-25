@@ -1186,6 +1186,20 @@
       "breakpoints": true
     },
     {
+      "idx": 169,
+      "version": "7",
+      "when": 1790964000125,
+      "tag": "0169_change_proposal_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1790964000126,
+      "tag": "0170_key_download_files",
+      "breakpoints": true
+    },
+    {
       "idx": 171,
       "version": "7",
       "when": 1790964000127,

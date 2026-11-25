@@ -1111,6 +1111,15 @@ export const imageAssetCompleteOutputSchema = z.object({
   url: z.string().startsWith('/'),
 });
 
+export const shopImageAssetUploadOutputSchema = imageAssetUploadOutputSchema.extend({
+  servePath: z.string().startsWith('/').nullable(),
+  quarantined: z.literal(true).optional(),
+});
+
+export const shopImageAssetCompleteOutputSchema = imageAssetCompleteOutputSchema.extend({
+  quarantined: z.literal(true).optional(),
+});
+
 export const lessonEditionsOutputSchema = readerLessonEditionsSchema;
 export const lessonEditionOutputSchema = z.object({ edition: lessonEditionSchema });
 export const lessonEditionUnmarkOutputSchema = z.object({ removed: z.literal(true) });
@@ -1188,12 +1197,14 @@ export type StudentLessonPlaybackOutput = z.infer<typeof studentLessonPlaybackOu
 
 export const lessonCompleteInputSchema = z.object({
   lessonId: z.string().min(1),
+  courseId: z.string().min(1).optional(),
 });
 
 export type LessonCompleteInput = z.input<typeof lessonCompleteInputSchema>;
 
 export const lessonUncompleteInputSchema = z.object({
   lessonId: z.string().min(1),
+  courseId: z.string().min(1).optional(),
 });
 
 export type LessonUncompleteInput = z.input<typeof lessonUncompleteInputSchema>;
@@ -2260,6 +2271,8 @@ export const API_ROUTES = {
   changeProposal: { method: 'GET', path: '/api/change-proposals/:id' },
   changeProposalReject: { method: 'POST', path: '/api/change-proposals/:id/reject' },
   changeProposalApprove: { method: 'POST', path: '/api/change-proposals/:id/approve' },
+  changeProposalImage: { method: 'GET', path: '/api/change-proposals/:id/assets/:digest' },
+  changeProposalFile: { method: 'GET', path: '/api/change-proposals/:id/files/:fileId' },
   changeProposalGroup: { method: 'GET', path: '/api/change-proposals/groups/:id' },
   changeProposalGroupApprove: { method: 'POST', path: '/api/change-proposals/groups/:id/approve' },
   changeProposalGroupReject: { method: 'POST', path: '/api/change-proposals/groups/:id/reject' },
@@ -2683,6 +2696,8 @@ export const API_PATHS = {
   changeProposal: API_ROUTES.changeProposal.path,
   changeProposalReject: API_ROUTES.changeProposalReject.path,
   changeProposalApprove: API_ROUTES.changeProposalApprove.path,
+  changeProposalImage: API_ROUTES.changeProposalImage.path,
+  changeProposalFile: API_ROUTES.changeProposalFile.path,
   changeProposalGroup: API_ROUTES.changeProposalGroup.path,
   changeProposalGroupApprove: API_ROUTES.changeProposalGroupApprove.path,
   changeProposalGroupReject: API_ROUTES.changeProposalGroupReject.path,

@@ -4,11 +4,15 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { checkoutSnapshots, organizations, productPrices, products, salesLinks, stockReservations, tenants } from '#adapters/db/schema.js';
 import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
-import type { StripeMode } from '#core/domain/index.js';
+import type { Identity, StripeMode } from '#core/domain/index.js';
 import {
   buildTenantSecret,
   createDirectSalesLinkCheckout,
+  getCreatorOnboarding,
+  getOperatorTenantReadiness,
   getPaymentConfig,
+  getTenantSecretsMasked,
+  getTenantSetupReadiness,
   startCheckoutSession,
   validateCheckoutSelection,
   type PaymentProvider,
@@ -17,6 +21,7 @@ import {
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
+import { operatorContext } from './marketing-worker-context.js';
 
 const baseUrl = 'http://localhost:48730';
 const at = '2026-11-25T12:00:00.000Z';
@@ -180,5 +185,81 @@ describe('payment configuration readers for a workspace that inherits payments',
       expect(await directCheckout(tenantId)).toMatchObject({ ok: true });
       expect(await startedRows(tenantId)).toEqual({ snapshots: 2, holds: 2, providerCalls: 2 });
     }
+  });
+});
+
+const ownerContext = (tenantId: Workspace) => {
+  const identity: Identity = {
+    userId: `${tenantId}-owner`, email: `owner@${tenantId}.example.test`, name: 'Owner', emailVerified: true, image: null,
+    tenantAccess: 'staff', tenantId, tenantSlug: tenantId, tenantName: tenantId, staffRole: 'owner', memberId: null,
+    memberDisplayName: null, memberBannedAt: null, memberDmOptOutAt: null, memberLanguage: null, memberVideoAutoplay: false,
+  };
+  return { identity };
+};
+
+const readerAnswers = async (tenantId: Workspace, readerDeps: typeof deps) => {
+  const ctx = ownerContext(tenantId);
+  const onboarding = await getCreatorOnboarding(ctx, readerDeps);
+  const setup = await getTenantSetupReadiness(ctx, {
+    tenants: readerDeps.tenants, tenantSecrets: readerDeps.tenantSecrets, paymentConfig: readerDeps.paymentConfig, spaces: readerDeps.spaces, sesSettings: null,
+  });
+  const operator = await getOperatorTenantReadiness(operatorContext(), { slug: tenantId }, readerDeps);
+  const masked = await getTenantSecretsMasked(ctx, readerDeps);
+  if (!onboarding.ok || !setup.ok || !operator.ok || !masked.ok) throw new Error('A reader failed');
+  return {
+    onboardingPayments: onboarding.value.steps.find((step) => step.id === 'payments_configured')?.done,
+    setupStripe: setup.value.items.find((item) => item.id === 'stripe')?.configured,
+    operator: operator.value,
+    masked: { stripeMode: masked.value.stripeMode, paymentSources: masked.value.paymentSources, previews: masked.value.secrets.length },
+    payment: { live: await configured(tenantId, 'live'), test: await configured(tenantId, 'test') },
+    serialized: JSON.stringify({ onboarding, setup, operator, masked }),
+  };
+};
+
+const workspaceRuleDeps = () => ({ ...deps, paymentConfig: undefined });
+
+describe('readiness readers for a workspace that inherits payments', () => {
+  it.each(['acme', 'linked-idle'] as const)('answers %s, which has no source row, byte for byte as the workspace rule', async (tenantId) => {
+    const effective = await readerAnswers(tenantId, deps);
+    expect(effective.serialized).toBe((await readerAnswers(tenantId, workspaceRuleDeps())).serialized);
+    expect(effective.serialized).not.toContain('paymentSources');
+    expect(effective).toMatchObject({
+      onboardingPayments: true, setupStripe: true,
+      operator: { stripeConfigured: true, mode: 'live', webhookEndpointRegistered: true },
+      masked: { stripeMode: 'live', paymentSources: undefined },
+    });
+  });
+
+  it('reports an inherited live group as not configured although the workspace keeps its own live rows', async () => {
+    const answers = await readerAnswers('studio', deps);
+    expect(answers).toMatchObject({
+      onboardingPayments: false, setupStripe: false,
+      operator: { stripeConfigured: true, mode: 'test', webhookEndpointRegistered: true, paymentSources: { live: 'organization', test: 'workspace' } },
+      masked: { stripeMode: 'live', paymentSources: { live: 'organization', test: 'workspace' }, previews: 6 },
+    });
+    expect((await readerAnswers('studio', workspaceRuleDeps())).operator).toMatchObject({ mode: 'live' });
+  });
+
+  it('reports an inherited test group without an organization test key as not configured and leaves live alone', async () => {
+    expect(await readerAnswers('akademia', deps)).toMatchObject({
+      onboardingPayments: true, setupStripe: true,
+      operator: { stripeConfigured: true, mode: 'live', webhookEndpointRegistered: true, paymentSources: { live: 'workspace', test: 'organization' } },
+      masked: { stripeMode: 'live', paymentSources: { live: 'workspace', test: 'organization' } },
+      payment: { live: true, test: false },
+    });
+  });
+
+  it('reports a workspace inheriting both groups from a suspended organization as not configured anywhere', async () => {
+    expect(await readerAnswers('suspended-inheriting', deps)).toMatchObject({
+      onboardingPayments: false, setupStripe: false,
+      operator: { stripeConfigured: false, mode: null, webhookEndpointRegistered: false, paymentSources: { live: 'organization', test: 'organization' } },
+      masked: { stripeMode: 'live', paymentSources: { live: 'organization', test: 'organization' } },
+      payment: { live: false, test: false },
+    });
+  });
+
+  it('adds no key material, preview or organization identifier to the workspace answers', async () => {
+    const serialized = (await readerAnswers('studio', deps)).serialized;
+    for (const leaked of ['org-active', 'holding', 'rk_live_organizationkey', 'organizationkey']) expect(serialized).not.toContain(leaked);
   });
 });

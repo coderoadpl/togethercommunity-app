@@ -174,6 +174,7 @@ import {
   stripeProbePermissionsInputSchema,
   stripeProbePermissionsOutputSchema,
   stripeModeSchema,
+  paymentSourcesSchema,
   postReportSchema,
   reportPostInputSchema,
   reportQueueSchema,
@@ -1567,6 +1568,7 @@ export const tenantSecretsListOutputSchema = z.object({
   stripeMode: stripeModeSchema.nullable(),
   stripeWebhookUrl: z.string().url(),
   stripeTestLastEventAt: z.string().datetime().nullable().default(null),
+  paymentSources: paymentSourcesSchema.optional(),
 });
 
 export const tenantSecretSetInputSchema = setTenantSecretInputSchema;

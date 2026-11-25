@@ -6,19 +6,32 @@ import {
   type AppError,
   type OperatorTenantReadiness,
   type Result,
+  type StripeMode,
 } from '#core/domain/index.js';
 
 import { authorize } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { ProductRepository, StorageCorsCache, TenantAccessReader, TenantRepository, TenantSecretRepository } from '../ports.js';
+import type {
+  EffectivePaymentConfig,
+  EffectivePaymentConfigReader,
+  ProductRepository,
+  StorageCorsCache,
+  TenantAccessReader,
+  TenantRepository,
+  TenantSecretRepository,
+} from '../ports.js';
+import { paymentConfigReader, paymentsReady, paymentSourcesOf, workspaceSecretsFromRows } from './payment-config.js';
 
 export interface OperatorTenantReadinessDeps {
   tenants: Pick<TenantRepository, 'findBySlug' | 'findSettings'>;
   tenantAccess: Pick<TenantAccessReader, 'listStaffForTenant'>;
   tenantSecrets: Pick<TenantSecretRepository, 'listByTenant'>;
+  paymentConfig?: EffectivePaymentConfigReader | undefined;
   storageCorsCache: Pick<StorageCorsCache, 'read'>;
   products: Pick<ProductRepository, 'listPublishedByTenant'>;
 }
+
+const WEBHOOK_ENDPOINT_SLOT = { live: 'stripe.webhookEndpointId', test: 'stripe.testWebhookEndpointId' } as const;
 
 export const getOperatorTenantReadiness = async (
   ctx: Ctx,
@@ -44,9 +57,12 @@ export const getOperatorTenantReadiness = async (
   ]);
   const keys = new Set(secrets.map((secret) => secret.key));
   const storage = secrets.find((secret) => secret.key === 's3.configuration');
-  const live = keys.has('stripe.restrictedKey') && keys.has('stripe.webhookSecret');
-  const test = keys.has('stripe.testRestrictedKey') && keys.has('stripe.testWebhookSecret');
-  const mode = live ? 'live' : test ? 'test' : null;
+  const payments = paymentConfigReader(deps.paymentConfig, workspaceSecretsFromRows(secrets));
+  const [live, test] = await Promise.all([payments.read(tenant.id, 'live'), payments.read(tenant.id, 'test')]);
+  const mode = paymentsReady(live) ? 'live' : paymentsReady(test) ? 'test' : null;
+  const endpointRegistered = (config: EffectivePaymentConfig, configMode: StripeMode): boolean =>
+    config.source === 'organization' ? config.webhookReady : keys.has(WEBHOOK_ENDPOINT_SLOT[configMode]);
+  const sources = paymentSourcesOf(live, test);
   return ok({
     tenantExists: true,
     ownerGrantPresent: staff.filter((grant) => grant.staffRole === 'owner').length === 1,
@@ -55,12 +71,11 @@ export const getOperatorTenantReadiness = async (
       && Date.parse(probe.checkedAt) >= Date.parse(storage.updatedAt)
       && probe.results.length > 0 && probe.results.every((result) => result.status === 'ok'),
     lastProbeAt: probe?.checkedAt ?? null,
-    stripeConfigured: live || test,
+    stripeConfigured: mode !== null,
     mode,
-    webhookEndpointRegistered: mode === 'live'
-      ? keys.has('stripe.webhookEndpointId')
-      : mode === 'test' && keys.has('stripe.testWebhookEndpointId'),
+    webhookEndpointRegistered: mode === 'live' ? endpointRegistered(live, 'live') : mode === 'test' && endpointRegistered(test, 'test'),
     legalUrlsSet: settings?.termsUrl != null && settings.privacyUrl !== null,
     publishedProducts: products.length,
+    ...(sources === null ? {} : { paymentSources: sources }),
   });
 };

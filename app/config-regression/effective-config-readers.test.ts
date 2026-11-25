@@ -27,7 +27,7 @@ const READER_RULES: Readonly<Record<string, ReaderRule>> = {
   },
 };
 
-const O09B = 'O09b makes the payment readers source-aware; until then an inheriting workspace reads its own rows';
+const PAYMENTS_EFFECTIVE = 'payment readiness comes from the effective payment configuration reader';
 const O10 = 'O10 moves the invoicing readers to the effective seam';
 const O13 = 'O13 moves the ShipX readers to the effective seam';
 const O14 = 'O14 moves the e-mail transport readers to the effective seam';
@@ -41,17 +41,25 @@ const ALLOWED_DIRECT_READERS: Readonly<Record<string, { calls: number; reason: s
   },
   'core/server/telemetry/drain.ts secrets.findByKey': { calls: 1, reason: O15 },
   'core/server/usecases/telemetry-store.ts secrets.findByKey': { calls: 1, reason: O15 },
-  'core/server/usecases/checkout.ts tenantSecrets.findByKey': { calls: 2, reason: O09B },
-  'core/server/usecases/configure-stripe.ts tenantSecrets.findByKey': { calls: 2, reason: O09B },
-  'core/server/usecases/onboarding.ts tenantSecrets.findByKey': { calls: 1, reason: O09B },
-  'core/server/usecases/operator-tenant-readiness.ts tenantSecrets.listByTenant': { calls: 1, reason: O09B },
+  'core/server/usecases/payment-config.ts secrets.findByKey': {
+    calls: 2,
+    reason: 'the workspace payment rule that the effective payment configuration reader wraps',
+  },
+  'core/server/usecases/configure-stripe.ts tenantSecrets.findByKey': {
+    calls: 2,
+    reason: 'configures the workspace\'s own payment rows; reporting that they are not in force while inherited comes with the switch',
+  },
+  'core/server/usecases/operator-tenant-readiness.ts tenantSecrets.listByTenant': {
+    calls: 1,
+    reason: `${WORKSPACE_ONLY}: the storage and webhook endpoint rows; ${PAYMENTS_EFFECTIVE}`,
+  },
   'core/server/usecases/tenant-secrets.ts tenantSecrets.listByTenant': {
     calls: 2,
-    reason: `${O09B}; the SES identity check on save is moved by O14`,
+    reason: `the masked list shows the workspace's own rows and ${PAYMENTS_EFFECTIVE}; the SES identity check on save is moved by O14`,
   },
   'core/server/usecases/tenant-setup-readiness.ts tenantSecrets.listByTenant': {
     calls: 1,
-    reason: 'O09b, O10 and O14 make the setup readiness source-aware',
+    reason: `O10 and O14 make the setup readiness source-aware; ${PAYMENTS_EFFECTIVE}`,
   },
   'core/server/usecases/invoices.ts tenantSecrets.findByKey': { calls: 2, reason: O10 },
   'core/server/usecases/shipx.ts tenantSecrets.findByKey': { calls: 1, reason: O13 },

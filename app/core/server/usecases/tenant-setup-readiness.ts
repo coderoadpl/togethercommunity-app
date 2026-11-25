@@ -12,7 +12,9 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import { tenantLegalUrls } from './terms-consent.js';
+import { paymentConfigReader, paymentsReady, workspaceSecretsFromRows } from './payment-config.js';
 import type {
+  EffectivePaymentConfigReader,
   SpaceRepository,
   TenantRepository,
   TenantSecretRepository,
@@ -22,6 +24,7 @@ import type {
 export interface TenantSetupReadinessDeps {
   tenants: Pick<TenantRepository, 'findSettings'>;
   tenantSecrets: Pick<TenantSecretRepository, 'listByTenant'>;
+  paymentConfig?: EffectivePaymentConfigReader | undefined;
   spaces: Pick<SpaceRepository, 'list'>;
   sesSettings: Pick<TenantSesSettingsRepository, 'findByTenant'> | null;
 }
@@ -68,10 +71,11 @@ export const getTenantSetupReadiness = async (
   const resendTransportConfigured = has('resend.apiKey');
 
   const invoicingProvider = settings?.invoicingProvider ?? null;
+  const livePayments = await paymentConfigReader(deps.paymentConfig, workspaceSecretsFromRows(secrets)).read(tenantId, 'live');
 
   return ok(
     computeTenantSetupReadiness({
-      stripeConfigured: has('stripe.restrictedKey') && has('stripe.webhookSecret'),
+      stripeConfigured: paymentsReady(livePayments),
       emailSendingConfigured:
         senderIdentityConfigured
         && (sesTransportConfigured || smtpTransportConfigured || resendTransportConfigured),

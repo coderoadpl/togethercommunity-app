@@ -12,12 +12,15 @@ import type {
   Clock,
   CourseLessonRepository,
   CourseRepository,
+  EffectivePaymentConfig,
+  EffectivePaymentConfigReader,
   MemberRepository,
   OnboardingStateRepository,
   ProductPriceRepository,
   ProductRepository,
   TenantSecretRepository,
 } from '../ports.js';
+import { paymentConfigReader, paymentsReady } from './payment-config.js';
 
 export interface OnboardingDeps {
   products: Pick<ProductRepository, 'listByTenant'>;
@@ -26,10 +29,15 @@ export interface OnboardingDeps {
   lessons: Pick<CourseLessonRepository, 'list'>;
   members: Pick<MemberRepository, 'listWithProductIds'>;
   tenantSecrets: Pick<TenantSecretRepository, 'findByKey'>;
+  paymentConfig?: EffectivePaymentConfigReader | undefined;
   onboardingState: OnboardingStateRepository;
   devEndpoints: { simulatedPayments: boolean };
   clock: Clock;
 }
+
+// The workspace step has always counted a stored key alone; an inherited key counts only once its events can be verified.
+const livePaymentsConfigured = (config: EffectivePaymentConfig): boolean =>
+  config.source === 'workspace' ? config.keyPresent : paymentsReady(config);
 
 export const getCreatorOnboarding = async (
   ctx: Ctx,
@@ -39,12 +47,12 @@ export const getCreatorOnboarding = async (
   if (!tenant.ok) return tenant;
   const tenantId = tenant.value;
 
-  const [products, courses, lessons, members, stripeKey, dismissedAt] = await Promise.all([
+  const [products, courses, lessons, members, livePayments, dismissedAt] = await Promise.all([
     deps.products.listByTenant(tenantId),
     deps.courses.list(tenantId),
     deps.lessons.list(tenantId),
     deps.members.listWithProductIds(tenantId, deps.clock.nowIso()),
-    deps.tenantSecrets.findByKey(tenantId, 'stripe.restrictedKey'),
+    paymentConfigReader(deps.paymentConfig, deps.tenantSecrets).read(tenantId, 'live'),
     deps.onboardingState.findDismissedAt(tenantId),
   ]);
   const activePrices =
@@ -62,7 +70,7 @@ export const getCreatorOnboarding = async (
         hasProductWithActivePrice: activePrices.length > 0,
         hasPublishedProduct: products.some((product) => product.published),
         hasMember: members.length > 0,
-        paymentsConfigured: deps.devEndpoints.simulatedPayments || stripeKey !== null,
+        paymentsConfigured: deps.devEndpoints.simulatedPayments || livePaymentsConfigured(livePayments),
       },
       dismissedAt !== null,
     ),

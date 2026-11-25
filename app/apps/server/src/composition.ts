@@ -611,7 +611,7 @@ export interface AppDeps {
   tenantSecrets: TenantSecretRepository;
   secretCrypto: SecretCrypto;
   secretResolver: TenantSecretResolver;
-  paymentConfig?: EffectivePaymentConfigReader;
+  paymentConfig?: EffectivePaymentConfigReader | undefined;
   payment: PaymentProvider;
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
   invoices: InvoiceRepository;

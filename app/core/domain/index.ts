@@ -56,6 +56,7 @@ export * from './shop-settings.js';
 export * from './shop-integrations.js';
 export * from './checkout-appearance.js';
 export * from './tenant-creation.js';
+export * from './config-source.js';
 export * from './organization.js';
 export * from './support.js';
 export * from './consent.js';

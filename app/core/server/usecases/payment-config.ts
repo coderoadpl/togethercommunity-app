@@ -1,4 +1,4 @@
-import { stripeModeFromKey, type StripeMode, type TenantSecret, type TenantSecretKey } from '#core/domain/index.js';
+import { stripeModeFromKey, type PaymentSources, type StripeMode, type TenantSecret, type TenantSecretKey } from '#core/domain/index.js';
 
 import type { EffectivePaymentConfig, EffectivePaymentConfigReader, SecretCrypto, TenantSecretRepository } from '../ports.js';
 
@@ -56,3 +56,7 @@ export const paymentsReady = (config: EffectivePaymentConfig): boolean => config
 
 export const checkoutPaymentsReady = (config: EffectivePaymentConfig, mode: StripeMode): boolean =>
   paymentsReady(config) && (config.keyMode === null || config.keyMode === mode);
+
+// Absent until a group is inherited, so every answer for a workspace without a source row stays byte-identical.
+export const paymentSourcesOf = (live: EffectivePaymentConfig, test: EffectivePaymentConfig): PaymentSources | null =>
+  live.source === 'workspace' && test.source === 'workspace' ? null : { live: live.source, test: test.source };

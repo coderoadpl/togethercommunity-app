@@ -117,6 +117,7 @@ const courseBody = [
 ];
 
 const courseEvent: PaymentWebhookEvent = {
+  apiVersion: '2025-03-31.basil',
   id: 'evt_legacy_golden',
   type: 'checkout.session.completed',
   objectId: 'cs_live_golden1',
@@ -265,6 +266,7 @@ const printedBody = [
 ];
 
 const printedEvent: PaymentWebhookEvent = {
+  apiVersion: '2025-03-31.basil',
   id: 'evt_legacy_golden',
   type: 'checkout.session.completed',
   objectId: 'cs_live_golden1',
@@ -440,6 +442,7 @@ const bundleBody = [
 ];
 
 const bundleEvent: PaymentWebhookEvent = {
+  apiVersion: '2025-03-31.basil',
   id: 'evt_legacy_golden',
   type: 'checkout.session.completed',
   objectId: 'cs_live_golden1',
@@ -589,6 +592,7 @@ const directBody = [
 ];
 
 const directEvent: PaymentWebhookEvent = {
+  apiVersion: '2025-03-31.basil',
   id: 'evt_legacy_golden',
   type: 'checkout.session.completed',
   objectId: 'cs_live_golden1',

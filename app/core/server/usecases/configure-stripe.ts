@@ -8,23 +8,13 @@ import {
   type AppError,
   type ConfigureStripeInput,
   type Result,
-  type StripeMode,
 } from '#core/domain/index.js';
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { PaymentProvider } from '../ports.js';
-import type { TenantUrlDeps } from '../tenant-url.js';
-import { buildTenantSecret, stripeWebhookUrl, type TenantSecretDeps } from './tenant-secrets.js';
+import { configureStripeSlot, type ConfigureStripeDeps, type ConfigureStripeResult } from './configure-stripe-slot.js';
 
-export interface ConfigureStripeDeps extends TenantSecretDeps, TenantUrlDeps {
-  payment: PaymentProvider;
-}
-
-export interface ConfigureStripeResult {
-  mode: StripeMode;
-  webhookUrl: string;
-}
+export type { ConfigureStripeDeps, ConfigureStripeResult } from './configure-stripe-slot.js';
 
 export const configureStripe = async (
   ctx: Ctx,
@@ -39,39 +29,10 @@ export const configureStripe = async (
   if (mode === null || mode !== parsed.data.mode) {
     return err(validation(`The Stripe ${parsed.data.mode} slot requires a ${parsed.data.mode} restricted key`));
   }
-  if (
-    deps.payment.configureWebhook === undefined ||
-    deps.payment.deleteWebhookEndpoint === undefined
-  ) {
-    return err(integrationUnavailable('The payment provider cannot configure Stripe webhooks'));
-  }
-  const deleteWebhookEndpoint = deps.payment.deleteWebhookEndpoint;
-  const webhookUrl =
-    stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps) + (mode === 'test' ? '?mode=test' : '');
-  const configured = await deps.payment.configureWebhook({
-    tenantId: tenant.value,
-    restrictedKey: parsed.data.restrictedKey,
-    webhookUrl,
-  });
-  if (!configured.ok) return configured;
-  const cleanup = async (): Promise<void> => {
-    await deleteWebhookEndpoint({
-      restrictedKey: parsed.data.restrictedKey,
-      webhookEndpointId: configured.value.webhookEndpointId,
-    });
-  };
-  try {
-    const records = [
-      { key: mode === 'test' ? 'stripe.testWebhookSecret' as const : 'stripe.webhookSecret' as const, value: configured.value.webhookSecret },
-      { key: mode === 'test' ? 'stripe.testRestrictedKey' as const : 'stripe.restrictedKey' as const, value: parsed.data.restrictedKey },
-      { key: mode === 'test' ? 'stripe.testWebhookEndpointId' as const : 'stripe.webhookEndpointId' as const, value: configured.value.webhookEndpointId },
-    ].map((secret) => buildTenantSecret(tenant.value, secret.key, secret.value, deps));
-    await deps.tenantSecrets.upsertMany(tenant.value, records);
-  } catch (cause) {
-    await cleanup();
-    throw cause;
-  }
-  return ok({ mode, webhookUrl });
+  return configureStripeSlot(
+    { tenantId: tenant.value, tenantSlug: ctx.identity.tenantSlug, mode, restrictedKey: parsed.data.restrictedKey },
+    deps,
+  );
 };
 
 export const removeStripeTestMode = async (

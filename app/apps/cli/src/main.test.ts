@@ -1651,6 +1651,24 @@ describe('activity report CLI parsing', () => {
     expect(h.createShopManagementKey).not.toHaveBeenCalled();
     expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
+  it('creates a purchase-smoke key with --purpose and no scopes', async () => {
+    h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Purchase smoke', mode: 'direct' }, secret: 'shop-secret' }));
+    await run('--json', 'api-key', 'shop-management', 'create', 'Purchase', 'smoke', '--purpose', 'purchase-smoke', '--expires-at', '1998-08-08T00:00:00.000Z');
+    expect(h.createShopManagementKey).toHaveBeenCalledWith({
+      name: 'Purchase smoke', scopes: [], purpose: 'purchase-smoke', expiresAt: '1998-08-08T00:00:00.000Z',
+    });
+  });
+  it.each([
+    ['with a scope', ['--purpose', 'purchase-smoke', '--scope', 'shop:catalog:read', '--expires-at', '1998-08-08T00:00:00.000Z']],
+    ['with a mode', ['--purpose', 'purchase-smoke', '--mode', 'direct', '--expires-at', '1998-08-08T00:00:00.000Z']],
+    ['with an unknown purpose', ['--purpose', 'checkout', '--expires-at', '1998-08-08T00:00:00.000Z']],
+    ['without an expiry', ['--purpose', 'purchase-smoke']],
+  ])('refuses a purchase-smoke key %s before calling the API', async (_label, options) => {
+    h.createShopManagementKey.mockReset();
+    await run('--json', 'api-key', 'shop-management', 'create', 'Shop', ...options);
+    expect(h.createShopManagementKey).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
   it('keeps the direct-mode create confirmation line unchanged', async () => {
     h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Backend', mode: 'direct' }, secret: 'shop-secret' }));
     await run('api-key', 'shop-management', 'create', 'Backend', '--scope', 'shop:catalog:write', '--expires-at', '1998-08-08T00:00:00.000Z');

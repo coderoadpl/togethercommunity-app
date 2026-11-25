@@ -130,3 +130,5 @@ export * from './checkout-analytics.js';
 export * from './storage-report.js';
 
 export * from './sales-link-variants.js';
+
+export * from './purchase-smoke.js';

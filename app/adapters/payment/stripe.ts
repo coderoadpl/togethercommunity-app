@@ -487,8 +487,10 @@ const probeRefundPermission = async (client: Stripe, tenantId: string): Promise<
 
 export const createStripePaymentProvider = (config: StripePaymentProviderConfig): PaymentProvider => {
   const createClient = config.clientFactory ?? ((restrictedKey: string) => new Stripe(restrictedKey));
-  const clientFor = async (tenantId: string, mode: 'live' | 'test' = 'live'): Promise<Result<Stripe, AppError>> => {
-    const key = await config.resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+  const clientFor = async (tenantId: string, mode: 'live' | 'test' = 'live', credential?: { restrictedKey: string }): Promise<Result<Stripe, AppError>> => {
+    const key = credential === undefined
+      ? await config.resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey')
+      : ok(credential.restrictedKey);
     if (!key.ok) return key;
     if (stripeKeyModeConflicts(key.value, mode)) return err(validation('Stripe key mode does not match the requested mode'));
     return ok(createClient(key.value));
@@ -738,8 +740,8 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         return err(asDiagnostic('Stripe rejected the coupon request', cause));
       }
     },
-    createCheckoutSession: async (input) => {
-      const client = await clientFor(input.tenantId, input.mode);
+    createCheckoutSession: async (input, credential) => {
+      const client = await clientFor(input.tenantId, input.mode, credential);
       if (!client.ok) return client;
       try {
         const session = await client.value.checkout.sessions.create(stripeCheckoutSessionParams(input));
@@ -754,8 +756,8 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
         return err(asDiagnostic('Stripe rejected the checkout request', cause));
       }
     },
-    expireCheckoutSession: async (input) => {
-      const client = await clientFor(input.tenantId, input.mode);
+    expireCheckoutSession: async (input, credential) => {
+      const client = await clientFor(input.tenantId, input.mode, credential);
       if (!client.ok) return client;
       try {
         await client.value.checkout.sessions.expire(input.sessionId);
@@ -847,6 +849,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       const tenantCheck = validateStripeWebhookTenant(input.tenantId, { tenantIds, checkoutSession: null });
       const customerId = typeof objectOwnership.customer === 'string' ? objectOwnership.customer : objectOwnership.customer?.id;
       const tenantMetadata = {
+        apiVersion: event.api_version ?? null,
         ...(tenantIds.length === 0 ? {} : { tenantIds }),
         ...(customerId === undefined ? {} : { customerId }),
       };

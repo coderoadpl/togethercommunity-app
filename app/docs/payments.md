@@ -653,6 +653,11 @@ together stripe test-mode remove
 
 Keep credentials out of shared terminal history. Test records are retained as audit history; removal disconnects the integration and does not purge records. Stripe documents the separation between sandbox and live credentials in [API keys](https://docs.stripe.com/keys).
 
+The staging run tests purchases and staff refunds. The production fixture uses
+a dedicated machine key and verifies inbound provider refund reconciliation,
+not the staff refund flow. See
+[Purchase end-to-end on a deployed host](observability.md#purchase-end-to-end-on-a-deployed-host).
+
 ## Permission check
 
 An owner can select **Check key permissions** in either Stripe card, or run

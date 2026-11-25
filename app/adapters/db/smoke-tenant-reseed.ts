@@ -1,4 +1,4 @@
-import { eq, getTableName, sql } from 'drizzle-orm';
+import { and, eq, getTableName, inArray } from 'drizzle-orm';
 
 import {
   SMOKE_TENANT_ID,
@@ -11,12 +11,11 @@ import type { Db } from './client.js';
 import { DEMO_TENANT_WIPE_TABLES, type DemoTenantWipeTable } from './reseed-wipe-tables.js';
 import { createSeedUsers } from './seed-users.js';
 import { applySmokeTenantSeed, type SmokeTenantSeedSummary } from './smoke-tenant-seed.js';
-import { marketingConsents, members, tenants } from './schema.js';
-
-/** Serverless instances can overlap, so every smoke-tenant reseed queues behind the same lock. */
-const SMOKE_TENANT_RESEED_LOCK_KEY = 4_820_914;
+import { marketingConsents, members, tenants, shopManagementKeys, shopManagementKeyEvents, shopManagementKeyRateLimitBuckets, purchaseSmokeCheckouts, purchaseSmokeReceipts } from './schema.js';
+import { lockSmokeFixture } from './smoke-fixture-lock.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const RESTORE_BATCH_SIZE = 500;
 
 export interface SmokeTenantReseedSummary {
   tenantId: string;
@@ -26,10 +25,10 @@ export interface SmokeTenantReseedSummary {
 
 export const runSmokeTenantReseed = async (
   db: Db,
-  options: { passwords: SmokeTenantPasswords; nowIso: () => string },
+  options: { passwords: SmokeTenantPasswords; purchaseFixtures?: boolean; nowIso: () => string },
 ): Promise<SmokeTenantReseedSummary> =>
   db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${SMOKE_TENANT_RESEED_LOCK_KEY})`);
+    await lockSmokeFixture(tx, SMOKE_TENANT_ID);
 
     const [tenant] = await tx
       .select({ id: tenants.id, slug: tenants.slug })
@@ -53,6 +52,21 @@ export const runSmokeTenantReseed = async (
     if (refusal !== null) {
       throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${refusal}`);
     }
+
+    const keptKeyFilter = and(eq(shopManagementKeys.tenantId, SMOKE_TENANT_ID), eq(shopManagementKeys.purpose, 'purchase-smoke'));
+    const keptKeys = await tx.select().from(shopManagementKeys).where(keptKeyFilter);
+    const keyIds = tx.select({ id: shopManagementKeys.id }).from(shopManagementKeys).where(keptKeyFilter);
+    const keptEvents = await tx.select().from(shopManagementKeyEvents).where(and(
+      eq(shopManagementKeyEvents.tenantId, SMOKE_TENANT_ID), inArray(shopManagementKeyEvents.apiKeyId, keyIds),
+    ));
+    const keptLimits = await tx.select().from(shopManagementKeyRateLimitBuckets)
+      .where(inArray(shopManagementKeyRateLimitBuckets.apiKeyId, keyIds));
+    const keptCheckoutFilter = and(eq(purchaseSmokeCheckouts.tenantId, SMOKE_TENANT_ID), inArray(purchaseSmokeCheckouts.apiKeyId, keyIds));
+    const keptCheckouts = await tx.select().from(purchaseSmokeCheckouts).where(keptCheckoutFilter);
+    const references = tx.select({ reference: purchaseSmokeCheckouts.reference }).from(purchaseSmokeCheckouts).where(keptCheckoutFilter);
+    const keptReceipts = await tx.select().from(purchaseSmokeReceipts).where(and(
+      eq(purchaseSmokeReceipts.tenantId, SMOKE_TENANT_ID), inArray(purchaseSmokeReceipts.reference, references),
+    ));
 
     const wiped: Array<{ table: string; rows: number }> = [];
     const wipeTenantTable = async (table: DemoTenantWipeTable): Promise<void> => {
@@ -78,9 +92,25 @@ export const runSmokeTenantReseed = async (
     const seed = await applySmokeTenantSeed(tx, {
       users: createSeedUsers(tx, seedClock),
       passwords: options.passwords,
+      purchaseFixtures: options.purchaseFixtures ?? false,
       nextIso: () => new Date(Date.parse(options.nowIso()) + sequence++ * 1000).toISOString(),
       relativeIso: (days) => new Date(Date.parse(options.nowIso()) + days * DAY_MS).toISOString(),
     });
 
+    for (let offset = 0; offset < keptKeys.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(shopManagementKeys).values(keptKeys.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptEvents.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(shopManagementKeyEvents).values(keptEvents.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptLimits.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(shopManagementKeyRateLimitBuckets).values(keptLimits.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptCheckouts.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(purchaseSmokeCheckouts).values(keptCheckouts.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptReceipts.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(purchaseSmokeReceipts).values(keptReceipts.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
     return { tenantId: SMOKE_TENANT_ID, wiped, seed };
   });

@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_ROUTES, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_DOWNLOAD_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { API_ROUTES, PURCHASE_SMOKE_ROUTES, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_DOWNLOAD_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import {
   BETTER_AUTH_API_PATH_PATTERN,
   BETTER_AUTH_EMAIL_VERIFICATION_PATH,
@@ -236,6 +236,7 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.onboardingDismiss,
   ]),
   ...classify('api-key', [
+    PURCHASE_SMOKE_ROUTES.start,
     ...Object.values(SHOP_ASSETS_ROUTES).filter((route) => route.method !== 'GET'),
     ...Object.values(SHOP_DOWNLOAD_ROUTES).filter((route) => route.method !== 'GET'),
     ...Object.values(SHOP_CATALOG_ROUTES).filter((route) => route.method === 'POST'),

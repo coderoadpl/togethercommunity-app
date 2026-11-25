@@ -400,6 +400,15 @@ const deps = (input: {
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
     quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
+    purchaseSmoke: {
+      hasCheckout: async () => false,
+      recordAppliedEvent: async () => undefined,
+      findRun: async () => null,
+      countSince: async () => 0,
+      create: async () => undefined,
+      result: async () => null,
+    },
+    purchaseSmokeTransaction: { run: async () => { throw new Error('No route in this suite starts a purchase smoke checkout'); } },
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
     ...unusedKeyDownloadRepositories(),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
@@ -4043,7 +4052,7 @@ describe('smoke tenant reseed route', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: true,
-      data: { tenantId: 'tenant-acme', environment: 'production', durationMs: 0, wiped: [] },
+      data: { tenantId: 'tenant-acme', environment: 'production', durationMs: 0, wiped: [], testPayments: 'not-configured' },
     });
     expect(composed.platformAudit.record).toHaveBeenCalledOnce();
   });

@@ -132,14 +132,18 @@ export const createFakePaymentProvider = (resolver: TenantSecretResolver, option
         stripePromotionCodeId:
           input.stripePromotionCodeId ?? `fake_promotion_${input.couponId}`,
       }),
-    createCheckoutSession: async (input) => {
-      const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+    createCheckoutSession: async (input, credential) => {
+      const key = credential === undefined
+        ? await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey')
+        : ok(credential.restrictedKey);
       if (!key.ok) return key;
       const sessionId = `cs_fake_${randomUUID()}`;
       return ok({ url: `https://fake.checkout.local/${sessionId}`, sessionId });
     },
-    expireCheckoutSession: async (input) => {
-      const key = await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+    expireCheckoutSession: async (input, credential) => {
+      const key = credential === undefined
+        ? await resolver.resolve(input.tenantId, input.mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey')
+        : ok(credential.restrictedKey);
       if (!key.ok) return key;
       return ok({ expired: true });
     },

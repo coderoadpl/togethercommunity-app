@@ -86,6 +86,8 @@ follow the same member-erasure selection as live orders.
   `external_customer_ids`, so that Stripe customer is unowned again and a later
   subscription adoption follows the normal ownership rules; rows of other
   tenants stay;
+- deletes the member's auth user's `staff_list_layouts` rows in the current
+  tenant before severing the user id;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state
@@ -106,6 +108,9 @@ administrator invitation. Migration
 `0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign
 key as a safeguard for auth-user deletion through any other path. Invitation
 rows store pending state only; activation and revocation already remove them.
+Staff list layouts in other workspaces stay until their auth user is deleted,
+which cascades through the `user_id` foreign key in
+`0173_staff_list_layouts.sql`.
 
 The transaction returns the avatar URL it cleared, and `removeMember` then
 deletes the stored `image-assets/<tenantId>/avatar/<id>.webp` object through the

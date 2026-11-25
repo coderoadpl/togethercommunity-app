@@ -260,7 +260,7 @@ describe('order detail shipment', () => {
     await userEvent.click(await screen.findByRole('option', { name: en.shipx.parcelTemplates.large }));
     await userEvent.click(within(dialog).getByRole('button', { name: en.shipx.discardConfirm }));
     await waitFor(() => expect(calls).toEqual(['discard', 'create']));
-    expect(createBodies).toEqual([{ orderId: 'o1', parcelTemplate: 'large' }]);
+    expect(createBodies).toEqual([{ orderId: 'o1', markShipped: false, parcelTemplate: 'large' }]);
   });
 
   it('creates the InPost shipment with the parcel size staff chose and without one by default', async () => {
@@ -283,7 +283,7 @@ describe('order detail shipment', () => {
     expect(within(automatic).getByRole('combobox', { name: en.shipx.parcelTemplateOverrideLabel }))
       .toHaveTextContent(en.shipx.parcelTemplateAutomatic({ size: en.shipx.parcelTemplates.medium }));
     await userEvent.click(within(automatic).getByRole('button', { name: en.shipx.createConfirm }));
-    await waitFor(() => expect(createBodies).toEqual([{ orderId: 'o1' }]));
+    await waitFor(() => expect(createBodies).toEqual([{ orderId: 'o1', markShipped: false }]));
 
     await userEvent.click(await screen.findByRole('button', { name: en.shipx.create }));
     const chosen = await screen.findByRole('dialog');
@@ -291,7 +291,7 @@ describe('order detail shipment', () => {
     await userEvent.click(await screen.findByRole('option', { name: en.shipx.parcelTemplates.large }));
     expect(within(chosen).getByText(/Parcel locker shipment, size Large/)).toBeInTheDocument();
     await userEvent.click(within(chosen).getByRole('button', { name: en.shipx.createConfirm }));
-    await waitFor(() => expect(createBodies).toEqual([{ orderId: 'o1' }, { orderId: 'o1', parcelTemplate: 'large' }]));
+    await waitFor(() => expect(createBodies).toEqual([{ orderId: 'o1', markShipped: false }, { orderId: 'o1', markShipped: false, parcelTemplate: 'large' }]));
   });
 
   it('shows the conflict when the order was shipped meanwhile', async () => {

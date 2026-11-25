@@ -419,6 +419,7 @@ import {
   parsePlatformOwnerEmails,
   resettableEnvironment,
   resolveSmokeTenantPasswords,
+  stripeModeFromKey,
   targetsProductionData,
   type AppError,
   type KsefEnvironment,
@@ -794,6 +795,7 @@ export const selectSmokeTenantReseed = (
     | 'APP_ENV'
     | 'SMOKE_MEMBER_PASSWORD'
     | 'SMOKE_CREATOR_PASSWORD'
+    | 'SMOKE_PURCHASE_PASSWORD'
     | 'DATABASE_URL'
     | 'PRODUCTION_DATABASE_FINGERPRINT'
   >,
@@ -802,13 +804,31 @@ export const selectSmokeTenantReseed = (
   const resolved = resolveSmokeTenantPasswords({
     production: targetsProductionData(reseedMarkers(env)),
     demoPassword: DEMO_SEED_PASSWORD,
-    configured: { member: env.SMOKE_MEMBER_PASSWORD, creator: env.SMOKE_CREATOR_PASSWORD },
+    configured: {
+      member: env.SMOKE_MEMBER_PASSWORD,
+      creator: env.SMOKE_CREATOR_PASSWORD,
+      purchase: env.SMOKE_PURCHASE_PASSWORD,
+    },
   });
   if (!resolved.ok) return undefined;
   return {
     ...create(resolved.passwords),
     environment: env.APP_ENV ?? env.NODE_ENV ?? 'development',
   };
+};
+
+export const selectSmokeTenantTestPaymentsKey = (
+  env: Pick<Env, 'SMOKE_PURCHASE_STRIPE_TEST_KEY'>,
+  passwords: Pick<SmokeTenantPasswords, 'purchase'>,
+  logger: { warn(message: string): void },
+): string | undefined => {
+  const key = env.SMOKE_PURCHASE_STRIPE_TEST_KEY?.trim();
+  if (key === undefined || key === '' || passwords.purchase === null) return undefined;
+  if (stripeModeFromKey(key) !== 'test') {
+    logger.warn('SMOKE_PURCHASE_STRIPE_TEST_KEY is ignored because it is not a Stripe test restricted key');
+    return undefined;
+  }
+  return key;
 };
 
 export const selectOperatorSecret = (
@@ -1178,12 +1198,30 @@ export const createDeps = (
     dataReset: { run: () => runReseed(db, reseedMarkers(env)) },
     audit: createPlatformAuditRepository(db),
   }));
-  const smokeTenantReseed = selectSmokeTenantReseed(env, (passwords) => ({
-    reseed: { run: () => runSmokeTenantReseed(db, { passwords, nowIso: clock.nowIso }) },
-    platformAudit: createPlatformAuditRepository(db),
-    ids,
-    clock,
-  }));
+  const smokeTenantReseed = selectSmokeTenantReseed(env, (passwords) => {
+    const testPaymentsKey = selectSmokeTenantTestPaymentsKey(env, passwords, logger);
+    return {
+      reseed: { run: () => runSmokeTenantReseed(db, { passwords, nowIso: clock.nowIso }) },
+      platformAudit: createPlatformAuditRepository(db),
+      ids,
+      clock,
+      ...(testPaymentsKey === undefined ? {} : {
+        testPayments: {
+          restrictedKey: testPaymentsKey,
+          configure: {
+            appBaseUrl: env.APP_BASE_URL,
+            baseDomain,
+            singleTenantMode,
+            payment,
+            tenantSecrets,
+            secretCrypto,
+            ids,
+            clock,
+          },
+        },
+      }),
+    };
+  });
   const sanitizeStagingSecrets: SanitizeStagingSecretsDeps = {
     ...reseedMarkers(env),
     secrets: createTenantSecretScan(db),

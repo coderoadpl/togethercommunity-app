@@ -15,6 +15,7 @@ import {
   selectDomainProvisioner,
   selectPlatformReset,
   selectSmokeTenantReseed,
+  selectSmokeTenantTestPaymentsKey,
   selectOperatorSecret,
   selectTenantCreationMode,
   selectTenantRouting,
@@ -729,6 +730,7 @@ describe('smoke tenant reseed composition', () => {
         APP_ENV: 'production',
         SMOKE_MEMBER_PASSWORD: 'production-only-member-password',
         SMOKE_CREATOR_PASSWORD: 'production-only-creator-password',
+        SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
     );
@@ -736,8 +738,44 @@ describe('smoke tenant reseed composition', () => {
     expect(create).toHaveBeenCalledWith({
       member: 'production-only-member-password',
       creator: 'production-only-creator-password',
+      purchase: null,
     });
     expect(composed).toMatchObject({ environment: 'production' });
+  });
+
+  it('passes the purchase password on production when it is configured', () => {
+    const create = vi.fn(adapters);
+
+    selectSmokeTenantReseed(
+      {
+        ...database,
+        NODE_ENV: 'production',
+        APP_ENV: 'production',
+        SMOKE_MEMBER_PASSWORD: 'production-only-member-password',
+        SMOKE_CREATOR_PASSWORD: 'production-only-creator-password',
+        SMOKE_PURCHASE_PASSWORD: 'production-only-purchase-password',
+      },
+      create,
+    );
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ purchase: 'production-only-purchase-password' }));
+  });
+
+  it('composes nothing on production when the purchase password is the shared demo password', () => {
+    const create = vi.fn(adapters);
+
+    expect(selectSmokeTenantReseed(
+      {
+        ...database,
+        NODE_ENV: 'production',
+        APP_ENV: 'production',
+        SMOKE_MEMBER_PASSWORD: 'production-only-member-password',
+        SMOKE_CREATOR_PASSWORD: 'production-only-creator-password',
+        SMOKE_PURCHASE_PASSWORD: 'demo-password-15',
+      },
+      create,
+    )).toBeUndefined();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -754,6 +792,7 @@ describe('smoke tenant reseed composition', () => {
         APP_ENV: 'production',
         SMOKE_MEMBER_PASSWORD: member,
         SMOKE_CREATOR_PASSWORD: creator,
+        SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
     )).toBeUndefined();
@@ -770,11 +809,12 @@ describe('smoke tenant reseed composition', () => {
         APP_ENV: 'development',
         SMOKE_MEMBER_PASSWORD: undefined,
         SMOKE_CREATOR_PASSWORD: undefined,
+        SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
     );
 
-    expect(create).toHaveBeenCalledWith({ member: 'demo-password-15', creator: 'demo-password-15' });
+    expect(create).toHaveBeenCalledWith({ member: 'demo-password-15', creator: 'demo-password-15', purchase: null });
   });
 
   it('composes nothing when a non-production deployment points at the production database', () => {
@@ -788,10 +828,48 @@ describe('smoke tenant reseed composition', () => {
         APP_ENV: 'development',
         SMOKE_MEMBER_PASSWORD: undefined,
         SMOKE_CREATOR_PASSWORD: undefined,
+        SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
     )).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('smoke tenant test payments key', () => {
+  const logger = () => ({ warn: vi.fn<(message: string) => void>() });
+
+  it('selects a test restricted key when the purchase account is seeded', () => {
+    const log = logger();
+
+    expect(selectSmokeTenantTestPaymentsKey(
+      { SMOKE_PURCHASE_STRIPE_TEST_KEY: 'rk_test_purchase' },
+      { purchase: 'production-only-purchase-password' },
+      log,
+    )).toBe('rk_test_purchase');
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['no key', undefined, 'production-only-purchase-password'],
+    ['no purchase account', 'rk_test_purchase', null],
+  ])('selects nothing with %s', (_name, key, purchase) => {
+    const log = logger();
+
+    expect(selectSmokeTenantTestPaymentsKey({ SMOKE_PURCHASE_STRIPE_TEST_KEY: key }, { purchase }, log)).toBeUndefined();
+    expect(log.warn).not.toHaveBeenCalled();
+  });
+
+  it.each(['rk_live_purchase', 'sk_test_purchase'])('ignores %s with a warning that leaves the value out', (key) => {
+    const log = logger();
+
+    expect(selectSmokeTenantTestPaymentsKey(
+      { SMOKE_PURCHASE_STRIPE_TEST_KEY: key },
+      { purchase: 'production-only-purchase-password' },
+      log,
+    )).toBeUndefined();
+    expect(log.warn).toHaveBeenCalledOnce();
+    expect(log.warn.mock.calls[0]?.[0]).not.toContain(key);
   });
 });
 

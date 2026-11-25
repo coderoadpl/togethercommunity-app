@@ -3,7 +3,13 @@ import { verifyPassword } from 'better-auth/crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
-import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
+import {
+  SMOKE_PURCHASE_PRODUCT,
+  SMOKE_PURCHASE_SALES_LINK,
+  SMOKE_TENANT_CREATOR_EMAIL,
+  SMOKE_TENANT_MEMBER_EMAIL,
+  SMOKE_TENANT_PURCHASE_EMAIL,
+} from '#core/domain/index.js';
 
 import { createTestDatabase } from './test-database-name.js';
 
@@ -15,6 +21,7 @@ const tsxBin = join(process.cwd(), 'node_modules/.bin/tsx');
 const DEMO_PASSWORD = 'demo-password-15';
 const MEMBER_PASSWORD = 'production-only-member-password';
 const CREATOR_PASSWORD = 'production-only-creator-password';
+const PURCHASE_PASSWORD = 'production-only-purchase-password';
 
 let testDatabaseUrl: string;
 let closeTestDatabase: () => Promise<void>;
@@ -65,6 +72,58 @@ const rowCounts = async (): Promise<Record<string, number>> => {
 const idsOf = async (sql: string): Promise<string[]> => {
   const result = await client.query<{ id: string }>(sql);
   return result.rows.map(({ id }) => id);
+};
+
+const credentialHashFor = async (email: string): Promise<string> => {
+  const credential = await client.query<{ password: string }>(
+    `SELECT a.password
+     FROM account a
+     JOIN "user" u ON u.id = a.user_id
+     WHERE a.provider_id = 'credential' AND u.email = $1`,
+    [email],
+  );
+  return credential.rows[0]?.password ?? '';
+};
+
+const purchaseFixtureState = async () => {
+  const roles = await client.query<{ role: string }>(
+    `SELECT ta.role
+     FROM tenant_admins ta
+     JOIN "user" u ON u.id = ta.user_id
+     WHERE ta.tenant_id = 'tenant-acme' AND u.email = $1`,
+    [SMOKE_TENANT_PURCHASE_EMAIL],
+  );
+  const tenant = await client.query<{ shipping_rates: unknown; terms_url: string | null; privacy_url: string | null }>(
+    `SELECT shipping_rates, terms_url, privacy_url FROM tenants WHERE id = 'tenant-acme'`,
+  );
+  const products = await client.query<{ id: string; type: string; delivery_method: string; price_cents: number; vat_rate: unknown; published: boolean }>(
+    `SELECT id, type, delivery_method, price_cents, vat_rate, published
+     FROM products WHERE tenant_id = 'tenant-acme' ORDER BY id`,
+  );
+  const prices = await client.query<{ id: string; amount_cents: number; currency: string; kind: string; active: boolean }>(
+    `SELECT id, amount_cents, currency, kind, active
+     FROM product_prices WHERE tenant_id = 'tenant-acme' AND product_id = $1`,
+    [SMOKE_PURCHASE_PRODUCT.id],
+  );
+  const stock = await client.query<{ on_hand: number; reserved: number }>(
+    `SELECT on_hand, reserved FROM product_stock WHERE tenant_id = 'tenant-acme' AND product_id = $1`,
+    [SMOKE_PURCHASE_PRODUCT.id],
+  );
+  const links = await client.query<{ id: string; slug: string; product_ids: unknown; active: boolean; listed: boolean; revision: number }>(
+    `SELECT id, slug, product_ids, active, listed, revision FROM sales_links WHERE tenant_id = 'tenant-acme'`,
+  );
+  const linkEvents = await client.query<{ type: string; revision: number }>(
+    `SELECT type, revision FROM sales_link_events WHERE tenant_id = 'tenant-acme'`,
+  );
+  return {
+    roles: roles.rows.map((row) => row.role),
+    tenant: tenant.rows[0],
+    products: products.rows,
+    prices: prices.rows,
+    stock: stock.rows,
+    links: links.rows,
+    linkEvents: linkEvents.rows,
+  };
 };
 
 const addForeignMember = async (): Promise<void> => {
@@ -229,22 +288,92 @@ describe('smoke tenant reseed', () => {
       SMOKE_CREATOR_PASSWORD: CREATOR_PASSWORD,
     });
 
-    const hashFor = async (email: string): Promise<string> => {
-      const credential = await client.query<{ password: string }>(
-        `SELECT a.password
-         FROM account a
-         JOIN "user" u ON u.id = a.user_id
-         WHERE a.provider_id = 'credential' AND u.email = $1`,
-        [email],
-      );
-      return credential.rows[0]?.password ?? '';
-    };
-
-    const memberHash = await hashFor(SMOKE_TENANT_MEMBER_EMAIL);
-    const creatorHash = await hashFor(SMOKE_TENANT_CREATOR_EMAIL);
+    const memberHash = await credentialHashFor(SMOKE_TENANT_MEMBER_EMAIL);
+    const creatorHash = await credentialHashFor(SMOKE_TENANT_CREATOR_EMAIL);
     await expect(verifyPassword({ hash: memberHash, password: MEMBER_PASSWORD })).resolves.toBe(true);
     await expect(verifyPassword({ hash: memberHash, password: DEMO_PASSWORD })).resolves.toBe(false);
     await expect(verifyPassword({ hash: creatorHash, password: CREATOR_PASSWORD })).resolves.toBe(true);
     await expect(verifyPassword({ hash: creatorHash, password: MEMBER_PASSWORD })).resolves.toBe(false);
+  }, 180_000);
+
+  it('leaves the purchase account and its fixtures out without a purchase password', async () => {
+    const result = runDatabaseScript('reseed-acme.ts');
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(result.stdout).not.toContain(SMOKE_TENANT_PURCHASE_EMAIL);
+    expect(await credentialHashFor(SMOKE_TENANT_PURCHASE_EMAIL)).toBe('');
+    expect(await purchaseFixtureState()).toEqual({
+      roles: [],
+      tenant: { shipping_rates: [], terms_url: null, privacy_url: null },
+      products: [{ id: 'product-acme-course', type: 'course', delivery_method: 'pickup', price_cents: 9900, vat_rate: null, published: true }],
+      prices: [],
+      stock: [],
+      links: [],
+      linkEvents: [],
+    });
+  }, 180_000);
+
+  it('seeds the purchase account as an admin with its fixtures against the production database', async () => {
+    const result = runDatabaseScript('reseed-acme.ts', {
+      PRODUCTION_DATABASE_FINGERPRINT: databaseHostFingerprint(testDatabaseUrl) ?? '',
+      SMOKE_MEMBER_PASSWORD: MEMBER_PASSWORD,
+      SMOKE_CREATOR_PASSWORD: CREATOR_PASSWORD,
+      SMOKE_PURCHASE_PASSWORD: PURCHASE_PASSWORD,
+    });
+
+    expect(result.status, result.stderr || result.stdout).toBe(0);
+    expect(result.stdout).toContain(SMOKE_TENANT_PURCHASE_EMAIL);
+    const purchaseHash = await credentialHashFor(SMOKE_TENANT_PURCHASE_EMAIL);
+    await expect(verifyPassword({ hash: purchaseHash, password: PURCHASE_PASSWORD })).resolves.toBe(true);
+    await expect(verifyPassword({ hash: purchaseHash, password: DEMO_PASSWORD })).resolves.toBe(false);
+    expect(await purchaseFixtureState()).toEqual({
+      roles: ['admin'],
+      tenant: {
+        shipping_rates: [
+          { id: 'purchase-e2e-locker', label: 'Purchase test parcel locker', amountCents: 1299, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
+          { id: 'purchase-e2e-courier', label: 'Purchase test courier', amountCents: 1599, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'none', active: true },
+        ],
+        terms_url: 'https://togethercommunity.app/terms',
+        privacy_url: 'https://togethercommunity.app/privacy',
+      },
+      products: [
+        { id: 'product-acme-course', type: 'course', delivery_method: 'pickup', price_cents: 9900, vat_rate: 23, published: true },
+        { id: SMOKE_PURCHASE_PRODUCT.id, type: 'physical', delivery_method: 'shipping', price_cents: 2500, vat_rate: 23, published: true },
+      ],
+      prices: [{ id: SMOKE_PURCHASE_PRODUCT.priceId, amount_cents: 2500, currency: 'PLN', kind: 'one_time', active: true }],
+      stock: [{ on_hand: 1000, reserved: 0 }],
+      links: [{
+        id: SMOKE_PURCHASE_SALES_LINK.id,
+        slug: 'purchase-e2e-bundle',
+        product_ids: [SMOKE_PURCHASE_PRODUCT.id, 'product-acme-course'],
+        active: true,
+        listed: false,
+        revision: 1,
+      }],
+      linkEvents: [{ type: 'created', revision: 1 }],
+    });
+  }, 180_000);
+
+  it('repeats with the purchase account without adding rows', async () => {
+    const withPurchase = { SMOKE_PURCHASE_PASSWORD: PURCHASE_PASSWORD };
+    runSucceeds('reseed-acme.ts', withPurchase);
+    const firstCounts = await rowCounts();
+
+    runSucceeds('reseed-acme.ts', withPurchase);
+
+    expect(await rowCounts()).toEqual(firstCounts);
+    expect((await purchaseFixtureState()).roles).toEqual(['admin']);
+  }, 180_000);
+
+  it('refuses the demo password as the purchase password on the production database', async () => {
+    const result = runDatabaseScript('reseed-acme.ts', {
+      PRODUCTION_DATABASE_FINGERPRINT: databaseHostFingerprint(testDatabaseUrl) ?? '',
+      SMOKE_MEMBER_PASSWORD: MEMBER_PASSWORD,
+      SMOKE_CREATOR_PASSWORD: CREATOR_PASSWORD,
+      SMOKE_PURCHASE_PASSWORD: DEMO_PASSWORD,
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('SMOKE_PURCHASE_PASSWORD must not be the shared demo password');
   }, 180_000);
 });

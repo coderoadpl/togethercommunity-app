@@ -2448,7 +2448,7 @@ export const applySeed = async (db: Db): Promise<SeedSummary> => {
 
   const smokeTenant = await applySmokeTenantSeed(db, {
     users,
-    passwords: { member: PASSWORD, creator: PASSWORD },
+    passwords: { member: PASSWORD, creator: PASSWORD, purchase: null },
     nextIso,
     relativeIso,
   });

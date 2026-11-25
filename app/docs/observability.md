@@ -467,12 +467,28 @@ get — so smoke assertions can name known content:
 | Passwordless member | `student2@together.dev` |
 | Published product | `product-acme-course` — `Acme Course` |
 | Course | `course-acme` — `Acme Course`, one module, one lesson with a Bunny Stream video |
+| Purchase account (optional) | `kontakt+smoke-purchase@togethercommunity.app`, role `admin` (never `owner`), only when `SMOKE_PURCHASE_PASSWORD` is set |
+| Purchase fixtures (optional, with the purchase account) | shipping rates `purchase-e2e-locker` (parcel locker, 12.99 PLN) and `purchase-e2e-courier` (courier, 15.99 PLN); terms and privacy URLs on `togethercommunity.app`; physical product `product-acme-purchase-parcel` (`purchase-e2e-parcel`, 25.00 PLN, VAT 23, shipped, 1000 in stock); unlisted sales link `purchase-e2e-bundle` with the parcel and `product-acme-course`; `product-acme-course` gets VAT 23 |
 
 Only the password source differs by environment. Locally and in e2e both
 accounts are seeded with the shared demo password; on production the seed reads
 `SMOKE_MEMBER_PASSWORD` and `SMOKE_CREATOR_PASSWORD` and refuses to run when
 either is unset or equal to the demo password, so the demo password can never
 reach a production database.
+
+The purchase account exists so a production purchase smoke can run without an
+owner credential. It is seeded only by the smoke-tenant reseed and only when
+`SMOKE_PURCHASE_PASSWORD` is set; without it the account and every purchase
+fixture are absent, so local development, the e2e suites, fixture recordings
+and visual baselines see the same acme rows as before. On production the
+reseed refuses a `SMOKE_PURCHASE_PASSWORD` equal to the demo password.
+
+What the purchase account can do, and only in `tenant-acme`: create staff
+test-mode checkouts, read and refund orders, read members, edit products and
+courses, read masked secrets, and the rest of the `admin` role (see
+[the permission table](permission-table.md)). What it cannot do: write any
+payment secret (live or test), workspace settings, API keys or shop management
+keys, and it reaches no other workspace.
 
 ### What is hidden
 
@@ -520,7 +536,7 @@ and refuse the run with a `conflict` error carrying the reason:
 
 - `tenant-acme` exists under a slug other than `acme`;
 - `tenant-acme` has any member whose e-mail is neither on `@together.dev` nor
-  one of the two smoke accounts;
+  one of the smoke accounts (member, creator and purchase);
 - `tenant-acme` holds a marketing consent from an address outside that same set
   — a public surface the fixture never uses, so the row belongs to a real person
   and its consent evidence must not be wiped.
@@ -528,17 +544,46 @@ and refuse the run with a `conflict` error carrying the reason:
 Alongside those refusals, note what the run rewrites beyond the tenant: the wipe
 is tenant-scoped, but the re-seed is not entirely. `user` and `account` carry no
 tenant column, so re-creating the fixture resets the password and timestamps of
-the global rows of both smoke accounts,
-`kontakt+smoke-creator@togethercommunity.app` and
-`kontakt+smoke-member@togethercommunity.app`. Both are platform-owned addresses
+the global rows of the smoke accounts,
+`kontakt+smoke-creator@togethercommunity.app`,
+`kontakt+smoke-member@togethercommunity.app` and, when it is seeded,
+`kontakt+smoke-purchase@togethercommunity.app`. All are platform-owned addresses
 the guard allow-lists, so no real person's credential is in reach — but the run
 is "only `tenant-acme`" in the tenant-scoped tables, not in the auth tables.
+
+The same reseed carries the optional purchase account. Two deployment
+variables control it:
+
+| Variable | Effect |
+| --- | --- |
+| `SMOKE_PURCHASE_PASSWORD` | Seeds the purchase account (`admin`) and the purchase fixtures. Absent → neither exists. |
+| `SMOKE_PURCHASE_STRIPE_TEST_KEY` | A Stripe test restricted key (`rk_test_…`). Used only together with `SMOKE_PURCHASE_PASSWORD`; a value with another prefix is ignored with a logged warning that leaves the value out. |
+
+With both set, after a successful wipe and re-seed the route configures the
+Stripe **test** slot of `tenant-acme` exactly as a workspace owner's test-mode
+configuration does: it registers the `?mode=test` webhook endpoint pinned to the
+library's API version, stores the test restricted key, the webhook signing
+secret and the endpoint id together, and removes the new endpoint again when
+storing them fails. The live slot is never written. The response carries
+`testPayments`: `configured`, `not-configured` (no key or no purchase account)
+or `failed`. A failure there never fails the reseed — the route still answers
+200 with the wipe summary — and the `reseed-acme` audit row records only the
+error code (`test payments failed: <code>`); the provider's error text is
+neither returned nor logged, because it may echo the webhook URL.
+
+Every reseed resets the purchase account with the current
+`SMOKE_PURCHASE_PASSWORD`, so the password stays valid until it is rotated.
+Revoking the account means rotating `SMOKE_PURCHASE_PASSWORD` in the deployment
+and in CI; the next reseed writes the new password.
 
 Manually, against any database:
 
 ```bash
 DATABASE_URL=… SMOKE_MEMBER_PASSWORD=… SMOKE_CREATOR_PASSWORD=… pnpm run reseed:acme
 ```
+
+The script also reads `SMOKE_PURCHASE_PASSWORD`; it never configures test
+payments, which only the route does.
 
 The script decides whether it is writing to production from the process
 environment **and** from the fingerprint of `DATABASE_URL` against

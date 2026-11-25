@@ -454,6 +454,30 @@ with `[provider id]`. Every refund failure message has Stripe API keys and
 webhook secrets replaced with `[credential]` before it is stored on the
 refund, returned in the order detail or copied into a staff alert e-mail.
 
+## Smoke tenant purchase account
+
+The synthetic smoke workspace `tenant-acme` may carry a purchase fixture
+account, `kontakt+smoke-purchase@togethercommunity.app`, seeded by the
+operator reseed only when `SMOKE_PURCHASE_PASSWORD` is set (see
+[the smoke tenant](observability.md#the-smoke-tenant)). It is an `admin`, never
+an `owner`, so CI holds no owner credential.
+
+In `tenant-acme` the account can create staff test-mode checkouts, read and
+refund orders, read members, edit products and courses and read masked
+secrets, together with the rest of the `admin` role. It cannot write any
+payment secret (live or test), workspace settings, API keys or shop management
+keys, and it reaches no other workspace. The Stripe test slot it buys through
+is written by the operator reseed from `SMOKE_PURCHASE_STRIPE_TEST_KEY`, which
+accepts only a `rk_test_` key and never touches the live slot.
+
+Worst case for a holder of `SMOKE_PURCHASE_PASSWORD` on production: it stays
+inside `tenant-acme` — test purchases and refunds, product and course edits,
+reading the synthetic members. No live money moves: the live slot stays empty
+and an admin cannot write it. Whatever the holder changes in `tenant-acme` is
+undone by the next deploy's reseed. Access is revoked only by rotating
+`SMOKE_PURCHASE_PASSWORD` in the deployment and in CI, because every reseed
+resets the account with the configured password.
+
 ## Accepted dependency advisories
 
 `pnpm audit --prod --audit-level=moderate` blocks merges through `check` only

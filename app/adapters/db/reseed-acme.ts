@@ -20,6 +20,7 @@ const resolved = resolveSmokeTenantPasswords({
   configured: {
     member: process.env['SMOKE_MEMBER_PASSWORD'],
     creator: process.env['SMOKE_CREATOR_PASSWORD'],
+    purchase: process.env['SMOKE_PURCHASE_PASSWORD'],
   },
 });
 if (!resolved.ok) {
@@ -39,5 +40,8 @@ for (const entry of summary.wiped) {
 console.log(`  creator  ${summary.seed.creator.email}  ->  ${summary.seed.creator.tenantSlug}`);
 for (const member of summary.seed.members) {
   console.log(`  member   ${member.email}  ->  ${member.tenantId}`);
+}
+if (summary.seed.purchase !== undefined) {
+  console.log(`  ${summary.seed.purchase.role}    ${summary.seed.purchase.email}  ->  ${summary.seed.purchase.tenantSlug}`);
 }
 process.exit(0);

@@ -1,11 +1,19 @@
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import {
+  SMOKE_PURCHASE_PRIVACY_URL,
+  SMOKE_PURCHASE_PRODUCT,
+  SMOKE_PURCHASE_SALES_LINK,
+  SMOKE_PURCHASE_SHIPPING_RATES,
+  SMOKE_PURCHASE_TERMS_URL,
+  SMOKE_TENANT_COURSE_PRODUCT_ID,
   SMOKE_TENANT_COURSE_TITLE,
   SMOKE_TENANT_CREATOR_EMAIL,
   SMOKE_TENANT_ID,
   SMOKE_TENANT_MEMBER_EMAIL,
+  SMOKE_TENANT_PURCHASE_EMAIL,
   SMOKE_TENANT_SLUG,
+  salesLinkSchema,
   type AccessItem,
   type Chapter,
   type LessonBlock,
@@ -22,6 +30,10 @@ import {
   productGrants,
   productPrices,
   products,
+  productStock,
+  salesLinkEvents,
+  salesLinks,
+  stockEvents,
   tenantAdmins,
   tenantDomains,
   tenants,
@@ -33,7 +45,7 @@ const SMOKE_TENANT_STUDENT_EMAIL = 'student2@together.dev';
 
 const COURSE_ID = 'course-acme';
 const MODULE_ID = 'module-acme-1';
-const PRODUCT_ID = 'product-acme-course';
+const PRODUCT_ID = SMOKE_TENANT_COURSE_PRODUCT_ID;
 
 const BUNNY_DEMO_LIBRARY_ID = '197133';
 const BUNNY_DEMO_VIDEO_ID = 'dc48a09e-d9bb-420a-83d7-72dc2304c034';
@@ -62,6 +74,7 @@ export interface SmokeTenantSeedSummary {
   tenantId: string;
   creator: { email: string; tenantSlug: string };
   members: Array<{ email: string; tenantId: string }>;
+  purchase?: { email: string; tenantSlug: string; role: 'admin' };
 }
 
 export interface SmokeTenantSeedOptions {
@@ -70,6 +83,125 @@ export interface SmokeTenantSeedOptions {
   nextIso: () => string;
   relativeIso: (days: number) => string;
 }
+
+const seedPurchaseFixtures = async (
+  db: Db,
+  options: SmokeTenantSeedOptions,
+  password: string,
+): Promise<NonNullable<SmokeTenantSeedSummary['purchase']>> => {
+  const purchaseUserId = await options.users.ensurePassworded(
+    SMOKE_TENANT_PURCHASE_EMAIL,
+    'Purchase Test Staff',
+    password,
+  );
+
+  await db
+    .insert(tenantAdmins)
+    .values({
+      id: `admin-${SMOKE_TENANT_SLUG}-purchase`,
+      tenantId: SMOKE_TENANT_ID,
+      userId: purchaseUserId,
+      role: 'admin',
+    })
+    .onConflictDoNothing();
+
+  await db
+    .update(tenants)
+    .set({
+      shippingRates: [...SMOKE_PURCHASE_SHIPPING_RATES],
+      termsUrl: SMOKE_PURCHASE_TERMS_URL,
+      privacyUrl: SMOKE_PURCHASE_PRIVACY_URL,
+    })
+    .where(eq(tenants.id, SMOKE_TENANT_ID));
+
+  await db
+    .update(products)
+    .set({ vatRate: 23 })
+    .where(and(eq(products.tenantId, SMOKE_TENANT_ID), eq(products.id, PRODUCT_ID)));
+
+  await db
+    .insert(products)
+    .values({
+      id: SMOKE_PURCHASE_PRODUCT.id,
+      tenantId: SMOKE_TENANT_ID,
+      type: SMOKE_PURCHASE_PRODUCT.type,
+      slug: SMOKE_PURCHASE_PRODUCT.slug,
+      title: SMOKE_PURCHASE_PRODUCT.title,
+      description: '',
+      priceCents: SMOKE_PURCHASE_PRODUCT.priceCents,
+      vatRate: SMOKE_PURCHASE_PRODUCT.vatRate,
+      currency: SMOKE_PURCHASE_PRODUCT.currency,
+      published: SMOKE_PURCHASE_PRODUCT.published,
+      deliveryMethod: SMOKE_PURCHASE_PRODUCT.deliveryMethod,
+      createdAt: options.nextIso(),
+    })
+    .onConflictDoNothing();
+
+  await db
+    .insert(productPrices)
+    .values({
+      id: SMOKE_PURCHASE_PRODUCT.priceId,
+      tenantId: SMOKE_TENANT_ID,
+      productId: SMOKE_PURCHASE_PRODUCT.id,
+      kind: 'one_time',
+      interval: null,
+      amountCents: SMOKE_PURCHASE_PRODUCT.priceCents,
+      currency: SMOKE_PURCHASE_PRODUCT.currency,
+      active: true,
+      createdAt: options.nextIso(),
+    })
+    .onConflictDoNothing();
+
+  const stockSince = options.nextIso();
+  const [tracked] = await db
+    .insert(productStock)
+    .values({
+      tenantId: SMOKE_TENANT_ID,
+      productId: SMOKE_PURCHASE_PRODUCT.id,
+      onHand: SMOKE_PURCHASE_PRODUCT.stockOnHand,
+      reserved: 0,
+      updatedAt: stockSince,
+    })
+    .onConflictDoNothing()
+    .returning({ productId: productStock.productId });
+  if (tracked !== undefined) {
+    await db.insert(stockEvents).values({
+      tenantId: SMOKE_TENANT_ID,
+      productId: SMOKE_PURCHASE_PRODUCT.id,
+      type: 'tracking_enabled',
+      quantity: SMOKE_PURCHASE_PRODUCT.stockOnHand,
+      reference: {},
+      actorUserId: null,
+      occurredAt: stockSince,
+    });
+  }
+
+  const linkSince = options.nextIso();
+  const link = salesLinkSchema.parse({
+    ...SMOKE_PURCHASE_SALES_LINK,
+    productIds: [...SMOKE_PURCHASE_SALES_LINK.productIds],
+    tenantId: SMOKE_TENANT_ID,
+    createdAt: linkSince,
+    updatedAt: linkSince,
+  });
+  const [created] = await db
+    .insert(salesLinks)
+    .values(link)
+    .onConflictDoNothing()
+    .returning({ id: salesLinks.id });
+  if (created !== undefined) {
+    await db.insert(salesLinkEvents).values({
+      tenantId: SMOKE_TENANT_ID,
+      salesLinkId: link.id,
+      revision: link.revision,
+      type: 'created',
+      snapshot: link,
+      occurredAt: link.updatedAt,
+    });
+  }
+
+  return { email: SMOKE_TENANT_PURCHASE_EMAIL, tenantSlug: SMOKE_TENANT_SLUG, role: 'admin' };
+};
 
 export const applySmokeTenantSeed = async (
   db: Db,
@@ -245,9 +377,11 @@ export const applySmokeTenantSeed = async (
     })
     .onConflictDoNothing();
 
-  return {
+  const summary: SmokeTenantSeedSummary = {
     tenantId: SMOKE_TENANT_ID,
     creator: { email: SMOKE_TENANT_CREATOR_EMAIL, tenantSlug: SMOKE_TENANT_SLUG },
     members: memberRows.map((member) => ({ email: member.email, tenantId: SMOKE_TENANT_ID })),
   };
+  if (options.passwords.purchase === null) return summary;
+  return { ...summary, purchase: await seedPurchaseFixtures(db, options, options.passwords.purchase) };
 };

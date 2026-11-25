@@ -14,6 +14,5 @@ export const shipxCreateLine = ({ order, shipment }: { order: OrderListItem; shi
   if (order.fulfilmentStatus === 'to_pack' && order.label == null) {
     return `label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: ${order.id} (inpost ${labelTracking ?? ''})`;
   }
-  const status = order.fulfilmentStatus === 'to_pack' ? 'label ready; order still to pack' : 'label bought; order is off the packing list';
-  return `${status}: ${order.id} (inpost ${labelTracking ?? ''})`;
+  return `label ready; order still to pack: ${order.id} (inpost ${labelTracking ?? ''})`;
 };

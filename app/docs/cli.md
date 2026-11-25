@@ -144,7 +144,7 @@ If the order left the packing list while the label was being bought, the
 command fails with `conflict` (exit 6). In plain mode both errors go to stderr;
 with `--json` they are returned in the error envelope on stdout.
 
-The plain session `orders list` output now has a fulfilment column immediately
+The plain session `orders list` output has a fulfilment column immediately
 after the status column. Scripts that read columns by position must adjust.
 Plain `shop orders list` keeps its existing fulfilment column. Both show
 `label_ready` in that column for a to-pack order with a bought label. Use

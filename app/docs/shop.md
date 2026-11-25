@@ -806,7 +806,7 @@ order id (cut to 100 characters).
 
 **Label ready** is a display state, never a stored fulfilment status. It means
 `to_pack` with a stored ShipX id, valid tracking number and status past
-`offer_selected`, excluding `canceled`. Order list and detail responses add an
+`offer_selected`. Order list and detail responses add an
 optional `label` object (`{ carrier: 'inpost', trackingNumber }`), or `null`;
 older clients can keep parsing the response. These orders stay in the `to_pack` filter and
 packing list. Studio shows an info-coloured chip, carrier status, tracking

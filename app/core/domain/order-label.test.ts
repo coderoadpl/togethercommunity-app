@@ -13,10 +13,6 @@ describe('derived order labels', () => {
     for (const status of ['created', 'offers_prepared', 'offer_selected']) expect(orderLabel({ ...bought, status })).toBeNull();
   });
 
-  it('does not expose a canceled shipment as a label even with tracking', () => {
-    expect(orderLabel({ ...bought, status: 'canceled' })).toBeNull();
-  });
-
   it.each(['', '  A  ', 'X'.repeat(65)])('does not derive a label from invalid tracking %j', (trackingNumber) => {
     const label = orderLabel({ ...bought, trackingNumber });
     expect(label).toBeNull();

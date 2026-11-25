@@ -1020,9 +1020,8 @@ export const createDeps = (
     egress: createTelemetryEgressProbe({ declaredIp: env.PLATFORM_EGRESS_IP, endpoint: env.PLATFORM_EGRESS_ECHO_URL }),
     hidesStatistics: env.TELEMETRY_FREE_PLAN_HIDES_STATS,
   };
-  const secretResolver = createEffectiveTenantSecretResolver(
-    createTenantSecretResolver(tenantSecrets, secretCrypto), createEffectiveTenantConfigReader(db), secretCrypto,
-  );
+  const workspaceSecretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
+  const secretResolver = createEffectiveTenantSecretResolver(workspaceSecretResolver, createEffectiveTenantConfigReader(db), secretCrypto);
   const invoiceRepository = createInvoiceRepository(db);
   const orderRepository = createOrderRepository(db);
   const stock = createStockRepository(db);
@@ -1068,7 +1067,7 @@ export const createDeps = (
   const dispatchKsef = () => dispatchKsefJob(ksefSubmissionDeps);
   const payment =
     env.PAYMENT_PROVIDER === 'stripe'
-      ? createStripePaymentProvider({ resolver: secretResolver })
+      ? createStripePaymentProvider({ resolver: secretResolver, workspaceResolver: workspaceSecretResolver })
       : createFakePaymentProvider(secretResolver);
   const devEmail = createDevEmailPort(db, clock);
   const email =

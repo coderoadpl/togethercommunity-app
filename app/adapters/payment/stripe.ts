@@ -80,6 +80,8 @@ const localeFor = (language: string | undefined): Stripe.Checkout.SessionCreateP
 
 export interface StripePaymentProviderConfig {
   resolver: TenantSecretResolver;
+  /** The workspace's own keys, never inherited; without it the resolver is taken as workspace-only. */
+  workspaceResolver?: TenantSecretResolver;
   clientFactory?: (restrictedKey: string) => Stripe;
 }
 
@@ -487,8 +489,12 @@ const probeRefundPermission = async (client: Stripe, tenantId: string): Promise<
 
 export const createStripePaymentProvider = (config: StripePaymentProviderConfig): PaymentProvider => {
   const createClient = config.clientFactory ?? ((restrictedKey: string) => new Stripe(restrictedKey));
-  const clientFor = async (tenantId: string, mode: 'live' | 'test' = 'live'): Promise<Result<Stripe, AppError>> => {
-    const key = await config.resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
+  const clientFor = async (
+    tenantId: string,
+    mode: 'live' | 'test' = 'live',
+    resolver: TenantSecretResolver = config.resolver,
+  ): Promise<Result<Stripe, AppError>> => {
+    const key = await resolver.resolve(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey');
     if (!key.ok) return key;
     if (stripeKeyModeConflicts(key.value, mode)) return err(validation('Stripe key mode does not match the requested mode'));
     return ok(createClient(key.value));
@@ -881,7 +887,8 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           }
           let payments = invoice.data.payments;
           if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {
-            const paymentClient = await clientFor(input.tenantId, input.mode);
+            // Events verified here arrived at the workspace's own endpoint, so they come from its own account even while its payments are inherited.
+            const paymentClient = await clientFor(input.tenantId, input.mode, config.workspaceResolver ?? config.resolver);
             if (!paymentClient.ok) return paymentClient;
             const retrieved = stripeInvoiceObjectSchema.parse(await paymentClient.value.invoices.retrieve(
               invoice.data.id,

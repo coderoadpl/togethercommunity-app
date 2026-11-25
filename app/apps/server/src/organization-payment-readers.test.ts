@@ -1,10 +1,11 @@
-import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { checkoutSnapshots, organizations, productPrices, products, salesLinks, stockReservations, tenants } from '#adapters/db/schema.js';
+import {
+  checkoutSnapshots, organizationSecrets, organizations, productPrices, products, productStock, salesLinks, stockReservations, tenantConfigSources, tenants,
+} from '#adapters/db/schema.js';
 import { API_PATHS, TENANT_HEADER } from '#core/contract/index.js';
-import type { Identity, StripeMode } from '#core/domain/index.js';
+import { err, validation, type Identity, type StripeMode } from '#core/domain/index.js';
 import {
   buildTenantSecret,
   createDirectSalesLinkCheckout,
@@ -32,14 +33,13 @@ let app: ReturnType<typeof buildApp>;
 type Workspace = 'acme' | 'studio' | 'akademia' | 'linked-idle' | 'suspended-inheriting';
 
 const inherit = async (tenantId: Workspace, group: 'payments_live' | 'payments_test') => {
-  await database.db.execute(sql`INSERT INTO tenant_config_sources (tenant_id, config_group, source, updated_at, updated_by_user_id)
-    VALUES (${tenantId}, ${group}, 'organization', ${at}, 'user-owner')`);
+  await database.db.insert(tenantConfigSources).values({ tenantId, configGroup: group, source: 'organization', updatedAt: at, updatedByUserId: 'user-owner' });
 };
 
 const insertOrganizationKey = async (organizationId: string, key: 'stripe.restrictedKey' | 'stripe.testRestrictedKey', value: string) => {
-  const encrypted = deps.secretCrypto.encrypt(value);
-  await database.db.execute(sql`INSERT INTO organization_secrets (id, organization_id, key, ciphertext, iv, auth_tag, masked_preview, updated_at)
-    VALUES (${`org-secret-${organizationId}-${key}`}, ${organizationId}, ${key}, ${encrypted.ciphertext}, ${encrypted.iv}, ${encrypted.authTag}, '***', ${at})`);
+  await database.db.insert(organizationSecrets).values({
+    id: `org-secret-${organizationId}-${key}`, organizationId, key, ...deps.secretCrypto.encrypt(value), maskedPreview: '***', updatedAt: at,
+  });
 };
 
 const seedWorkspace = async (tenantId: Workspace, organizationId: string | null) => {
@@ -55,7 +55,7 @@ const seedWorkspace = async (tenantId: Workspace, organizationId: string | null)
     id: `${tenantId}-guide-price`, tenantId, productId: `${tenantId}-guide`, kind: 'one_time', interval: null,
     amountCents: 4900, currency: 'PLN', active: true, createdAt: at,
   });
-  await database.db.execute(sql`INSERT INTO product_stock (tenant_id, product_id, on_hand, updated_at) VALUES (${tenantId}, ${`${tenantId}-guide`}, 5, ${at})`);
+  await database.db.insert(productStock).values({ tenantId, productId: `${tenantId}-guide`, onHand: 5, updatedAt: at });
   await database.db.insert(salesLinks).values({
     id: `${tenantId}-link`, tenantId, slug: 'offer', title: 'Offer', heading: 'Offer', description: '', productIds: [`${tenantId}-guide`],
     active: true, listed: true, revision: 1, createdAt: at, updatedAt: at,
@@ -113,9 +113,10 @@ const recordingDeps = () => {
 };
 
 const startedRows = async (tenantId: Workspace) => ({
-  snapshots: (await database.db.select({ id: checkoutSnapshots.id }).from(checkoutSnapshots).where(eq(checkoutSnapshots.tenantId, tenantId))).length,
-  holds: (await database.db.select({ id: stockReservations.id }).from(stockReservations)
-    .where(and(eq(stockReservations.tenantId, tenantId), eq(stockReservations.status, 'active')))).length,
+  snapshots: (await database.db.select({ tenantId: checkoutSnapshots.tenantId }).from(checkoutSnapshots))
+    .filter((row) => row.tenantId === tenantId).length,
+  holds: (await database.db.select({ tenantId: stockReservations.tenantId, status: stockReservations.status }).from(stockReservations))
+    .filter((row) => row.tenantId === tenantId && row.status === 'active').length,
   providerCalls: providerCalls.filter((call) => call.startsWith(`checkout:${tenantId}:`)).length,
 });
 
@@ -261,5 +262,31 @@ describe('readiness readers for a workspace that inherits payments', () => {
   it('adds no key material, preview or organization identifier to the workspace answers', async () => {
     const serialized = (await readerAnswers('studio', deps)).serialized;
     for (const leaked of ['org-active', 'holding', 'rk_live_organizationkey', 'organizationkey']) expect(serialized).not.toContain(leaked);
+  });
+});
+
+describe('the workspace webhook route of a workspace that inherits payments', () => {
+  it('verifies with the workspace own signing secret', async () => {
+    const received: Array<Parameters<PaymentProvider['verifyWebhookEvent']>[0]> = [];
+    const routed = buildApp({
+      ...deps,
+      payment: {
+        ...deps.payment,
+        verifyWebhookEvent: async (input) => {
+          received.push(input);
+          return err(validation('Stripe webhook signature verification failed'));
+        },
+      },
+    });
+    for (const tenantId of ['studio', 'acme'] as const) {
+      const response = await routed.request(new URL(`/api/webhooks/stripe/${tenantId}`, baseUrl).toString(), {
+        method: 'POST', body: '{}', headers: { 'stripe-signature': 't=1,v1=unused', 'content-type': 'application/json' },
+      });
+      expect(response.status).toBe(400);
+    }
+    expect(received.map(({ tenantId, mode, webhookSecret }) => ({ tenantId, mode, webhookSecret }))).toEqual([
+      { tenantId: 'studio', mode: 'live', webhookSecret: 'whsec_studiolive' },
+      { tenantId: 'acme', mode: 'live', webhookSecret: 'whsec_acmelive' },
+    ]);
   });
 });

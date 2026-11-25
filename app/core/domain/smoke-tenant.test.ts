@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isSmokeTenant,
   resolveSmokeTenantPasswords,
+  smokeTenantPurchaseIdRefusal,
   smokeTenantReseedRefusal,
   SMOKE_TENANT_CREATOR_EMAIL,
   SMOKE_TENANT_ID,
@@ -186,5 +187,18 @@ describe('smokeTenantReseedRefusal', () => {
       memberEmails: [SMOKE_TENANT_MEMBER_EMAIL],
       consentEmails: ['Zapisany@Gmail.com'],
     })).toContain('holds a marketing consent outside @together.dev and the smoke accounts');
+  });
+});
+
+describe('smokeTenantPurchaseIdRefusal', () => {
+  it('allows a free id and the purchase account in any letter case', () => {
+    expect(smokeTenantPurchaseIdRefusal(null)).toBeNull();
+    expect(smokeTenantPurchaseIdRefusal(SMOKE_TENANT_PURCHASE_EMAIL)).toBeNull();
+    expect(smokeTenantPurchaseIdRefusal(SMOKE_TENANT_PURCHASE_EMAIL.toUpperCase())).toBeNull();
+  });
+
+  it('refuses when another identity holds the purchase account id', () => {
+    expect(smokeTenantPurchaseIdRefusal('someone@example.com'))
+      .toBe('the purchase account id belongs to another identity');
   });
 });

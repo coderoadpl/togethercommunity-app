@@ -1,10 +1,11 @@
-import { and, eq, getTableName, ne, sql } from 'drizzle-orm';
+import { and, eq, getTableName, like, sql } from 'drizzle-orm';
 
 import {
   SMOKE_TENANT_ID,
   SMOKE_TENANT_PURCHASE_EMAIL,
   SMOKE_TENANT_PURCHASE_USER_ID,
   SmokeTenantReseedRefused,
+  smokeTenantPurchaseIdRefusal,
   smokeTenantReseedRefusal,
   type SmokeTenantPasswords,
 } from '#core/domain/index.js';
@@ -27,6 +28,7 @@ import {
   tenants,
   twoFactor,
   user,
+  verification,
 } from './schema.js';
 
 /** Serverless instances can overlap, so every smoke-tenant reseed queues behind the same lock. */
@@ -40,34 +42,53 @@ export interface SmokeTenantReseedSummary {
   seed: SmokeTenantSeedSummary;
 }
 
+const refuse = (reason: string): never => {
+  throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${reason}`);
+};
+
 /**
  * Committed on its own so a later guard refusal or an unset purchase password
- * still takes back every way into the account other than the reseeded password.
+ * still leaves the account with no role and no way to sign in.
  */
-const revokePurchaseAccess = async (db: Db): Promise<void> =>
+export const revokePurchaseAccess = async (db: Db): Promise<void> =>
   db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${SMOKE_TENANT_RESEED_LOCK_KEY})`);
+    const [holder] = await tx
+      .select({ email: user.email })
+      .from(user)
+      .where(eq(user.id, SMOKE_TENANT_PURCHASE_USER_ID))
+      .for('update');
+    const refusal = smokeTenantPurchaseIdRefusal(holder?.email ?? null);
+    if (refusal !== null) refuse(refusal);
+
     await tx.delete(session).where(eq(session.userId, SMOKE_TENANT_PURCHASE_USER_ID));
     await tx.delete(passkey).where(eq(passkey.userId, SMOKE_TENANT_PURCHASE_USER_ID));
     await tx.delete(twoFactor).where(eq(twoFactor.userId, SMOKE_TENANT_PURCHASE_USER_ID));
+    await tx.delete(account).where(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID));
     await tx
-      .delete(account)
-      .where(and(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID), ne(account.providerId, 'credential')));
+      .delete(verification)
+      .where(and(
+        like(verification.identifier, 'reset-password:%'),
+        eq(verification.value, SMOKE_TENANT_PURCHASE_USER_ID),
+      ));
     await tx
       .update(user)
       .set({ twoFactorEnabled: false })
       .where(eq(user.id, SMOKE_TENANT_PURCHASE_USER_ID));
     await tx
       .delete(tenantAdmins)
-      .where(and(eq(tenantAdmins.tenantId, SMOKE_TENANT_ID), eq(tenantAdmins.id, SMOKE_TENANT_PURCHASE_ADMIN_ID)));
+      .where(and(
+        eq(tenantAdmins.tenantId, SMOKE_TENANT_ID),
+        eq(tenantAdmins.id, SMOKE_TENANT_PURCHASE_ADMIN_ID),
+        eq(tenantAdmins.userId, SMOKE_TENANT_PURCHASE_USER_ID),
+      ));
   });
 
-export const runSmokeTenantReseed = async (
+export const reseedSmokeTenant = async (
   db: Db,
   options: { passwords: SmokeTenantPasswords; nowIso: () => string },
-): Promise<SmokeTenantReseedSummary> => {
-  await revokePurchaseAccess(db);
-  return db.transaction(async (tx) => {
+): Promise<SmokeTenantReseedSummary> =>
+  db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${SMOKE_TENANT_RESEED_LOCK_KEY})`);
 
     const [tenant] = await tx
@@ -96,9 +117,7 @@ export const runSmokeTenantReseed = async (
       consentEmails: consentRows.map((row) => row.email),
       purchaseEmailUserIds: purchaseEmailUsers.map((row) => row.id),
     });
-    if (refusal !== null) {
-      throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${refusal}`);
-    }
+    if (refusal !== null) refuse(refusal);
 
     const wiped: Array<{ table: string; rows: number }> = [];
     const wipeTenantTable = async (table: DemoTenantWipeTable): Promise<void> => {
@@ -130,4 +149,11 @@ export const runSmokeTenantReseed = async (
 
     return { tenantId: SMOKE_TENANT_ID, wiped, seed };
   });
+
+export const runSmokeTenantReseed = async (
+  db: Db,
+  options: { passwords: SmokeTenantPasswords; nowIso: () => string },
+): Promise<SmokeTenantReseedSummary> => {
+  await revokePurchaseAccess(db);
+  return reseedSmokeTenant(db, options);
 };

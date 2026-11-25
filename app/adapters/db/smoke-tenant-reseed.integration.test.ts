@@ -1,7 +1,10 @@
+import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { verifyPassword } from 'better-auth/crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { createAuth } from '#adapters/auth/create-auth.js';
+import { createAuthE2eClient, type AuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import {
   SMOKE_PURCHASE_PRODUCT,
@@ -12,6 +15,10 @@ import {
   SMOKE_TENANT_PURCHASE_USER_ID,
 } from '#core/domain/index.js';
 
+import type { Db } from './client.js';
+import { createEmailOutboxRepository } from './email-outbox.js';
+import * as schema from './schema.js';
+import { reseedSmokeTenant, revokePurchaseAccess } from './smoke-tenant-reseed.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl =
@@ -27,6 +34,8 @@ const PURCHASE_PASSWORD = 'production-only-purchase-password';
 let testDatabaseUrl: string;
 let closeTestDatabase: () => Promise<void>;
 let client: pg.Client;
+let pool: pg.Pool;
+let db: Db;
 let seededTemplateName: string;
 let closeSeededTemplate: (() => Promise<void>) | undefined;
 
@@ -213,9 +222,11 @@ const revokedPurchaseAccount = {
   sessions: [],
   passkeys: [],
   twoFactors: [],
-  providers: ['credential'],
+  providers: [],
   twoFactorEnabled: false,
 };
+
+const reseededPurchaseAccount = { ...revokedPurchaseAccount, providers: ['credential'] };
 
 const withPurchase = { SMOKE_PURCHASE_PASSWORD: PURCHASE_PASSWORD };
 
@@ -235,6 +246,52 @@ const untouchedCreatorSignIns = {
   twoFactorEnabled: true,
 };
 
+const AUTH_ORIGIN = 'http://localhost:48730';
+let requestCount = 0;
+
+const authHttp = (): AuthE2eClient => {
+  const auth = createAuth(db, {
+    secret: 'seed-integration-secret-at-least-32-characters',
+    baseUrl: AUTH_ORIGIN,
+    baseDomain: 'localhost',
+    singleTenantMode: false,
+    trustedOrigins: () => [AUTH_ORIGIN],
+    secureCookies: false,
+    exposeMagicLinks: false,
+    emailOutbox: createEmailOutboxRepository(db),
+    emailSender: { send: async () => ({ ok: true, value: { messageId: 'reseed-test', transport: 'platform' as const } }) },
+    authSendLog: { queue: async () => ({ ok: true, value: undefined }), settle: async () => ({ ok: true, value: undefined }) },
+    ids: { nextId: () => crypto.randomUUID() },
+    clock: { nowIso: () => new Date().toISOString() },
+    dispatchEmail: () => undefined,
+    defaultTenantName: 'Together',
+    google: null,
+  });
+  requestCount += 1;
+  return createAuthE2eClient({
+    connectUrl: AUTH_ORIGIN,
+    origin: AUTH_ORIGIN,
+    headers: { 'x-forwarded-for': `198.51.100.${String(requestCount % 250)}` },
+    request: async (input, init) => auth.handler(new Request(input, init)),
+  });
+};
+
+const purchaseSignInStatus = async (): Promise<number> =>
+  (await authHttp().signInEmail({ email: SMOKE_TENANT_PURCHASE_EMAIL, password: PURCHASE_PASSWORD })).status;
+
+const resetPasswordStatus = async (token: string, newPassword: string): Promise<number> =>
+  (await authHttp().resetPassword({ token, newPassword })).status;
+
+const issueResetToken = async (userId: string, token: string): Promise<void> => {
+  await client.query(
+    `INSERT INTO verification (id, identifier, value, expires_at, created_at, updated_at)
+     VALUES ($1, $2, $3, NOW() + INTERVAL '1 hour', NOW(), NOW())`,
+    [`verification-${token}`, `reset-password:${token}`, userId],
+  );
+};
+
+const purchasePasswords = { member: DEMO_PASSWORD, creator: DEMO_PASSWORD, purchase: PURCHASE_PASSWORD };
+
 beforeAll(async () => {
   const template = await createTestDatabase('together_acme_reseed_fixture', baseDatabaseUrl);
   closeSeededTemplate = template.close;
@@ -253,10 +310,13 @@ beforeEach(async () => {
   closeTestDatabase = testDatabase.close;
   client = new pg.Client({ connectionString: testDatabaseUrl });
   await client.connect();
+  pool = new pg.Pool({ connectionString: testDatabaseUrl });
+  db = drizzle(pool, { schema });
 }, 180_000);
 
 afterEach(async () => {
   await client.end();
+  await pool.end();
   await closeTestDatabase();
 }, 180_000);
 
@@ -485,7 +545,7 @@ describe('smoke tenant reseed', () => {
 
     runSucceeds('reseed-acme.ts', withPurchase);
 
-    expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(revokedPurchaseAccount);
+    expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(reseededPurchaseAccount);
     await expect(verifyPassword({
       hash: await credentialHashFor(SMOKE_TENANT_PURCHASE_EMAIL),
       password: PURCHASE_PASSWORD,
@@ -503,6 +563,7 @@ describe('smoke tenant reseed', () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('holds a marketing consent outside @together.dev and the smoke accounts');
     expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(revokedPurchaseAccount);
+    expect(await purchaseSignInStatus()).toBe(401);
     expect((await purchaseFixtureState()).roles).toEqual([]);
     expect(await signInsOf(creatorUserId)).toEqual(untouchedCreatorSignIns);
   }, 180_000);
@@ -513,7 +574,91 @@ describe('smoke tenant reseed', () => {
     runSucceeds('reseed-acme.ts');
 
     expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(revokedPurchaseAccount);
+    expect(await purchaseSignInStatus()).toBe(401);
+    expect(await idsOf(`SELECT id FROM "user" WHERE id = '${SMOKE_TENANT_PURCHASE_USER_ID}'`))
+      .toEqual([SMOKE_TENANT_PURCHASE_USER_ID]);
     expect((await purchaseFixtureState()).roles).toEqual([]);
     expect(await signInsOf(creatorUserId)).toEqual(untouchedCreatorSignIns);
+  }, 180_000);
+
+  it('stops the old password at once when only the revocation has committed', async () => {
+    runSucceeds('reseed-acme.ts', withPurchase);
+    expect(await purchaseSignInStatus()).toBe(200);
+
+    await revokePurchaseAccess(db);
+
+    expect(await purchaseSignInStatus()).toBe(401);
+    expect((await purchaseFixtureState()).roles).toEqual([]);
+  }, 180_000);
+
+  it('drops a session created between the revocation and the reseed before granting the role', async () => {
+    runSucceeds('reseed-acme.ts', withPurchase);
+    await revokePurchaseAccess(db);
+    await client.query(
+      `INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
+       VALUES ('session-between', NOW() + INTERVAL '7 days', 'token-between', NOW(), NOW(), $1)`,
+      [SMOKE_TENANT_PURCHASE_USER_ID],
+    );
+
+    await reseedSmokeTenant(db, { passwords: purchasePasswords, nowIso: () => new Date().toISOString() });
+
+    expect((await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).sessions).toEqual([]);
+    expect((await purchaseFixtureState()).roles).toEqual(['admin']);
+  }, 180_000);
+
+  it('refuses when another identity holds the purchase account id and leaves its rows intact', async () => {
+    await client.query(
+      `INSERT INTO "user" (id, name, email, email_verified, two_factor_enabled, created_at, updated_at)
+       VALUES ($1, 'Someone Else', 'someone@example.com', true, false, NOW(), NOW())`,
+      [SMOKE_TENANT_PURCHASE_USER_ID],
+    );
+    await client.query(
+      `INSERT INTO account (id, account_id, provider_id, user_id, password, created_at, updated_at)
+       VALUES ('account-someone-credential', $1, 'credential', $1, 'hash', NOW(), NOW())`,
+      [SMOKE_TENANT_PURCHASE_USER_ID],
+    );
+    await grantSignIns(SMOKE_TENANT_PURCHASE_USER_ID, 'someone');
+    await issueResetToken(SMOKE_TENANT_PURCHASE_USER_ID, 'someone-reset');
+    const signInsBefore = await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID);
+    const before = await rowCounts();
+
+    for (const overrides of [withPurchase, {}]) {
+      const result = runDatabaseScript('reseed-acme.ts', overrides);
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('the purchase account id belongs to another identity');
+    }
+    expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(signInsBefore);
+    expect(await idsOf(`SELECT email AS id FROM "user" WHERE id = '${SMOKE_TENANT_PURCHASE_USER_ID}'`))
+      .toEqual(['someone@example.com']);
+    expect(await rowCounts()).toEqual(before);
+  }, 180_000);
+
+  it('leaves a grant that carries the purchase grant id but belongs to another user', async () => {
+    await client.query(
+      `INSERT INTO tenant_admins (id, tenant_id, user_id, role)
+       VALUES ('admin-acme-purchase', 'tenant-acme', 'user-other-admin', 'admin')`,
+    );
+
+    await revokePurchaseAccess(db);
+
+    expect(await idsOf(`SELECT user_id AS id FROM tenant_admins WHERE id = 'admin-acme-purchase'`))
+      .toEqual(['user-other-admin']);
+  }, 180_000);
+
+  it('voids a password reset issued for the purchase account before the reseed', async () => {
+    runSucceeds('reseed-acme.ts', withPurchase);
+    const creatorUserId = await userIdFor(SMOKE_TENANT_CREATOR_EMAIL);
+    await issueResetToken(SMOKE_TENANT_PURCHASE_USER_ID, 'purchase-reset');
+    await issueResetToken(creatorUserId, 'creator-reset');
+
+    runSucceeds('reseed-acme.ts', withPurchase);
+
+    expect(await resetPasswordStatus('purchase-reset', 'attacker-password-15')).toBe(400);
+    await expect(verifyPassword({
+      hash: await credentialHashFor(SMOKE_TENANT_PURCHASE_EMAIL),
+      password: PURCHASE_PASSWORD,
+    })).resolves.toBe(true);
+    expect(await resetPasswordStatus('creator-reset', 'creator-new-password-15')).toBe(200);
   }, 180_000);
 });

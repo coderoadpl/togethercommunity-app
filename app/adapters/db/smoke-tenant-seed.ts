@@ -34,6 +34,7 @@ import {
   productStock,
   salesLinkEvents,
   salesLinks,
+  session,
   stockEvents,
   tenantAdmins,
   tenantDomains,
@@ -92,6 +93,7 @@ const seedPurchaseFixtures = async (
   options: SmokeTenantSeedOptions,
   password: string,
 ): Promise<NonNullable<SmokeTenantSeedSummary['purchase']>> => {
+  await db.delete(session).where(eq(session.userId, SMOKE_TENANT_PURCHASE_USER_ID));
   const purchaseUserId = await options.users.ensurePasswordedWithId(
     SMOKE_TENANT_PURCHASE_USER_ID,
     SMOKE_TENANT_PURCHASE_EMAIL,

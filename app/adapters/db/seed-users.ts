@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
 import type { Clock } from '#core/server/index.js';
@@ -79,10 +79,12 @@ export const createSeedUsers = (db: Db, clock: Clock): SeedUsers => {
       const hashed = await context.password.hash(password);
       const seededAt = new Date(clock.nowIso());
       const identity = { name, email, emailVerified: true, createdAt: seededAt, updatedAt: seededAt };
-      await db
+      const claimed = await db
         .insert(user)
         .values({ id, ...identity })
-        .onConflictDoUpdate({ target: user.id, set: identity });
+        .onConflictDoUpdate({ target: user.id, set: identity, setWhere: sql`lower(${user.email}) = lower(${email})` })
+        .returning({ id: user.id });
+      if (claimed.length === 0) throw new Error(`Seeded user id ${id} belongs to another e-mail`);
       const credentials = await db
         .update(account)
         .set({ password: hashed, createdAt: seededAt, updatedAt: seededAt })

@@ -189,5 +189,10 @@ export const smokeTenantReseedRefusal = (subject: SmokeTenantReseedSubject): str
   return null;
 };
 
+export const smokeTenantPurchaseIdRefusal = (holderEmail: string | null): string | null =>
+  holderEmail === null || holderEmail.toLowerCase() === SMOKE_TENANT_PURCHASE_EMAIL
+    ? null
+    : 'the purchase account id belongs to another identity';
+
 /** Separates a safety refusal from an infrastructure failure for the caller. */
 export class SmokeTenantReseedRefused extends Error {}

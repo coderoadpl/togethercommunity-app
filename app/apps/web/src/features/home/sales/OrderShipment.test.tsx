@@ -93,3 +93,16 @@ describe('OrderShipment', () => {
     expect(screen.queryByText('staff-1')).toBeNull();
   });
 });
+
+it.each(['live', 'test'] as const)('prefills a ready label and confirms shipment in %s mode', async (mode) => {
+  const onShip = vi.fn();
+  renderWithProviders(<OrderShipment order={{ ...toPack, mode, label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }} canShip pending={false} error={null} onShip={onShip} />);
+  expect(screen.getByLabelText('Tracking number')).toHaveValue('LABEL1234');
+  expect(screen.queryByText('Shipped on')).toBeNull();
+  expect(screen.queryByText('Shipped by')).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Mark as shipped' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText(mode === 'test' ? /no e-mail is sent/ : /buyer@example\.org/)).toBeVisible();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Mark as shipped' }));
+  expect(onShip).toHaveBeenCalledExactlyOnceWith({ carrier: 'inpost', trackingNumber: 'LABEL1234' });
+});

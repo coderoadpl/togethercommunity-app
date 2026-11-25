@@ -1,3 +1,4 @@
+import { shipOrder } from './order-fulfilment.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -201,7 +202,7 @@ describe('an order cancelled out of stock', () => {
 });
 
 describe('create InPost shipment', () => {
-  it('creates, polls until paid, stores the tracking number and ships through the fulfilment use-case', async () => {
+  it('creates, polls until paid and explicitly ships through the fulfilment use-case', async () => {
     const h = harness({
       real: createScriptedShipxClient({
         polls: [
@@ -210,7 +211,7 @@ describe('create InPost shipment', () => {
         ],
       }),
     });
-    const result = await createInpostShipment(write, { orderId: 'order-1' }, h.deps);
+    const result = await createInpostShipment(write, { orderId: 'order-1', markShipped: true }, h.deps);
     expect(result).toMatchObject({
       ok: true,
       value: {
@@ -262,7 +263,7 @@ describe('create InPost shipment', () => {
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
     expect(retry.calls.create).toEqual([]);
     expect(retry.calls.get).toEqual(['1001']);
-    expect(h.ship).toHaveBeenCalledTimes(1);
+    expect(h.ship).not.toHaveBeenCalled();
   });
 
   it('pays an offer that the automatic purchase left unpaid, only on a retry', async () => {
@@ -299,13 +300,13 @@ describe('create InPost shipment', () => {
     h.deps.shipx.real = paid.client;
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
     expect(paid.calls.get).toEqual(['1001']);
-    expect(h.ship).toHaveBeenCalledTimes(1);
+    expect(h.ship).not.toHaveBeenCalled();
   });
 
   it('ships a stored bought shipment without reading ShipX again', async () => {
     const h = harness();
     h.seed({ shipxShipmentId: '1001', status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW });
-    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(await createInpostShipment(write, { orderId: 'order-1', markShipped: true }, h.deps)).toMatchObject({ ok: true });
     expect(h.real.calls).toEqual(noCalls);
     expect(h.ship.mock.calls[0]?.[1].shipment.trackingNumber).toBe(TRACKING);
   });
@@ -591,7 +592,7 @@ describe('create InPost shipment', () => {
     });
     expect(real.calls.create).toEqual([]);
     expect(real.calls.get).toEqual([]);
-    expect(h.ship.mock.calls[0]?.[1].shipment.trackingNumber).toBe(TRACKING);
+    expect(h.ship).not.toHaveBeenCalled();
     expect(await h.eventTypes()).toEqual(['attempt_claimed', 'shipment_adopted', 'offer_bought', 'operation_finished']);
   });
 
@@ -626,7 +627,7 @@ describe('create InPost shipment', () => {
 
   it('stores the shipment and reports the tracking number when staff shipped the order manually meanwhile', async () => {
     const h = harness({ ship: async () => err(appError('fulfilment_conflict', 'Order has already been shipped')) });
-    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+    expect(await createInpostShipment(write, { orderId: 'order-1', markShipped: true }, h.deps)).toMatchObject({
       ok: false,
       error: {
         code: 'fulfilment_conflict',
@@ -743,7 +744,7 @@ describe('ShipX slot selection', () => {
     expect(h.real.calls.credentials[0]).toEqual(slotCredentials.sandbox);
     expect(h.fake.calls).toEqual(noCalls);
     expect(h.row()).toMatchObject({ environment: 'sandbox', organizationId: '5678' });
-    expect(h.ship.mock.calls[0]?.[1].email).toBeNull();
+    expect(h.ship).not.toHaveBeenCalled();
   });
 
   it('ships a live order through the real client against the production slot', async () => {
@@ -1459,4 +1460,22 @@ describe('label creation without dispatch', () => {
     expect(h.ship).not.toHaveBeenCalled();
     expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
   });
+});
+
+
+it('requires order:write for both explicit ShipX dispatch and manual dispatch', async () => {
+  const h = harness();
+  const readOnly = ctx(['order:read']);
+  expect(await createInpostShipment(readOnly, { orderId: 'order-1', markShipped: true }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  expect(await shipOrder(readOnly, { orderId: 'order-1', carrier: 'inpost', trackingNumber: TRACKING }, h.deps.ship)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+  expect(h.ship).not.toHaveBeenCalled();
+  expect(h.real.calls).toEqual(noCalls);
+});
+
+it.each([false, true])('never emails a test order with markShipped %s', async (markShipped) => {
+  const h = harness({ order: testOrder });
+  expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toMatchObject({ ok: true });
+  expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
+  if (markShipped) expect(h.ship.mock.calls[0]?.[1].email).toBeNull();
+  expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
 });

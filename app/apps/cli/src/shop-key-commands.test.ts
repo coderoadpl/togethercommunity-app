@@ -336,7 +336,8 @@ describe('shop orders CLI', () => {
     [['shop', 'orders', 'issue', 'order-1', 'product-1'], 'POST', '/api/m2m/shop/orders/order-1/lines/product-1/issue', '', { orderId: 'order-1', productId: 'product-1' }],
     [['shop', 'orders', 'issue', 'order-1', 'product-1', '--count', '2'], 'POST', '/api/m2m/shop/orders/order-1/lines/product-1/issue', '', { orderId: 'order-1', productId: 'product-1', count: 2 }],
     [['shop', 'orders', 'shipx', 'show', 'order-1'], 'GET', '/api/m2m/shop/orders/order-1/shipx', '', null],
-    [['shop', 'orders', 'shipx', 'create', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', {}],
+    [['shop', 'orders', 'shipx', 'create', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', { markShipped: false }],
+    [['shop', 'orders', 'shipx', 'create', 'order-1', '--mark-shipped'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', { markShipped: true }],
     [['shop', 'orders', 'shipx', 'refresh', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx/refresh', '', {}],
     [['shop', 'orders', 'shipx', 'discard', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx/discard', '', {}],
   ])('sends %j to the shop order route with the env key only', async (args, method, path, search, body) => {

@@ -202,7 +202,7 @@ const receiverInvalid = (field: (typeof SHIPX_RECEIVER_GAPS)[number], message: s
 
 export const shipxOrderInputSchema = z.object({ orderId: z.string().min(1) }).strict();
 
-export const shipxCreateInputSchema = shipxOrderInputSchema.extend({ parcelTemplate: parcelTemplateSchema.optional() }).strict();
+export const shipxCreateInputSchema = shipxOrderInputSchema.extend({ parcelTemplate: parcelTemplateSchema.optional(), markShipped: z.boolean().optional().default(false) }).strict();
 
 export const shipxDiscardOutputSchema = z.object({ discarded: z.literal(true) });
 

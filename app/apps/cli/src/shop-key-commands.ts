@@ -761,9 +761,10 @@ export const registerShopKeyCommands = (
   const shipx = orders.command('shipx').description('InPost ShipX shipments and labels');
   keyed(shipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxShipment({ orderId }), shipxOrderLines));
-  keyed(shipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped'))
-    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxCreate({ orderId }), (data) =>
-      `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`));
+  keyed(shipx.command('create <orderId>').description('Create and pay the InPost label; keep the order to pack by default')
+    .option('--mark-shipped', 'also mark the order as shipped and email the buyer', false))
+    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ markShipped: z.boolean().default(false) })]), (client, [orderId, options]) => client.shipxCreate({ orderId, markShipped: options.markShipped }), (data) =>
+      `${data.order.fulfilmentStatus === 'shipped' ? 'shipped' : 'label ready; order still to pack'}: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`));
   keyed(shipx.command('refresh <orderId>').description('Read the live ShipX status of a shipment not yet paid, store it and show the order'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxRefresh({ orderId }), shipxOrderLines));
   keyed(shipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek; this never cancels a shipment in ShipX'))

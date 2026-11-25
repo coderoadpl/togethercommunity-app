@@ -347,3 +347,16 @@ describe('orders cancelled because they sold out', () => {
     expect(screen.getByTestId('order-refund-job')).toBeInTheDocument();
   });
 });
+
+
+it('shows a distinct label-ready chip while keeping the order in the to-pack filter', async () => {
+  server.use(http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
+    orders: [order('pack', 'to_pack'), { ...order('label', 'to_pack'), label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }, order('sent', 'shipped')],
+    total: 3, page: 1, pageSize: 25, sources: [],
+  } })));
+  await renderAt('/panel/sales', SalesPanel);
+  const chips = await screen.findAllByTestId('sales-fulfilment-chip');
+  expect(chips.map((chip) => chip.textContent)).toEqual(['To pack', 'Label ready', 'Shipped']);
+  expect(chips[1]).toHaveClass('MuiChip-colorInfo');
+  expect(chips[2]).toHaveClass('MuiChip-colorSuccess');
+});

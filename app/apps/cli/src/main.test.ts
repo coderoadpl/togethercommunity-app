@@ -2648,7 +2648,7 @@ describe('InPost ShipX CLI', () => {
 
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
-    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', markShipped: false });
     expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost 520000011395200025754311)');
     h.shipxCreate.mockResolvedValue(err(appError('shipx_unavailable', 'InPost ShipX is unavailable')));
     await run('--json', 'orders', 'shipx', 'create', 'order-number');
@@ -2661,7 +2661,9 @@ describe('InPost ShipX CLI', () => {
 
   it('passes a chosen parcel template and rejects an unknown one before calling the server', async () => {
     await run('order', 'shipx', 'create', 'order-number', '--parcel-template', 'large');
-    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large' });
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large', markShipped: false });
+    await run('order', 'shipx', 'create', 'order-number', '--mark-shipped');
+    expect(h.shipxCreate).toHaveBeenLastCalledWith({ orderId: 'order-number', markShipped: true });
     h.shipxCreate.mockClear();
     await run('--json', 'order', 'shipx', 'create', 'order-number', '--parcel-template', 'huge');
     expect(h.shipxCreate).not.toHaveBeenCalled();

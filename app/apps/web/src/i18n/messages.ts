@@ -1022,7 +1022,7 @@ export interface Messages {
     toPack: string;
     fulfilmentFilter: string;
     fulfilmentAll: string;
-    fulfilmentStatuses: { to_pack: string; shipped: string };
+    fulfilmentStatuses: { to_pack: string; label_ready: string; shipped: string };
     fulfilmentColumn: string;
     packingListDownload: string;
     packingListDownloading: string;
@@ -1073,7 +1073,9 @@ export interface Messages {
     create: string;
     creating: string;
     createConfirmTitle: string;
-    createConfirmBody: (params: { service: string; size: string; email: string }) => string;
+    markShipped: string;
+    markShippedTest: string;
+    createConfirmBody: (params: { service: string; size: string }) => string;
     createConfirmBodyTest: (params: { service: string; size: string }) => string;
     createConfirm: string;
     parcelTemplateOverrideLabel: string;

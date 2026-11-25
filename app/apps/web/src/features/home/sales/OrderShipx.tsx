@@ -1,4 +1,4 @@
-import { Alert, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Button, Checkbox, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
 import { PARCEL_TEMPLATES, parcelTemplateSchema, SHIPX_SETUP_GAPS, shipxAttemptUnconfirmed, shipxShipmentBought, type OrderListItem, type ParcelTemplate, type ShipxOrderView } from '#core/domain/index.js';
 
@@ -13,7 +13,7 @@ interface OrderShipxProps {
   discarding: boolean;
   downloading: boolean;
   error: unknown;
-  onCreate: (parcelTemplate: ParcelTemplate | undefined) => void;
+  onCreate: (parcelTemplate: ParcelTemplate | undefined, markShipped: boolean) => void;
   onDiscard: (parcelTemplate: ParcelTemplate | undefined) => void;
   onDownloadLabel: () => void;
 }
@@ -25,6 +25,7 @@ const hintReason = (reason: ShipxOrderView['reason']): (typeof SHIPX_SETUP_GAPS)
 
 export const OrderShipx = ({ order, view, canCreate, pending, discarding, downloading, error, onCreate, onDiscard, onDownloadLabel }: OrderShipxProps) => {
   const t = useTranslations();
+  const [markShipped, setMarkShipped] = useState(false);
   const [confirming, setConfirming] = useState<'create' | 'discard' | null>(null);
   const [parcelTemplate, setParcelTemplate] = useState<ParcelTemplate | undefined>(undefined);
   if (view === undefined || view.service === null) return null;
@@ -38,7 +39,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const createsShipment = shipment?.shipxShipmentId == null && !unconfirmed;
   const chosenTemplate = createsShipment ? parcelTemplate : undefined;
   const size = t.shipx.parcelTemplates[chosenTemplate ?? view.parcelTemplate];
-  const showCreate = canCreate && view.available;
+  const showCreate = canCreate && view.available && !labelReady;
   const reason = canCreate ? hintReason(view.reason) : null;
   const hint = reason === null ? null : t.shipx.unavailableReasons[reason][view.environment];
   const busy = pending || discarding;
@@ -67,7 +68,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
       {awaitingPayment ? <Typography color="text.secondary" data-testid="order-shipx-pending">{t.shipx.paymentPending}</Typography> : null}
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
         {showCreate ? (
-          <Button variant="contained" disabled={busy} onClick={() => setConfirming('create')} data-testid="order-shipx-create">
+          <Button variant="contained" disabled={busy} onClick={() => { setMarkShipped(false); setConfirming('create'); }} data-testid="order-shipx-create">
             {pending ? t.shipx.creating : t.shipx.create}
           </Button>
         ) : null}
@@ -97,7 +98,11 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
             {createsShipment ? parcelTemplateField : null}
             <Typography>{order.mode === 'test'
               ? t.shipx.createConfirmBodyTest({ service, size })
-              : t.shipx.createConfirmBody({ service, size, email: order.memberEmail })}</Typography>
+              : t.shipx.createConfirmBody({ service, size })}</Typography>
+            <FormControlLabel
+              control={<Checkbox checked={markShipped} onChange={(_event, checked) => setMarkShipped(checked)} />}
+              label={order.mode === 'test' ? t.shipx.markShippedTest : t.shipx.markShipped}
+            />
           </>
         )}
         confirmLabel={t.shipx.createConfirm}
@@ -106,7 +111,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
         pending={pending}
         onConfirm={() => {
           setConfirming(null);
-          onCreate(chosenTemplate);
+          onCreate(chosenTemplate, markShipped);
         }}
         onClose={() => setConfirming(null)}
         confirmTestId="order-shipx-confirm"

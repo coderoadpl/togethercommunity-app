@@ -8,6 +8,7 @@ import {
   notFound,
   ok,
   orderShipmentAllowed,
+  orderLabel,
   productLines,
   SHIPX_LEGACY_SECRET_KEYS,
   SHIPX_ENVIRONMENTS,
@@ -507,6 +508,7 @@ const reconcileRemote = async (
 const runShipment = async (
   ctx: Ctx,
   run: ShipmentRun,
+  markShipped: boolean,
   deps: CreateInpostShipmentDeps,
 ): Promise<Result<{ order: OrderListItem; shipment: ShipxShipment }, AppError>> => {
   const credentials = storedCredentials(run.shipment, run.credentials);
@@ -538,7 +540,11 @@ const runShipment = async (
   }
   if (trackingNumber === null) return err(pendingPayment(shipmentId, null));
 
-  const shipped = await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship);
+  const current = await deps.orderDetails.findById(run.tenantId, run.order.id);
+  if (current === null) return err(notFound('Order was not found'));
+  const shipped = markShipped
+    ? await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship)
+    : ok({ order: current });
   if (!shipped.ok) {
     if (shipped.error.code !== 'fulfilment_conflict') return shipped;
     return err(shipxStateError(
@@ -549,7 +555,7 @@ const runShipment = async (
   }
   const shipment = await deps.shipxShipments.findByOrder(run.tenantId, run.order.id);
   if (shipment === null) return err(notFound('The InPost shipment was not found'));
-  return ok({ order: shipped.value.order, shipment: publicShipment(shipment) });
+  return ok({ order: { ...shipped.value.order, label: orderLabel(shipment) }, shipment: publicShipment(shipment) });
 };
 
 const OUTCOME_BY_STATE: Record<ShipxErrorState['state'], ShipxOperationOutcome> = {
@@ -627,7 +633,7 @@ export const createInpostShipment = async (
   };
   let outcome: ShipxOperationOutcome = 'failed';
   try {
-    const result = await runShipment(ctx, run, deps);
+    const result = await runShipment(ctx, run, parsed.data.markShipped, deps);
     outcome = operationOutcome(result, run.lease.released);
     return result;
   } finally {

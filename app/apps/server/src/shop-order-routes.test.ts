@@ -426,7 +426,7 @@ describe('shop order routes with a shop management key', () => {
     expect(created.status).toBe(200);
     const tracking = fakeShipxTrackingNumber(fakeShipxShipmentId('akademia-live-locker'));
     expect(envelope(shopOrderContracts.shipxCreate.output).parse(await created.json()).data).toMatchObject({
-      order: { fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: tracking, shippedBy: ownerId } },
+      order: { fulfilmentStatus: 'to_pack', shipment: null, label: { carrier: 'inpost', trackingNumber: tracking } },
       shipment: { trackingNumber: tracking, environment: 'production' },
     });
 
@@ -442,8 +442,13 @@ describe('shop order routes with a shop management key', () => {
     expect(new TextDecoder().decode((await label.arrayBuffer()).slice(0, 5))).toBe('%PDF-');
 
     const again = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path), undefined, akademiaHost);
-    expect(again.status).toBe(409);
-    expect((await errorOf(again)).code).toBe('fulfilment_conflict');
+    expect(again.status).toBe(200);
+    expect(envelope(shopOrderContracts.shipxCreate.output).parse(await again.json()).data.order.fulfilmentStatus).toBe('to_pack');
+    const dispatched = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path), { markShipped: true }, akademiaHost);
+    expect(dispatched.status).toBe(200);
+    expect(envelope(shopOrderContracts.shipxCreate.output).parse(await dispatched.json()).data.order).toMatchObject({
+      fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: tracking, shippedBy: ownerId },
+    });
 
     const shipmentEvents = (await database.db.select().from(orderShipmentEvents)).filter((event) => event.orderId === 'akademia-live-locker');
     expect(shipmentEvents.map((event) => event.type)).toEqual(expect.arrayContaining(['attempt_claimed', 'shipment_created', 'operation_finished', 'label_fetched']));

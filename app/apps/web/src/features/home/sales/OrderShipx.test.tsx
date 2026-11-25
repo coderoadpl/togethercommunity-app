@@ -33,13 +33,13 @@ const props = {
 };
 
 describe('OrderShipx', () => {
-  it('creates the shipment after a confirmation that names the service, size and buyer', async () => {
+  it('creates the shipment after a confirmation with the one-step checkbox off by default', async () => {
     const onCreate = vi.fn();
     renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/Parcel locker shipment, size Large/)).toBeVisible();
-    expect(within(dialog).getByText(/buyer@example\.org/)).toBeVisible();
+    expect(within(dialog).getByRole('checkbox', { name: 'Mark as shipped right away and e-mail the buyer' })).not.toBeChecked();
     expect(onCreate).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
     expect(onCreate).toHaveBeenCalledTimes(1);
@@ -52,7 +52,7 @@ describe('OrderShipx', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).queryByRole('combobox', { name: 'Parcel size for this shipment' })).toBeNull();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
-    expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined, false);
   });
 
   it('says that a test order is created in the InPost sandbox', async () => {
@@ -194,4 +194,20 @@ describe('OrderShipx', () => {
     renderWithProviders(<OrderShipx {...props} canCreate={false} />);
     expect(screen.queryByTestId('order-shipx')).toBeNull();
   });
+});
+
+it('passes the one-step opt-in only when checked', async () => {
+  const onCreate = vi.fn();
+  renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('checkbox'));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined, true);
+});
+
+it('never offers another create for a bought label on an order still to pack', () => {
+  renderWithProviders(<OrderShipx {...props} view={{ ...ready, shipment: shipment() }} />);
+  expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
 });

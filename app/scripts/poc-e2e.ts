@@ -787,10 +787,12 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   const shipxCreated = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome), 'InPost shipment', shipxContracts.shipxCreate.output);
   assert(
-    shipxCreated.order.fulfilmentStatus === 'shipped' && shipxCreated.order.shipment?.carrier === 'inpost'
-      && shipxCreated.shipment.trackingNumber !== null && shipxCreated.order.shipment.trackingNumber === shipxCreated.shipment.trackingNumber,
-    `InPost shipment should ship the order with its tracking number: ${JSON.stringify(shipxCreated)}`,
+    shipxCreated.order.fulfilmentStatus === 'to_pack' && shipxCreated.order.label?.carrier === 'inpost'
+      && shipxCreated.shipment.trackingNumber !== null && shipxCreated.order.label.trackingNumber === shipxCreated.shipment.trackingNumber,
+    `InPost label should leave the order to pack: ${JSON.stringify(shipxCreated)}`,
   );
+  const marked = expectOk(await cli(['--tenant', 'alfa', 'order', 'ship', shipxOrderId, '--carrier', 'inpost', '--tracking', shipxCreated.shipment.trackingNumber ?? ''], alfaHome), 'mark labelled order shipped', orderFulfilmentContracts.shipOrder.output);
+  assert(marked.order.fulfilmentStatus === 'shipped', 'Mark as shipped should dispatch the labelled order');
   const shipxRefreshed = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'refresh', shipxOrderId], alfaHome), 'InPost refresh', shipxContracts.shipxRefresh.output);
   assert(
     shipxRefreshed.reason === 'not_to_pack' && shipxRefreshed.shipment?.trackingNumber === shipxCreated.shipment.trackingNumber,

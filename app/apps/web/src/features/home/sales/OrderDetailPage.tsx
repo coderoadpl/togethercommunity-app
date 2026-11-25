@@ -8,6 +8,8 @@ import {
   capabilitiesForPrincipal,
   isActiveStaffRefundStatus,
   orderLineLabel,
+  orderLabel,
+  orderFulfilmentDisplay,
   staffRefundPreviewReadable,
   type OrderLine,
   type ParcelTemplate,
@@ -94,8 +96,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
       await queryClient.invalidateQueries(actions.ordersInvalidates());
     },
   });
-  const createShipmentWith = (parcelTemplate: ParcelTemplate | undefined) => {
-    createShipment.mutate({ orderId, ...(parcelTemplate === undefined ? {} : { parcelTemplate }) });
+  const createShipmentWith = (parcelTemplate: ParcelTemplate | undefined, markShipped = false) => {
+    createShipment.mutate({ orderId, markShipped, ...(parcelTemplate === undefined ? {} : { parcelTemplate }) });
   };
   const recreateTemplate = useRef<ParcelTemplate | undefined>(undefined);
   const discardShipment = useMutation({
@@ -137,7 +139,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     );
   }
 
-  const order = detail.data.order;
+  const order = { ...detail.data.order, label: shipx.data === undefined ? detail.data.order.label : orderLabel(shipx.data.shipment) };
+  const fulfilmentDisplay = orderFulfilmentDisplay(order);
   const attributionRows = [
     [t.sales.utmSource, order.attribution?.utmSource],
     [t.sales.utmMedium, order.attribution?.utmMedium],
@@ -197,11 +200,11 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
       )}
     </Stack>
   );
-  const fulfilmentChip = order.fulfilmentStatus == null
+  const fulfilmentChip = fulfilmentDisplay == null
     ? offPackingRefund === null ? undefined : <Chip size="small" variant="outlined" label={t.sales.staffRefund.offPackingChip} data-testid="order-off-packing-chip" />
     : (
-      <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
-        label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
+      <Chip size="small" color={fulfilmentDisplay === 'to_pack' ? 'warning' : fulfilmentDisplay === 'label_ready' ? 'info' : 'success'}
+        label={t.shipping.fulfilmentStatuses[fulfilmentDisplay]} data-testid={`order-${fulfilmentDisplay.replace('_', '-')}`} />
     );
   const preview = refundAction.kind === 'ready' ? refundAction.preview : null;
   const detailsCard = (
@@ -431,10 +434,10 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                     error={createShipment.error ?? discardShipment.error ?? downloadLabel.error}
                     discarding={discardShipment.isPending}
                     downloading={downloadLabel.isPending}
-                    onCreate={(parcelTemplate) => {
+                    onCreate={(parcelTemplate, markShipped) => {
                       downloadLabel.reset();
                       discardShipment.reset();
-                      createShipmentWith(parcelTemplate);
+                      createShipmentWith(parcelTemplate, markShipped);
                     }}
                     onDiscard={(parcelTemplate) => {
                       createShipment.reset();

@@ -528,7 +528,7 @@ The key grants only two routes:
   remains null, not an inferred provider version.
 
 All checkouts use the existing synthetic smoke member, TEST mode and fixed
-fixtures. Locker scenarios use `WAW01A`. No caller-selected buyer, product,
+fixtures. Locker scenarios use `WAW01M`. No caller-selected buyer, product,
 price, amount, workspace, return URL or payment mode is accepted. A missing test
 slot or any configured live slot refuses checkout. The workspace cap is 40
 checkouts per UTC day, including pending checkouts; a repeated key/run/scenario

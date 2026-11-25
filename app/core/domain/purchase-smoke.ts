@@ -34,4 +34,4 @@ export const purchaseSmokeResultSchema = purchaseSmokeCheckoutSchema.omit({ url:
 export type PurchaseSmokeResult = z.infer<typeof purchaseSmokeResultSchema>;
 
 export const PURCHASE_SMOKE_DAILY_CHECKOUT_LIMIT = 40;
-export const PURCHASE_SMOKE_LOCKER_CODE = 'WAW01A';
+export const PURCHASE_SMOKE_LOCKER_CODE = 'WAW01M';

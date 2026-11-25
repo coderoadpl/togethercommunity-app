@@ -1953,7 +1953,7 @@ This purpose authorizes exactly two routes:
 
 - `POST /api/m2m/shop/purchase-smoke/checkouts` accepts only `{runId, scenario}`.
   Scenarios are `digital-course`, `parcel-courier`, `parcel-locker`, and
-  `bundle-locker`; the locker code is fixed at `WAW01A`.
+  `bundle-locker`; the locker code is fixed at `WAW01M`.
 - `GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result` reads only a
   checkout created by the same key, including paid/refund state and receipts
   from successfully applied provider webhooks.

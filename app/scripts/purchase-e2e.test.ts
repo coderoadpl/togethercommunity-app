@@ -7,8 +7,8 @@ import oldApiLockerFree from '#adapters/payment/fixtures/checkout-completed-2020
 import cloverAddressPaid from '#adapters/payment/fixtures/checkout-completed-2025-09-30-address-paid.json' with { type: 'json' };
 import cloverLockerFree from '#adapters/payment/fixtures/checkout-completed-2025-09-30-locker-free.json' with { type: 'json' };
 import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
-import { healthOutputSchema } from '#core/contract/index.js';
-import { DEMO_SEED_PASSWORD, err, internal, SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
+import { API_KEY_HEADER, API_PATHS, healthOutputSchema, PURCHASE_SMOKE_ROUTES } from '#core/contract/index.js';
+import { DEMO_SEED_PASSWORD, err, internal, purchaseSmokeStartSchema, SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_ID, type PurchaseSmokeScenario } from '#core/domain/index.js';
 
 import {
   assertTargetIdentity,
@@ -16,7 +16,6 @@ import {
   orderProblems,
   PURCHASE_CHECKS,
   purchaseE2eOptionsFromEnv,
-  SMOKE_TENANT_PURCHASE_EMAIL,
   runPurchaseE2e,
   type OrderView,
   type PurchaseE2eOptions,
@@ -26,7 +25,9 @@ import {
   confirmParams,
   eventPaymentIntent,
   generateForwardingSecret,
+  LEGACY_ACCOUNT_API_VERSION,
   listRecentEvents,
+  PROVIDER_API_ORIGIN,
   replayCheckoutSession,
   TEST_BUYER_ADDRESS,
   webhookSignatureHeader,
@@ -37,12 +38,19 @@ const PRODUCTION_FINGERPRINT = 'b1bfbb98b4f7';
 const STAGING_FINGERPRINT = 'a71c3d05e9f2';
 
 const productionEnv = {
-  STRIPE_TEST_RESTRICTED_KEY_PRODUCTION: 'rk_test_production',
-  STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION: 'pk_test_production',
-  PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION: 'purchase-admin-password',
+  PURCHASE_E2E_PRODUCTION_SHOP_KEY: 'a'.repeat(43),
+  PURCHASE_E2E_PRODUCTION_STRIPE_KEY: 'rk_test_production',
+  PURCHASE_E2E_PRODUCTION_STRIPE_PUBLISHABLE_KEY: 'pk_test_production',
+  PURCHASE_E2E_RUN_ID: 'production-run-1',
   PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
   PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
   PURCHASE_E2E_ENVIRONMENT: 'production',
+};
+
+const ignoredStaffEnv = {
+  PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION: 'unused-production-password',
+  PURCHASE_E2E_STAFF_EMAIL: 'unused-staff@example.com',
+  VERCEL_AUTOMATION_BYPASS_SECRET: 'unused-production-bypass',
 };
 
 const stagingEnv = {
@@ -144,18 +152,16 @@ describe('purchaseE2eOptionsFromEnv', () => {
     });
   });
 
-  it('reads only the production values, signs in as the purchase admin and never sends the bypass', () => {
-    expect(purchaseE2eOptionsFromEnv({
-      ...stagingEnv,
-      ...productionEnv,
-    })).toMatchObject({
+  it('reads only the production configuration and ignores credentials for staff and deployment protection', () => {
+    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, ...productionEnv, ...ignoredStaffEnv })).toEqual({
       options: {
         environment: 'production',
-        baseUrl: 'https://acme.togethercommunity.app',
+        baseUrl: productionEnv.PURCHASE_E2E_BASE_URL,
+        shopKey: productionEnv.PURCHASE_E2E_PRODUCTION_SHOP_KEY,
         keys: { restricted: 'rk_test_production', publishable: 'pk_test_production' },
-        staff: { email: SMOKE_TENANT_PURCHASE_EMAIL, password: 'purchase-admin-password' },
-        bypassSecret: null,
         databaseFingerprint: { expected: PRODUCTION_FINGERPRINT, production: PRODUCTION_FINGERPRINT },
+        platformDomain: 'togethercommunity.app',
+        runId: 'production-run-1',
       },
     });
   });
@@ -167,11 +173,34 @@ describe('purchaseE2eOptionsFromEnv', () => {
       PURCHASE_E2E_ENVIRONMENT: 'production',
     })).toEqual({
       problems: [
-        'STRIPE_TEST_RESTRICTED_KEY_PRODUCTION is not configured',
-        'STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION is not configured',
-        'PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION is not configured',
+        'PURCHASE_E2E_PRODUCTION_SHOP_KEY is not configured',
+        'PURCHASE_E2E_PRODUCTION_STRIPE_KEY is not configured',
+        'PURCHASE_E2E_PRODUCTION_STRIPE_PUBLISHABLE_KEY is not configured',
       ],
     });
+  });
+
+  it.each([
+    'PURCHASE_E2E_PRODUCTION_SHOP_KEY',
+    'PURCHASE_E2E_PRODUCTION_STRIPE_KEY',
+    'PURCHASE_E2E_PRODUCTION_STRIPE_PUBLISHABLE_KEY',
+    'PURCHASE_E2E_BASE_URL',
+    'PRODUCTION_DATABASE_FINGERPRINT',
+  ])('refuses missing %s in production', (variable) => {
+    expect(purchaseE2eOptionsFromEnv({ ...productionEnv, [variable]: undefined })).toEqual({ problems: [`${variable} is not configured`] });
+  });
+
+  it.each([
+    ['PURCHASE_E2E_PRODUCTION_SHOP_KEY', 'shop key with spaces', 'must be a shop management key'],
+    ['PURCHASE_E2E_PRODUCTION_STRIPE_KEY', 'rk_live_example', 'must be a test-mode key starting with rk_test_'],
+    ['PURCHASE_E2E_PRODUCTION_STRIPE_KEY', 'sk_test_example', 'must be a test-mode key starting with rk_test_'],
+    ['PURCHASE_E2E_PRODUCTION_STRIPE_KEY', 'rk_test_', 'is not a valid test-mode key'],
+    ['PURCHASE_E2E_PRODUCTION_STRIPE_PUBLISHABLE_KEY', 'pk_live_example', 'must be a test-mode key starting with pk_test_'],
+    ['PURCHASE_E2E_PRODUCTION_STRIPE_PUBLISHABLE_KEY', 'pk_test_ ', 'is not a valid test-mode key'],
+    ['PRODUCTION_DATABASE_FINGERPRINT', 'invalid', 'must be a 12-digit hexadecimal fingerprint'],
+    ['PURCHASE_E2E_RUN_ID', 'invalid run id', 'must be a purchase smoke run identifier'],
+  ])('refuses malformed %s (%s) in production', (variable, value, problem) => {
+    expect(purchaseE2eOptionsFromEnv({ ...productionEnv, [variable]: value })).toEqual({ problems: [`${variable} ${problem}`] });
   });
 
   it('refuses a staging host for production and the production host for staging', () => {
@@ -439,10 +468,10 @@ const jsonResponse = (body: unknown, init: ResponseInit = {}): Response =>
   new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' }, ...init });
 
 const recordingFetch = (answer: (url: URL, init: RequestInit | undefined) => Response) => {
-  const calls: Array<{ method: string; url: URL; redirect: RequestRedirect | undefined }> = [];
+  const calls: Array<{ method: string; url: URL; redirect: RequestRedirect | undefined; init: RequestInit | undefined }> = [];
   const request: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
-    calls.push({ method: init?.method ?? 'GET', url, redirect: init?.redirect });
+    calls.push({ method: init?.method ?? 'GET', url, redirect: init?.redirect, init });
     return answer(url, init);
   };
   return { calls, request };
@@ -454,9 +483,6 @@ describe('runPurchaseE2e', () => {
     ['another workspace', { baseUrl: 'https://studio.staging.togethercommunity.app' }],
     ['a live key', { keys: { restricted: 'rk_live_example', publishable: 'pk_test_example' } }],
     ['no production fingerprint', { databaseFingerprint: { expected: null, production: null } }],
-    ['a production run with the bypass', { environment: 'production' as const, baseUrl: 'https://acme.togethercommunity.app', staff: { email: SMOKE_TENANT_PURCHASE_EMAIL, password: 'x' } }],
-    ['a production run as the owner', { environment: 'production' as const, baseUrl: 'https://acme.togethercommunity.app', bypassSecret: null }],
-    ['a production run on a staging host', { environment: 'production' as const, bypassSecret: null, staff: { email: SMOKE_TENANT_PURCHASE_EMAIL, password: 'x' } }],
   ])('sends no request at all for %s', async (_name, override) => {
     const { calls, request } = recordingFetch(() => jsonResponse({ ok: true, data: health('staging', false) }));
     const result = await runPurchaseE2e({ ...options, ...override }, request);
@@ -490,5 +516,247 @@ describe('runPurchaseE2e', () => {
     expect(calls.filter((call) => call.method === 'POST').map((call) => call.url.pathname)).toEqual([BETTER_AUTH_PASSWORD_SIGN_IN_PATH]);
     expect(calls.every((call) => call.url.origin !== 'https://api.stripe.com')).toBe(true);
     expect(calls.every((call) => call.redirect === 'error')).toBe(true);
+  });
+});
+
+const productionOptions = () => {
+  const parsed = purchaseE2eOptionsFromEnv({ ...stagingEnv, ...productionEnv, ...ignoredStaffEnv });
+  if ('problems' in parsed || parsed.options.environment !== 'production') throw new Error('invalid fake production configuration');
+  return parsed.options;
+};
+
+const scriptedTiming = () => {
+  let now = Date.parse('2026-11-25T12:00:00.000Z');
+  return {
+    pollIntervalMs: 10,
+    webhookTimeoutMs: 20,
+    refundTimeoutMs: 20,
+    now: () => now,
+    wait: async (ms: number) => { now += ms; },
+  };
+};
+
+const productionScenarios = [
+  { scenario: 'digital-course', index: 1, amount: 9900 },
+  { scenario: 'parcel-courier', index: 2, amount: 4099 },
+  { scenario: 'parcel-locker', index: 3, amount: 3799 },
+  { scenario: 'bundle-locker', index: 4, amount: 13699 },
+].map(({ scenario, index, amount }) => ({
+  scenario,
+  amount,
+  sessionId: `cs_test_${String(index)}`,
+  reference: `00000000-0000-4000-8000-00000000000${String(index)}`,
+  paymentIntent: `pi_${String(index)}`,
+  eventId: `evt_checkout_${String(index)}`,
+}));
+
+interface FakeProductionOverrides {
+  noCheckoutReceipt?: PurchaseSmokeScenario;
+  wrongCheckoutEvent?: PurchaseSmokeScenario;
+  noReceiptVersion?: PurchaseSmokeScenario;
+  publicStatusStaysPending?: PurchaseSmokeScenario;
+  ownStatusStaysUnpaid?: PurchaseSmokeScenario;
+  noRefundReceipt?: boolean;
+  wrongRefundPaymentIntent?: boolean;
+  pendingWebhooks?: number;
+}
+
+const productionFetch = (overrides: FakeProductionOverrides = {}) => {
+  const confirmed = new Set<string>();
+  const refunds = new Map<string, number>();
+  const publicReads = new Map<string, number>();
+  const refundReads = new Map<string, number>();
+  const okResponse = (data: unknown) => jsonResponse({ ok: true, data });
+  const receipt = (eventId: string, type: string, apiVersion: string | null, refundedAmountCents: number | null = null) =>
+    ({ eventId, type, apiVersion, appliedAt: '2026-11-25T12:00:02.000Z', refundedAmountCents });
+  return recordingFetch((url, init) => {
+    const headers = new Headers(init?.headers);
+    const method = init?.method ?? 'GET';
+    if (url.origin === productionEnv.PURCHASE_E2E_BASE_URL) {
+      if (url.pathname === API_PATHS.health) return okResponse(health('production', true));
+      if (method === 'POST' && url.pathname === PURCHASE_SMOKE_ROUTES.start.path) {
+        const started = purchaseSmokeStartSchema.parse(JSON.parse(String(init?.body)));
+        const selected = productionScenarios.find(({ scenario }) => scenario === started.scenario);
+        if (selected === undefined) throw new Error('unexpected scenario');
+        const { reference, sessionId } = selected;
+        return okResponse({ ...started, reference, sessionId, url: `https://checkout.stripe.com/c/pay/${sessionId}` });
+      }
+      const scenario = productionScenarios.find(({ reference, sessionId }) =>
+        url.pathname === PURCHASE_SMOKE_ROUTES.result.path.replace(':reference', reference) ||
+        (url.pathname === API_PATHS.publicCheckoutSessionStatus && url.searchParams.get('session_id') === sessionId));
+      if (method === 'GET' && scenario !== undefined) {
+        const { sessionId, reference, eventId } = scenario;
+        const paid = confirmed.has(sessionId);
+        if (url.pathname === API_PATHS.publicCheckoutSessionStatus) {
+          const count = (publicReads.get(sessionId) ?? 0) + 1;
+          publicReads.set(sessionId, count);
+          return okResponse({ status: paid && count > 1 && scenario.scenario !== overrides.publicStatusStaysPending ? 'paid' : 'pending' });
+        }
+        const refunded = refunds.get(sessionId) ?? 0;
+        const count = (refundReads.get(sessionId) ?? 0) + 1;
+        if (refunded > 0) refundReads.set(sessionId, count);
+        const reflected = count > 1 ? refunded : 0;
+        return okResponse({
+          runId: productionEnv.PURCHASE_E2E_RUN_ID, scenario: scenario.scenario, reference, sessionId,
+          paid: paid && scenario.scenario !== overrides.ownStatusStaysUnpaid,
+          refundedAmountCents: reflected,
+          refundState: reflected === 0 ? 'none' : reflected === scenario.amount ? 'full' : 'partial',
+          receipts: [
+            ...(paid && scenario.scenario !== overrides.noCheckoutReceipt
+              ? [receipt(scenario.scenario === overrides.wrongCheckoutEvent ? 'evt_wrong_checkout' : eventId,
+                'checkout.session.completed', scenario.scenario === overrides.noReceiptVersion ? null : '2025-09-30.clover')]
+              : []),
+            ...(reflected > 0 && overrides.noRefundReceipt !== true
+              ? [receipt(`evt_refund_${sessionId}`, 'charge.refunded', '2025-09-30.clover', reflected)]
+              : []),
+          ],
+        });
+      }
+    }
+    if (url.origin === PROVIDER_API_ORIGIN) {
+      if (method === 'POST' && url.pathname === '/v1/payment_methods') return jsonResponse({ id: 'pm_fixture' });
+      if (method === 'GET' && url.pathname === '/v1/events') {
+        return jsonResponse({ data: productionScenarios.filter(({ sessionId }) => confirmed.has(sessionId)).map(({ sessionId, paymentIntent, eventId }) => ({
+          id: eventId, type: 'checkout.session.completed', livemode: false, api_version: '2020-03-02',
+          pending_webhooks: overrides.pendingWebhooks ?? 5, data: { object: { id: sessionId, payment_intent: paymentIntent } },
+        })), has_more: false });
+      }
+      if (method === 'GET' && url.pathname === '/v1/webhook_endpoints') {
+        const webhookPath = API_PATHS.stripeWebhook.replace(':tenantId', SMOKE_TENANT_ID);
+        return jsonResponse({ data: [{
+          id: 'we_production', url: `${productionEnv.PURCHASE_E2E_BASE_URL}${webhookPath}?mode=test`,
+          api_version: '2025-09-30.clover', livemode: false,
+        }], has_more: false });
+      }
+      if (method === 'POST' && url.pathname === '/v1/refunds') {
+        const params = new URLSearchParams(String(init?.body));
+        const intent = params.get('payment_intent');
+        const scenario = productionScenarios.find(({ paymentIntent }) => paymentIntent === intent);
+        if (scenario === undefined || !confirmed.has(scenario.sessionId)) throw new Error('refund of an unconfirmed payment');
+        const amount = Number(params.get('amount'));
+        refunds.set(scenario.sessionId, amount);
+        return jsonResponse({ id: 're_fixture', amount, payment_intent: intent });
+      }
+      const scenario = productionScenarios.find(({ sessionId }) => [
+        `/v1/checkout/sessions/${sessionId}`, `/v1/payment_pages/${sessionId}`, `/v1/payment_pages/${sessionId}/confirm`,
+      ].includes(url.pathname));
+      if (scenario !== undefined) {
+        const { sessionId, amount, paymentIntent } = scenario;
+        if (method === 'POST' && url.pathname.endsWith('/confirm')) {
+          confirmed.add(sessionId);
+          return jsonResponse({ livemode: false });
+        }
+        if (method === 'GET' && url.pathname === `/v1/payment_pages/${sessionId}`) return jsonResponse({ livemode: false });
+        if (method === 'GET' && url.pathname === `/v1/checkout/sessions/${sessionId}`) {
+          const paid = confirmed.has(sessionId);
+          const version = headers.get('stripe-version');
+          const raw = version === LEGACY_ACCOUNT_API_VERSION ? oldApiAddressPaid.data.object : cloverLockerFree.data.object;
+          return jsonResponse({
+            ...(version === null ? {} : { ...raw, metadata: { ...raw.metadata, tenantId: SMOKE_TENANT_ID }, total_details: { amount_shipping: FIXTURE.rateCents },
+              ...(version === LEGACY_ACCOUNT_API_VERSION ? {} : { shipping_cost: { amount_total: FIXTURE.rateCents } }) }),
+            id: sessionId, livemode: false, amount_total: amount, payment_status: paid ? 'paid' : 'unpaid',
+            payment_intent: paid ? (overrides.wrongRefundPaymentIntent === true && scenario.scenario === 'digital-course' ? 'pi_other' : paymentIntent) : null,
+          });
+        }
+      }
+    }
+    throw new Error(`unexpected request: ${method} ${url.href}`);
+  });
+};
+
+const checkByName = (result: Awaited<ReturnType<typeof runPurchaseE2e>>, name: string) =>
+  result.checks.find((check) => check.name === name);
+
+describe('production purchase machine run', () => {
+  it('runs the four test scenarios, attributes applied receipts and confines all credentials by route and origin', async () => {
+    const { calls, request } = productionFetch();
+    const result = await runPurchaseE2e(productionOptions(), request, scriptedTiming());
+    expect(result.failing).toEqual([]);
+    expect(result.checks.map(({ name, status }) => [name, status])).toEqual([
+      'target', ...productionScenarios.flatMap(({ scenario }) => [`start ${scenario}`, `pay ${scenario}`, `paid ${scenario}`]),
+      'delivery', 'api version', 'refund full', 'refund partial', 'replay',
+    ].map((name) => [name, 'ok']));
+    expect(checkByName(result, 'delivery')?.detail).toContain('pending_webhooks=5');
+    expect(checkByName(result, 'api version')?.detail).toContain('test endpoint: 2025-09-30.clover; checkout receipts: digital-course: 2025-09-30.clover');
+    expect(calls.filter(({ url }) => url.pathname === API_PATHS.publicCheckoutSessionStatus)).toHaveLength(8);
+    expect(calls.filter(({ method, url }) => method === 'POST' && url.pathname === '/v1/refunds').map(({ init }) => [
+      new Headers(init?.headers).get('idempotency-key'), String(init?.body),
+    ])).toEqual([
+      ['purchase-e2e:production-run-1:digital-course', 'payment_intent=pi_1&amount=9900'],
+      ['purchase-e2e:production-run-1:parcel-courier', 'payment_intent=pi_2&amount=500'],
+    ]);
+    expect(calls.filter(({ url }) => url.pathname === PURCHASE_SMOKE_ROUTES.start.path).map(({ init }) => JSON.parse(String(init?.body))))
+      .toEqual(productionScenarios.map(({ scenario }) => ({ runId: productionEnv.PURCHASE_E2E_RUN_ID, scenario })));
+    expect(calls.filter(({ url }) => url.pathname.endsWith('/result'))).toHaveLength(12);
+    for (const { url, init, redirect } of calls) {
+      const headers = new Headers(init?.headers);
+      expect(redirect).toBe('error');
+      expect(init?.credentials).toBe('omit');
+      expect(headers.has('cookie')).toBe(false);
+      expect(headers.has('x-vercel-protection-bypass')).toBe(false);
+      expect(url.pathname).not.toBe(BETTER_AUTH_PASSWORD_SIGN_IN_PATH);
+      const sent = `${url.href} ${JSON.stringify([...headers])} ${String(init?.body)}`;
+      for (const value of Object.values(ignoredStaffEnv)) expect(sent).not.toContain(value);
+      if (url.origin === PROVIDER_API_ORIGIN) {
+        expect(sent).not.toContain(productionEnv.PURCHASE_E2E_PRODUCTION_SHOP_KEY);
+        const key = url.pathname === '/v1/payment_methods' || url.pathname.startsWith('/v1/payment_pages/')
+          ? productionEnv.PURCHASE_E2E_PRODUCTION_STRIPE_PUBLISHABLE_KEY
+          : productionEnv.PURCHASE_E2E_PRODUCTION_STRIPE_KEY;
+        expect(headers.get('authorization')).toBe(`Bearer ${key}`);
+      } else {
+        expect(url.origin).toBe(productionEnv.PURCHASE_E2E_BASE_URL);
+        expect(sent).not.toContain(productionEnv.PURCHASE_E2E_PRODUCTION_STRIPE_KEY);
+        expect(sent).not.toContain(productionEnv.PURCHASE_E2E_PRODUCTION_STRIPE_PUBLISHABLE_KEY);
+        expect(headers.has('authorization')).toBe(false);
+        const machinePath = url.pathname === PURCHASE_SMOKE_ROUTES.start.path || productionScenarios.some(({ reference }) =>
+          url.pathname === PURCHASE_SMOKE_ROUTES.result.path.replace(':reference', reference));
+        if (machinePath) expect(headers.get(API_KEY_HEADER)).toBe(productionEnv.PURCHASE_E2E_PRODUCTION_SHOP_KEY);
+        else expect(sent).not.toContain(productionEnv.PURCHASE_E2E_PRODUCTION_SHOP_KEY);
+      }
+    }
+  });
+
+  it.each([
+    { noCheckoutReceipt: 'digital-course' },
+    { wrongCheckoutEvent: 'digital-course' },
+    { publicStatusStaysPending: 'digital-course' },
+    { ownStatusStaysUnpaid: 'digital-course' },
+  ] as const)('fails paid proof when either surface has no valid evidence (%o), even with no pending webhooks', async (overrides) => {
+    const { request } = productionFetch({ ...overrides, pendingWebhooks: 0 });
+    const result = await runPurchaseE2e(productionOptions(), request, scriptedTiming());
+    expect(result.failing).toEqual(['paid digital-course']);
+    expect(checkByName(result, 'delivery')?.detail).toContain('digital-course: evt_checkout_1 pending_webhooks=0');
+    expect(checkByName(result, 'refund full')?.status).toBe('skipped');
+  });
+
+  it('fails the API version check when the app did not record the received version', async () => {
+    const { request } = productionFetch({ noReceiptVersion: 'parcel-locker' });
+    const result = await runPurchaseE2e(productionOptions(), request, scriptedTiming());
+    expect(result.failing).toEqual(['api version']);
+    expect(checkByName(result, 'api version')?.detail).toContain('parcel-locker: missing');
+  });
+
+  it('fails both refunds when the order shows the correct amounts but has no applied refund receipts', async () => {
+    const { request } = productionFetch({ noRefundReceipt: true, pendingWebhooks: 0 });
+    const result = await runPurchaseE2e(productionOptions(), request, scriptedTiming());
+    expect(result.failing).toEqual(['refund full', 'refund partial']);
+    expect(checkByName(result, 'refund full')?.detail).toContain('state=full, refunded=9900, matching refund receipt=false');
+    expect(checkByName(result, 'refund partial')?.detail).toContain('state=partial, refunded=500, matching refund receipt=false');
+  });
+
+  it('refuses to refund when the provider reports a different payment intent for the confirmed session', async () => {
+    const { calls, request } = productionFetch({ wrongRefundPaymentIntent: true });
+    const result = await runPurchaseE2e(productionOptions(), request, scriptedTiming());
+    expect(result.failing).toEqual(['refund full']);
+    expect(calls.filter(({ method, url }) => method === 'POST' && url.pathname === '/v1/refunds').map(({ init }) => String(init?.body)))
+      .toEqual(['payment_intent=pi_2&amount=500']);
+  });
+
+  it('refuses a different production database before sending any credentials', async () => {
+    const { calls, request } = recordingFetch(() => jsonResponse({ ok: true, data: health('production', true, STAGING_FINGERPRINT) }));
+    const result = await runPurchaseE2e(productionOptions(), request, scriptedTiming());
+    expect(result.failing).toEqual(['target']);
+    expect(calls.map(({ url }) => url.pathname)).toEqual([API_PATHS.health]);
+    expect(new Headers(calls[0]?.init?.headers).has(API_KEY_HEADER)).toBe(false);
   });
 });

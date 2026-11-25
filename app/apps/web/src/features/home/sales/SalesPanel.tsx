@@ -1,6 +1,6 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
-import { OrderMemberIdentity } from './OrderMemberIdentity.js';
+import { OrderMemberIdentity, orderMemberTitle } from './OrderMemberIdentity.js';
 import { OrderProductSummary } from './OrderProductSummary.js';
 import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
@@ -434,7 +434,7 @@ export const SalesPanel = () => {
                 <SalesOrderCard key={order.id} data-testid="sales-row">
                   <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                      <SalesCardControl><OrderMemberIdentity order={order} /></SalesCardControl>
+                      <SalesCardControl><OrderMemberIdentity order={order} underline="always" /></SalesCardControl>
                     </Box>
                     <SalesCardAmount>{formatPrice(order.amountCents, order.currency, language)}</SalesCardAmount>
                   </Stack>
@@ -479,7 +479,7 @@ export const SalesPanel = () => {
                     <TableRow key={order.id} data-testid="sales-row">
                       {canWriteInvoice ? <TableCell padding="checkbox">{selectBox(order)}</TableCell> : null}
                       <SalesNoWrapCell>{orderLink(order)}</SalesNoWrapCell>
-                      <SalesMemberCell title={order.memberName === null ? order.memberEmail : `${order.memberName}\n${order.memberEmail}`}><OrderMemberIdentity order={order} /></SalesMemberCell>
+                      <SalesMemberCell title={orderMemberTitle(order, t.deletedContent.member)}><OrderMemberIdentity order={order} /></SalesMemberCell>
                       <SalesProductCell>
                         {productCell(order)}
                         {narrow && orderSource(order) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(order)}</Typography> : null}

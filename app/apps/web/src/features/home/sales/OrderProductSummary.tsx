@@ -28,7 +28,7 @@ export const OrderProductSummary = ({ order }: { order: OrderListItem }) => {
               expanded={expanded}
               aria-expanded={expanded}
               aria-controls={itemsId}
-              aria-label={expanded ? t.sales.hideItems : t.sales.showItems({ count: names.length })}
+              aria-label={t.sales.showItems({ count: names.length })}
               onClick={() => setExpanded((current) => !current)}
             >
               <ExpandChevronIcon />

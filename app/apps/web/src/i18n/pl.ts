@@ -1506,7 +1506,6 @@ export const pl: Messages = {
     moreItems: ({ count }) => format('+{count}', { count }),
     moreItemsLabel: ({ count }) => format(plural(count, 'i jeszcze {count} pozycja', 'i jeszcze {count} pozycje', 'i jeszcze {count} pozycji'), { count }),
     showItems: ({ count }) => format(plural(count, 'Pokaż {count} pozycję', 'Pokaż wszystkie {count} pozycje', 'Pokaż wszystkie {count} pozycji'), { count }),
-    hideItems: 'Zwiń pozycje',
     openMemberAccount: ({ member }) => format('{member}: otwórz konto uczestnika', { member }),
     rejectedPaymentsHeading: 'Płatności, których nie udało się zapisać',
     rejectedPaymentsHint: 'Stripe zgłasza te płatności jako opłacone, ale zamówienie nie zostało zapisane. Stripe ponawia każde dostarczenie przez maksymalnie trzy dni. Nie zwracaj płatności ani nie proś kupującego o ponowną zapłatę, zanim wsparcie tego nie sprawdzi.',

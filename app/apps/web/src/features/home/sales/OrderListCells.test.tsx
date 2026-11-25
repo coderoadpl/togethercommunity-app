@@ -73,7 +73,7 @@ describe('OrderProductSummary', () => {
     expect(toggle).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle).toHaveAccessibleName(en.sales.hideItems);
+    expect(toggle).toHaveAccessibleName(en.sales.showItems({ count: 12 }));
     expect(items).toBeVisible();
     expect(within(items).getAllByRole('listitem').map((item) => item.textContent)).toEqual(twelveItems.map((entry) => entry.name));
 
@@ -117,7 +117,10 @@ describe('OrderMemberIdentity', () => {
     const emailLink = within(email).getByText('ada@example.com');
     expect(emailLink).toHaveAttribute('href', '/panel/members/m1');
     expect(emailLink).toHaveAttribute('tabindex', '-1');
-    expect(screen.getAllByRole('link')).toHaveLength(1);
+    await userEvent.setup().tab();
+    expect(link).toHaveFocus();
+    await userEvent.setup().tab();
+    expect(document.body).toHaveFocus();
   });
 
   it('shows the e-mail alone as the link when there is no display name, in Polish', async () => {
@@ -137,24 +140,27 @@ describe('OrderMemberIdentity', () => {
 });
 
 describe('SalesPanel row', () => {
-  it('shows the date on two lines as the link to the order and the coupon code or a dash', async () => {
+  it('shows the date on two lines as the link to the order, the coupon code or a dash, and never an erased address', async () => {
     server.use(
       http.get('/api/orders/consumer-sales-summary', () => HttpResponse.json({ ok: true, data: { from: '2026-11-01', to: '2026-11-30', timezone: 'Europe/Warsaw', currency: 'PLN', rates: [], totals: { orderCount: 0, lineCount: 0, netCents: 0, vatCents: 0, grossCents: 0 }, orderIds: [], orders: [] } })),
       http.get('/api/orders/reconciliation', () => HttpResponse.json({ ok: true, data: { rows: [], checkedThrough: '2026-11-25T12:00:00.000Z' } })),
       http.get('/api/products', () => HttpResponse.json({ ok: true, data: { products: [] } })),
       http.get('/api/coupons/options', () => HttpResponse.json({ ok: true, data: { coupons: [] } })),
-      http.get('/api/orders/payment-event-rejections', () => HttpResponse.json({ ok: true, data: { rejections: [] } })),
       http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
-        orders: [order({ couponCode: 'AUTUMN20', couponId: 'c1' }), order({ id: 'o2' })], sources: [], total: 2, page: 1, pageSize: 25,
+        orders: [order({ couponCode: 'AUTUMN20', couponId: 'c1' }), order({ id: 'o2' }), order({ id: 'o3', memberId: 'm3', memberName: null, memberEmail: memberTombstone('m3').email })], sources: [], total: 3, page: 1, pageSize: 25,
       } })),
     );
     await renderRouted(<SalesPanel />);
-    const [withCoupon, withoutCoupon] = await screen.findAllByTestId('sales-row');
-    if (withCoupon === undefined || withoutCoupon === undefined) throw new Error('Expected two order rows');
+    const [withCoupon, withoutCoupon, erased] = await screen.findAllByTestId('sales-row');
+    if (withCoupon === undefined || withoutCoupon === undefined || erased === undefined) throw new Error('Expected three order rows');
     const dateLink = within(withCoupon).getByRole('link', { name: '25 Nov 2026, 09:44' });
     expect(dateLink).toHaveAttribute('href', '/panel/sales/o1');
     expect([...dateLink.children].map((child) => child.textContent)).toEqual(['25 Nov 2026', '09:44']);
     expect(within(withCoupon).getByTestId('sales-row-coupon')).toHaveTextContent('AUTUMN20');
     expect(within(withoutCoupon).getByTestId('sales-row-coupon')).toHaveTextContent('—');
+    expect(within(withCoupon).getByTestId('order-member-email').closest('td')).toHaveAttribute('title', 'Ada\nada@example.com');
+    const erasedCell = within(erased).getByTestId('order-member-erased').closest('td');
+    expect(erasedCell).toHaveAttribute('title', en.deletedContent.member);
+    expect(erased).not.toHaveTextContent(memberTombstone('m3').email);
   });
 });

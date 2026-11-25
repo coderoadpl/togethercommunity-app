@@ -4785,7 +4785,7 @@ export const SalesMemberEmail = styled('span')(({ theme }) => ({
   userSelect: 'text',
 }));
 export const OrderDetailValue = styled(Typography)<AsElement>(({ theme }) => ({ minWidth: 0, [theme.breakpoints.up('sm')]: { textAlign: 'right' } }));
-export const SalesFitCell = styled(TableCell)({ width: '1%', whiteSpace: 'nowrap' });
+export const SalesFitCell = styled(TableCell)({ width: '1%' });
 export const SalesProductCell = styled(TableCell)(({ theme }) => ({ width: '100%', minWidth: '10rem', [theme.breakpoints.up('xl')]: { minWidth: '14rem' } }));
 export const SalesDateLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'inline-flex',
@@ -4810,7 +4810,7 @@ export const SalesProductToggle = styled(IconButton, { shouldForwardProp: (prop)
     '@media (prefers-reduced-motion: no-preference)': { transition: theme.transitions.create('transform', { duration: 150 }) },
   },
 }));
-export const SalesProductItems = styled('ul')(({ theme }) => ({ ...SALES_FILL_CELL, ...theme.typography.body2, margin: '0.25rem 0 0', paddingLeft: '1.25rem' }));
+export const SalesProductItems = styled('ul')(({ theme }) => ({ ...SALES_FILL_CELL, ...theme.typography.body2, margin: '0.25rem 0 0', paddingLeft: '1.25rem', overflowWrap: 'anywhere' }));
 export const SalesCardAmount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
 export const SalesOrderCard = styled('li')(({ theme }) => ({
   position: 'relative',

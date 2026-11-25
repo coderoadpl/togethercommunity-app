@@ -1069,6 +1069,7 @@ describe('staff refund history and ship anyway', () => {
       const member = within(card).getByRole('link', { name: /^Alex Smith \(/ });
       expect(member).toHaveAttribute('href', '/panel/members/member-1');
       expect(member).toHaveTextContent('Alex Smith');
+      expect(member).toHaveClass('MuiLink-underlineAlways');
     });
   });
 });

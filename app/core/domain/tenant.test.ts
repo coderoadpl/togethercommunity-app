@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   absoluteBrandingAssetUrl,
   DELETED_MEMBER_DISPLAY,
-  isMemberTombstoneEmail,
+  isMemberTombstone,
   isReservedTenantSlug,
   memberTombstone,
   resolveInvoiceVat,
@@ -366,10 +366,11 @@ describe('sign-in notice settings', () => {
   });
 });
 
-describe('isMemberTombstoneEmail', () => {
-  it('recognises the replacement address of an erased member and nothing else', () => {
-    expect(isMemberTombstoneEmail(memberTombstone('m1').email)).toBe(true);
-    expect(isMemberTombstoneEmail('buyer@example.com')).toBe(false);
-    expect(isMemberTombstoneEmail('anonymized.invalid@example.com')).toBe(false);
+describe('isMemberTombstone', () => {
+  it('recognises only the replacement address of that erased member', () => {
+    expect(isMemberTombstone({ memberId: 'm1', memberEmail: memberTombstone('m1').email })).toBe(true);
+    expect(isMemberTombstone({ memberId: 'm2', memberEmail: memberTombstone('m1').email })).toBe(false);
+    expect(isMemberTombstone({ memberId: 'm1', memberEmail: 'buyer@anonymized.invalid' })).toBe(false);
+    expect(isMemberTombstone({ memberId: 'm1', memberEmail: 'buyer@example.com' })).toBe(false);
   });
 });

@@ -3261,6 +3261,8 @@ export const LedgerTitle = styled(Typography, {
 
 export const FinePrint = styled(Typography)<AsElement & { dateTime?: string }>({ fontSize: '0.75rem' });
 
+export const WrapAnywhereFinePrint = styled(FinePrint)({ overflowWrap: 'anywhere' });
+
 export const CartStockNote = styled(FinePrint)(({ theme }) => ({ fontWeight: 600, color: theme.palette.text.primary }));
 
 
@@ -3770,6 +3772,8 @@ export const VersionDiffRow = styled(Stack, {
 }));
 
 export const BreakAnywhereText = styled(Typography)<AsElement>({ overflowWrap: 'anywhere' });
+
+export const UnbrokenSegment = styled('span')({ whiteSpace: 'nowrap' });
 
 export const ReorderDragHandle = styled('span', {
   shouldForwardProp: (prop) => prop !== 'pending',

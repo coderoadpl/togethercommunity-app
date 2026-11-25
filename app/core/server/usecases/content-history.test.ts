@@ -271,7 +271,7 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       addCompletedLesson: async () => {
         throw new Error('not used');
       },
-      removeCompletedLesson: async () => null,
+      removeCompletedLesson: async () => [],
       setLastViewed: async () => {
         throw new Error('not used');
       },
@@ -293,6 +293,8 @@ const restoreHarness = (records: (StoredEntityVersion & { tenantId: string })[])
       objectUrl: (configuration, key) =>
         new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (request) => ok(request.url),
       presignGet: (request) => ok(request.url),
@@ -640,6 +642,18 @@ describe('restoring a content version', () => {
     expect(result.ok).toBe(true);
     expect(harness.products[0]).toMatchObject({ title: 'Older title', personalization: current });
     expect(harness.writtenVersions.at(-1)?.payload).not.toHaveProperty('personalization');
+  });
+
+  it.each([
+    ['restores the gallery of a v12 snapshot', 12, { ...productSnapshotPayload, images: [{ url: 'https://cdn.example.test/old.jpg', alt: 'Old view' }] }, [{ url: 'https://cdn.example.test/old.jpg', alt: 'Old view' }]],
+    ['clears the gallery when restoring a snapshot from before galleries', 11, productSnapshotPayload, []],
+  ] as const)('%s', async (_label, schemaVersion, payload, expected) => {
+    const harness = restoreHarness([record({ tenantId: 't-acme', id: 'v9', entityKind: 'product', entityId: 'p1', schemaVersion, payload })]);
+    harness.products[0] = { ...productRow, images: [{ url: 'https://cdn.example.test/current.jpg', alt: '' }] };
+    const result = await restoreContentVersion({ identity: identity('t-acme', 'owner') }, { versionId: 'v9' }, harness.deps);
+    expect(result.ok).toBe(true);
+    expect(harness.products[0]).toMatchObject({ title: 'Older title', images: expected });
+    expect(harness.writtenVersions.at(-1)?.payload).toMatchObject({ images: [{ url: 'https://cdn.example.test/current.jpg', alt: '' }] });
   });
 
   it('refuses a restore without the write capability', async () => {

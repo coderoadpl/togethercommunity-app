@@ -10,6 +10,7 @@ import { createChangeProposalGroupRepository } from './change-proposal-groups.js
 import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import type { Db } from './client.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
 import * as schema from './schema.js';
 import { createShopManagementKeyRepository } from './shop-management-keys.js';
 import { createTestDatabase } from './test-database-name.js';
@@ -39,7 +40,8 @@ const notification = (tenantId: string, recipientUserId: string, id: string): No
   id, tenantId, recipientUserId, kind: 'change-proposal',
   payload: {
     rootPostId: null, postId: null, contextKind: 'tenant', contextId: null, courseId: null, eventId: null, domain: null,
-    lessonName: '', authorDisplay: 'Catalogue agent', authorAvatarUrl: null, snippet: '',
+    lessonName: '', authorDisplay: null, authorAvatarUrl: null, snippet: '',
+    changeProposal: { keyName: 'Catalogue agent', groupId: null, groupTitle: null },
   },
   sourceKey: 'change-proposal:key-people', readAt: null, createdAt: NOW,
 });
@@ -133,7 +135,7 @@ describe('the owner notice modes', () => {
 });
 
 describe('the change proposal people reader', () => {
-  it('reads the e-mail and the effective grant of direct, organisation-derived and former staff in one query', async () => {
+  it('reads the e-mail and the effective grant of direct and organisation-derived staff in one query, and leaves out anyone without a grant', async () => {
     reads.length = 0;
     const people = await createChangeProposalPeopleReader(db).read(MANAGED, ['org-owner', 'org-admin', 'org-owner-direct-admin', 'outsider', 'deleted-account']);
     expect(reads).toHaveLength(1);
@@ -141,18 +143,26 @@ describe('the change proposal people reader', () => {
       { userId: 'org-admin', email: 'org-admin@example.test', emailVerified: true, staffRole: 'admin' },
       { userId: 'org-owner', email: 'org-owner@example.test', emailVerified: true, staffRole: 'owner' },
       { userId: 'org-owner-direct-admin', email: 'org-owner-direct-admin@example.test', emailVerified: true, staffRole: 'owner' },
-      { userId: 'outsider', email: 'outsider@example.test', emailVerified: true, staffRole: null },
     ]);
+  });
+});
+
+describe('the access title reader', () => {
+  it('reads the titles of more ids than one statement can bind', async () => {
+    await db.insert(schema.courses).values({ id: 'course-many-ids', tenantId: DIRECT, name: 'Intro course', description: '', createdAt: NOW });
+    const unknown = Array.from({ length: 70_000 }, (_unused, index) => `lesson-unknown-${String(index)}`);
+    const titles = await createChangeProposalTargetLabelReader(db).accessTitles(DIRECT, {
+      courseIds: [...Array.from({ length: 70_000 }, (_unused, index) => `course-unknown-${String(index)}`), 'course-many-ids'],
+      moduleIds: unknown.map((id) => id.replace('lesson', 'module')),
+      lessonIds: unknown,
+    });
+    expect(titles).toEqual({ courses: [{ id: 'course-many-ids', title: 'Intro course', archived: false }], modules: [], lessons: [] });
   });
 });
 
 describe('a person whose grant is in another workspace', () => {
   it('has no grant and no e-mail on the owner view of this workspace', async () => {
-    const people = await createChangeProposalPeopleReader(db).read(MANAGED, ['direct-owner', 'direct-admin']);
-    expect(people.map(({ userId, staffRole }) => ({ userId, staffRole })).toSorted((left, right) => left.userId.localeCompare(right.userId))).toEqual([
-      { userId: 'direct-admin', staffRole: null },
-      { userId: 'direct-owner', staffRole: null },
-    ]);
+    expect(await createChangeProposalPeopleReader(db).read(MANAGED, ['direct-owner', 'direct-admin'])).toEqual([]);
 
     await db.insert(schema.changeProposals).values({
       id: 'proposal-foreign-grant', tenantId: MANAGED, operation: 'product.update', input: { id: 'product-gone', title: 'Renamed' }, effect: {},
@@ -164,6 +174,7 @@ describe('a person whose grant is in another workspace', () => {
       changeProposalGroups: createChangeProposalGroupRepository(db),
       shopManagementKeys: createShopManagementKeyRepository(db),
       changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+      keyDownloadFiles: createKeyDownloadFileRepository(db),
       changeProposalPeople: createChangeProposalPeopleReader(db),
       clock: { nowIso: () => NOW },
     });
@@ -200,6 +211,7 @@ describe('the owner list identities of a full page', () => {
     changeProposalGroups: createChangeProposalGroupRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
+    keyDownloadFiles: createKeyDownloadFileRepository(db),
     changeProposalPeople: createChangeProposalPeopleReader(db),
     clock: { nowIso: () => NOW },
   });

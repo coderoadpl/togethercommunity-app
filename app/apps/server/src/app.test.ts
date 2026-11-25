@@ -11,12 +11,14 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
+import { unusedKeyDownloadRepositories } from '#core/server/testing/key-download-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import { createPickupPointDirectoryFake, TEST_PICKUP_POINTS } from '#core/server/testing/pickup-point-fake.js';
 import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
   emptyCatalogState,
 } from '#core/server/testing/change-proposal-fakes.js';
@@ -397,7 +399,9 @@ const deps = (input: {
     changeProposalEvents: changeProposalStore.events,
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
+    quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
+    ...unusedKeyDownloadRepositories(),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {
       commit: async () => 'saved',
@@ -531,6 +535,8 @@ const deps = (input: {
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
@@ -670,6 +676,8 @@ const deps = (input: {
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
     stock: createStockRepositoryFake().repository,
     releaseExpiredStockReservations: async () => ok({ released: 0 }),
+    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
+    sweepKeyDownloadFiles: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -746,6 +754,8 @@ const deps = (input: {
         (input.lessons ?? []).find((lesson) => lesson.tenantId === tenantId && lesson.id === id) ?? null,
       findByIds: async (tenantId, ids) =>
         (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)),
+      existingIds: async (tenantId, ids) =>
+        (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)).map((lesson) => lesson.id),
       create: async () => undefined,
       update: async () => null,
       delete: async () => false,
@@ -802,7 +812,6 @@ const deps = (input: {
         completedLessonIds: [input.lessonId],
         updatedAt: input.now,
       }),
-      removeCompletedLesson: async () => null,
       setLastViewed: async (_tenantId, input) => ({
         id: input.id,
         tenantId: _tenantId,
@@ -815,6 +824,14 @@ const deps = (input: {
         updatedAt: input.now,
       }),
       update: async (_tenantId, progress) => progress,
+      removeCompletedLesson: async (tenantId, input) => input.courseIds.map((courseId) => ({
+        id: `progress-${courseId}`,
+        tenantId,
+        memberId: input.memberId,
+        courseId,
+        completedLessonIds: [],
+        updatedAt: input.now,
+      })),
       countReferencingLesson: async () => 0,
     },
     posts: {
@@ -3847,6 +3864,78 @@ describe('email dispatch route', () => {
     expect((await response).status).toBe(200);
   });
 
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('runs both staged object sweeps on the %s tick after e-mail and refunds, side by side, each with its own failure', async (_trigger, init) => {
+    const calls: string[] = [];
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
+      calls.push('email');
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      calls.push('refunds');
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchEmails, dispatchOrderRefundJobs, logger });
+    let finishImages: () => void = () => undefined;
+    const sweepQuarantinedImages = vi.fn<AppDeps['sweepQuarantinedImages']>(() => {
+      calls.push('images');
+      return new Promise((_resolve, reject) => { finishImages = () => { reject(new Error('image storage unavailable')); }; });
+    });
+    const sweepKeyDownloadFiles = vi.fn<AppDeps['sweepKeyDownloadFiles']>(async () => {
+      calls.push('files');
+      return err(integrationUnavailable('file storage unavailable'));
+    });
+    base.sweepQuarantinedImages = sweepQuarantinedImages;
+    base.sweepKeyDownloadFiles = sweepKeyDownloadFiles;
+    const response = buildApp(base).request(API_PATHS.emailDispatch, init);
+    await vi.waitFor(() => { expect(sweepKeyDownloadFiles).toHaveBeenCalledOnce(); });
+    expect(calls).toStrictEqual(['email', 'refunds', 'images', 'files']);
+    finishImages();
+    expect((await response).status).toBe(200);
+    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 50_000;
+    expect(sweepQuarantinedImages.mock.calls).toStrictEqual([[{ deadlineAt }]]);
+    expect(sweepKeyDownloadFiles.mock.calls).toStrictEqual([[{ deadlineAt }]]);
+    expect(logger.error).toHaveBeenCalledWith('[change-proposal] quarantined image sweep failed: image storage unavailable');
+    expect(logger.error).toHaveBeenCalledWith('[key-download] staged download file sweep failed: file storage unavailable');
+  });
+
+  it('logs a failed tick for a staged object sweep that answered with failed steps', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const base = deps({ logger });
+    base.sweepQuarantinedImages = async () => ok({ tenants: 2, removed: 1, failed: 1 });
+    base.sweepKeyDownloadFiles = async () => ok({ tenants: 3, removed: 0, failed: 2 });
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    expect(response.status).toBe(200);
+    expect(logger.error.mock.calls).toStrictEqual([
+      ['[change-proposal] quarantined image sweep failed: 1 of its steps failed'],
+      ['[key-download] staged download file sweep failed: 2 of its steps failed'],
+    ]);
+  });
+
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('starts neither staged object sweep on the %s tick once the dispatch before them used the time up to the sweep end', async (_trigger, init) => {
+    let now = '1998-07-12T00:00:00.000Z';
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      now = '1998-07-12T00:00:50.000Z';
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchOrderRefundJobs });
+    base.clock = { nowIso: () => now };
+    const sweepQuarantinedImages = vi.fn<AppDeps['sweepQuarantinedImages']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    const sweepKeyDownloadFiles = vi.fn<AppDeps['sweepKeyDownloadFiles']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    base.sweepQuarantinedImages = sweepQuarantinedImages;
+    base.sweepKeyDownloadFiles = sweepKeyDownloadFiles;
+    expect((await buildApp(base).request(API_PATHS.emailDispatch, init)).status).toBe(200);
+    expect(dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(sweepQuarantinedImages).not.toHaveBeenCalled();
+    expect(sweepKeyDownloadFiles).not.toHaveBeenCalled();
+  });
+
   it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
     const calls: string[] = [];
     const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
@@ -4118,6 +4207,8 @@ describe('tenant domain check route', () => {
           getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+          copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+          digestObject: () => Promise.reject(new Error('digestObject is not used here')),
           probeCors,
           presignPut: (input) => ok(input.url),
           presignGet: (input) => ok(input.url),
@@ -4890,6 +4981,7 @@ describe('lesson attachment download route', () => {
         findById: async (tenantId, lessonId) =>
           tenantId === acme.id && lessonId === lesson.id ? lesson : null,
         findByIds: async () => [lesson],
+        existingIds: async () => [lesson.id],
         create: async () => undefined,
         update: async () => null,
         delete: async () => false,
@@ -4920,6 +5012,8 @@ describe('lesson attachment download route', () => {
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+        digestObject: () => Promise.reject(new Error('digestObject is not used here')),
         probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
         presignPut: (input) => ok(input.url),
         presignGet: () => ok('https://download.example.test/signed'),
@@ -5491,6 +5585,7 @@ describe('public tenant image asset route', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('https://storage.example.test/signed-private-image');
     expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(response.headers.get('vary')).toBe(`Host, ${TENANT_HEADER}`);
   });
 
   it('returns only a not-found envelope when storage is unconfigured', async () => {
@@ -10641,6 +10736,8 @@ describe('staff member self-service routes', () => {
       [API_PATHS.studentLastViewed, { courseId: course.id, lessonId: 'lesson-1' }],
       [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1' }],
       [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1' }],
+      [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1', courseId: course.id }],
+      [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1', courseId: course.id }],
     ] as const) {
       const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
       expect(response.status, path).toBe(200);
@@ -12933,6 +13030,7 @@ describe('image upload publication boundary', () => {
     ['logo', 'owner', API_PATHS.brandingAssetUpload, API_PATHS.brandingAssetComplete],
     ['course-cover', 'staff', API_PATHS.courseCoverUpload, API_PATHS.courseCoverComplete],
     ['product-cover', 'staff', API_PATHS.productCoverUpload, API_PATHS.productCoverComplete],
+    ['product-image', 'staff', API_PATHS.productImageUpload, API_PATHS.productImageComplete],
     ['avatar', 'member', API_PATHS.avatarUpload, API_PATHS.avatarComplete],
   ] as const)('keeps %s candidates private and publishes only server-owned bytes', async (kind, role, uploadPath, completePath) => {
     const base = deps();

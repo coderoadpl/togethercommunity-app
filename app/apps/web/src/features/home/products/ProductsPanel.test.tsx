@@ -1063,6 +1063,21 @@ describe('ProductsPanel', () => {
     expect(rendered.updateInputs[2]).not.toHaveProperty('personalization');
   });
 
+  it('saves product details without sending the stored gallery', async () => {
+    const user = userEvent.setup();
+    const baseProduct = initialProducts[0];
+    if (baseProduct === undefined) throw new Error('Expected the base product fixture');
+    const withGallery: Product = {
+      ...baseProduct,
+      images: [{ url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000001.webp', alt: 'Front view' }],
+    };
+    const rendered = await renderProductsPanel([], '/panel/products/draft-1', [withGallery]);
+    await user.click(await screen.findByRole('button', { name: en.products.saveDetails }));
+    expect(await screen.findByText(en.products.detailsSaved)).toBeInTheDocument();
+    expect(rendered.updateInputs).toHaveLength(1);
+    expect(rendered.updateInputs[0]).not.toHaveProperty('images');
+  });
+
   it('offers no personalisation for a membership', async () => {
     const baseProduct = initialProducts[0];
     if (baseProduct === undefined) throw new Error('Expected the base product fixture');

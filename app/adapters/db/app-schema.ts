@@ -11,6 +11,7 @@ import { organizations } from './organization-schema.js';
 import type {
   OrderShipment,
   StoredProductCompliance,
+  ProductImage,
   ProductPersonalization,
   OrderShipping,
   ShippingRate,
@@ -377,6 +378,7 @@ export const products = pgTable(
     title: text('title').notNull(),
     description: text('description').notNull(),
     coverUrl: text('cover_url'),
+    images: jsonb('images').$type<ProductImage[]>().notNull().default([]),
     priceCents: integer('price_cents').notNull(),
     vatRate: jsonb('vat_rate').$type<5 | 8 | 23 | 'exempt'>(),
     vatExemptionBasis: text('vat_exemption_basis'),
@@ -462,6 +464,7 @@ export const productDownloadAssets = pgTable(
     storageKey: text('storage_key').notNull(),
     status: text('status', { enum: ['pending', 'ready'] }).notNull().default('pending'),
     createdAt: text('created_at').notNull(),
+    sha256: text('sha256'),
   },
   (table) => [
     foreignKey({

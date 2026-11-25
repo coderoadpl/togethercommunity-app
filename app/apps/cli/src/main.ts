@@ -5,6 +5,7 @@ import { registerSurveyCommands } from './survey-commands.js';
 import { registerOperatorCommands } from './operator-commands.js';
 import { subscriptionAdoptOptionsSchema, subscriptionListOptionsSchema } from './subscription-input.js';
 import { registerMarketingCommands } from './marketing-commands.js';
+import { saveProposedFile } from './proposal-file-download.js';
 import { readFile, writeFile } from 'node:fs/promises';
 
 import { Command, CommanderError } from 'commander';
@@ -83,7 +84,8 @@ import { emit, orderStatusLabel } from './output.js';
 import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } from './lesson-preview.js';
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
-import { changeProposalAppliedLine } from './change-proposal-output.js';
+import { changeProposalAppliedLine, changeProposalNoteText, changeProposalStaleReason } from './change-proposal-output.js';
+import { imageUploadInput, productImagesFileOption } from './image-files.js';
 
 const wantsJson = process.argv.includes('--json');
 const wantsVersion = process.argv.includes('--version') || process.argv.includes('-V');
@@ -222,6 +224,7 @@ const productCreateOptionsSchema = z.object({
   compliance: z.string().optional(),
   personalizationFile: z.string().min(1).optional(),
   personalization: z.boolean().default(true),
+  imagesFile: z.string().min(1).optional(),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
 });
@@ -239,6 +242,7 @@ const productUpdateOptionsSchema = z.object({
   compliance: z.string().optional(),
   personalizationFile: z.string().min(1).optional(),
   personalization: z.boolean().default(true),
+  imagesFile: z.string().min(1).optional(),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
   clearVariant: z.boolean().default(false),
@@ -1602,6 +1606,7 @@ product
   .option('--currency <currency>', '3-letter uppercase currency code')
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
+  .option('--images-file <path>', 'JSON file with the ordered gallery, e.g. [{"url":"/api/public/assets/product-image/<file>","alt":"Front view"}], or - for stdin; [] removes every gallery image')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
@@ -1647,10 +1652,16 @@ product
         emit(personalization, ctx.json, () => '');
         return;
       }
+      const images = await productImagesFileOption(options.imagesFile);
+      if (!images.ok) {
+        emit(images, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
           ...personalization.value,
+          ...images.value,
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
@@ -1712,7 +1723,7 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information, personalisation or variant')
+  .description('Update product title, description, cover, gallery, visibility, sales channel, delivery method, parcel size, safety information, personalisation or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
@@ -1723,6 +1734,7 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
+  .option('--images-file <path>', 'JSON file with the ordered gallery, e.g. [{"url":"/api/public/assets/product-image/<file>","alt":"Front view"}], or - for stdin; [] removes every gallery image')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
   .option('--no-personalization', 'remove the buyer personalisation')
@@ -1749,10 +1761,16 @@ product
         emit(personalization, ctx.json, () => '');
         return;
       }
+      const images = await productImagesFileOption(options.imagesFile);
+      if (!images.ok) {
+        emit(images, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.updateProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
           ...personalization.value,
+          ...images.value,
           ...(options.clearVariant ? { variantGroup: null, variantLabel: null } : {}),
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
@@ -1772,6 +1790,16 @@ product
         ctx.json,
         (data) => `updated: ${data.product.title}${salesChannelLabel(data.product)} (${data.product.id.slice(0, 8)})`,
       );
+    }),
+  );
+
+product
+  .command('image-upload <file>')
+  .description('Upload a product gallery image and print its URL for --images-file; the image joins a gallery only through product create or update')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [file]) => {
+      const input = await imageUploadInput('product-image', file);
+      emit(input.ok ? await ctx.api.uploadProductImage(input.value) : input, ctx.json, (data) => data.url);
     }),
   );
 
@@ -4239,6 +4267,26 @@ const changeProposalGroupLabel = (proposal: Pick<ChangeProposalOwnerView, 'group
 const changeProposalSummary = (proposal: ChangeProposalOwnerView): string =>
   `${proposal.createdAt}\t${proposal.status}\t${proposal.operation}\t${proposal.target.kind}:${proposal.target.id ?? '(new)'}\t${proposal.proposedBy.keyName}\t${changeProposalGroupLabel(proposal)}\t(${proposal.id})`;
 
+const changeProposalFileState = (pending: boolean, available: boolean): string => {
+  if (!pending) return '';
+  return available ? ': held by this proposal' : ': no longer available; approving changes nothing';
+};
+
+const changeProposalFileLines = (proposal: Pick<ChangeProposalOwnerView, 'id' | 'status' | 'proposedFiles'>): string[] => (proposal.proposedFiles ?? []).flatMap((file) => [
+  `  ${file.id}${changeProposalFileState(proposal.status === 'pending', file.available)}${file.copiedFrom === null
+    ? ''
+    : `; copy of version ${String(file.copiedFrom.versionNumber)} of ${file.copiedFrom.productTitle ?? 'a deleted product'} (${file.copiedFrom.productId})`}`,
+  ...(file.available && proposal.status === 'pending' ? [`    download it with: together proposals file ${proposal.id} ${file.id} --out <path>`] : []),
+]);
+
+const changeProposalAccessLabelLines = (proposal: Pick<ChangeProposalOwnerView, 'accessLabels'>): string[] => {
+  const labels = proposal.accessLabels;
+  if (labels === undefined) return [];
+  const lines = (kind: string, entries: ReadonlyArray<{ id: string; title: string | null }>) =>
+    entries.map((entry) => `  ${kind} ${entry.id}: ${entry.title ?? 'no longer exists'}`);
+  return ['names:', ...lines('course', labels.courses), ...lines('module', labels.modules), ...lines('lesson', labels.lessons)];
+};
+
 const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
   `proposal ${proposal.id}: ${proposal.operation} [${proposal.status}]`,
   ...(proposal.groupId === null ? [] : [`in ${changeProposalGroupLabel(proposal)}; decide it with the whole group`]),
@@ -4248,6 +4296,8 @@ const changeProposalDetail = (proposal: ChangeProposalOwnerView): string[] => [
   `expires: ${proposal.expiresAt}`,
   'effect:',
   ...changeProposalEffectLines(proposal.effect),
+  ...changeProposalAccessLabelLines(proposal),
+  ...(proposal.proposedFiles === undefined ? [] : ['files:', ...changeProposalFileLines(proposal)]),
   ...(proposal.decidedAt === null ? [] : [`decided: ${proposal.decidedAt} by ${proposal.decidedByUserId ?? 'the key'}`]),
   ...(proposal.decisionNote === null ? [] : [`decision note: ${proposal.decisionNote}`]),
 ];
@@ -4285,8 +4335,21 @@ changeProposals
       emit(await ctx.api.getChangeProposal({ id }), ctx.json, (data) => [
         ...changeProposalDetail(data.proposal),
         'history:',
-        ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${event.note}`}`),
+        ...data.proposal.events.map((event) => `  ${event.at}\t${event.kind}\t${event.actorUserId ?? event.apiKeyId ?? '-'}${event.note === null ? '' : `\t${changeProposalNoteText(event.note)}`}`),
       ].join('\n'));
+    }),
+  );
+
+changeProposals
+  .command('file <id> <fileId>')
+  .description('Download a file a pending proposal attaches, to check it before deciding: a 60-second signed link from the server, streamed straight from the storage to disk and never opened')
+  .requiredOption('--out <path>', 'file to write')
+  .option('--force', 'overwrite the file at --out if it exists')
+  .action(
+    withInput(z.tuple([z.string().min(1), z.string().min(1), z.object({ out: z.string().min(1), force: z.boolean().optional() })]), async (ctx, [id, fileId, options]) => {
+      const link = await ctx.api.getChangeProposalFileLink({ id, fileId });
+      const saved = link.ok ? await saveProposedFile(link.value.download, options.out, options.force === true) : link;
+      emit(saved, ctx.json, (data) => `wrote ${data.fileName} (${String(data.sizeBytes)} bytes) to ${data.out}`);
     }),
   );
 
@@ -4304,12 +4367,14 @@ changeProposals
     }),
   );
 
-const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView): string => {
+const changeProposalApprovalLine = (proposal: ChangeProposalOwnerView, gone: string | null): string => {
   switch (proposal.status) {
     case 'applied':
       return changeProposalAppliedLine(proposal.operation, proposal.appliedResourceId);
     case 'stale':
-      return 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.';
+      return gone === null
+        ? 'stale: the live state changed since this change was proposed; nothing was applied. The key can propose the change again from the current state.'
+        : `stale: ${gone}`;
     case 'failed':
       return `failed: ${proposal.failureCode ?? 'error'}: ${proposal.failureMessage ?? ''}; nothing was applied`;
     case 'pending':
@@ -4326,7 +4391,9 @@ changeProposals
   .action(
     withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
       const result = await ctx.api.approveChangeProposal({ id });
-      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal), ...changeProposalDetail(data.proposal)].join('\n'));
+      const shown = result.ok && result.value.proposal.status === 'stale' && !ctx.json ? await ctx.api.getChangeProposal({ id }) : null;
+      const gone = shown?.ok === true ? changeProposalStaleReason(shown.value.proposal.events) : null;
+      emit(result, ctx.json, (data) => [changeProposalApprovalLine(data.proposal, gone), ...changeProposalDetail(data.proposal)].join('\n'));
       if (result.ok && result.value.proposal.status !== 'applied') process.exitCode = EXIT_CODE_BY_ERROR_CODE.conflict;
     }),
   );
@@ -4343,17 +4410,26 @@ const changeProposalGroupItemLines = (group: ChangeProposalGroupOwnerView): stri
   group.items.flatMap((item) => [
     `item ${String(item.groupPosition ?? 0)}: ${item.operation} [${item.status}] ${item.target.kind}${item.target.id === null ? ' (new)' : ` ${item.target.id}`} (${item.id})`,
     ...changeProposalEffectLines(item.effect),
+    ...changeProposalAccessLabelLines(item).map((line) => `  ${line}`),
+    ...(item.proposedFiles === undefined ? [] : ['  files:', ...changeProposalFileLines(item).map((line) => `  ${line}`)]),
     ...(item.status === 'applied' ? [`  ${changeProposalAppliedLine(item.operation, item.appliedResourceId)}`] : []),
     ...(item.status === 'failed' ? [`  failed: ${item.failureCode ?? 'error'}: ${item.failureMessage ?? ''}`] : []),
-    ...item.events.filter((event) => event.note !== null).map((event) => `  ${event.kind}: ${event.note ?? ''}`),
+    ...item.events.filter((event) => event.note !== null).map((event) => `  ${event.kind}: ${changeProposalNoteText(event.note ?? '')}`),
   ]);
 
 const changeProposalGroupOutcomeLine = (group: ChangeProposalGroupOwnerView): string => {
   switch (group.status) {
     case 'applied':
       return `applied: all ${String(group.items.length)} items of the group`;
-    case 'stale':
-      return 'stale: an item no longer applies to the live state; nothing in the group was applied. The key can propose the group again from the current state.';
+    case 'stale': {
+      const gone = group.items.flatMap((item) => {
+        const reason = changeProposalStaleReason(item.events);
+        return reason === null ? [] : [`item ${String(item.groupPosition ?? 0)}: ${reason}`];
+      })[0];
+      return gone === undefined
+        ? 'stale: an item no longer applies to the live state; nothing in the group was applied. The key can propose the group again from the current state.'
+        : `stale: ${gone}; nothing in the group was applied`;
+    }
     case 'failed':
       return 'failed: an item was refused by the live rules; nothing in the group was applied';
     case 'open':

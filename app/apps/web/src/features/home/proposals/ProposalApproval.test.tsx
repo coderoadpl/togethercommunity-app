@@ -1,20 +1,55 @@
+import type { ReactElement } from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { changeProposalOperationSchema, type ChangeProposalOperation } from '#core/domain/index.js';
+import { registeredChangeProposalOperationSchema, type RegisteredChangeProposalOperation } from '#core/domain/index.js';
 
 import { en } from '../../../i18n/en.js';
 import { pl } from '../../../i18n/pl.js';
 import { formatPrice } from '../../../lib/format.js';
-import { ApprovalSummary, type ApprovalFacts } from './ProposalApproval.js';
+import { groupReferences } from './proposal-display.js';
+import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupAccessSentences, GroupFileSentences, type ApprovalFacts } from './ProposalApproval.js';
+import { AccessChangeRow } from './ProposedAccess.js';
 
 const t = en.changeProposals;
 
 const normalized = (text: string): string => text.replace(/\s+/gu, ' ');
 
-const product = { target: { kind: 'product' as const, id: 'product-mug' }, targetLabel: 'Mug', targetPrice: null, appliedResourceId: null };
+const pluralForms = (word: (params: { count: number }) => string) => {
+  const form = (count: number): string => word({ count }).replaceAll(String(count), '#');
+  return { one: word({ count: 1 }), few: form(3), fewLarge: form(22), many: form(5), manyTeen: form(12) };
+};
 
-const samples: Record<ChangeProposalOperation, ApprovalFacts> = {
+const expectPolishPlurals = (word: (params: { count: number }) => string, fewDiffersFromMany = true) => {
+  const forms = pluralForms(word);
+  expect(forms.one).not.toMatch(/\d/u);
+  expect(forms.few).toBe(forms.fewLarge);
+  expect(forms.many).toBe(forms.manyTeen);
+  expect(forms.few !== forms.many).toBe(fewDiffersFromMany);
+  expect(forms.few).toContain('#');
+};
+
+const product = { id: 'proposal-mug', target: { kind: 'product' as const, id: 'product-mug' }, targetLabel: 'Mug', targetPrice: null, appliedResourceId: null };
+
+const mugGuide = {
+  id: 'file-mug-guide',
+  lineageId: 'file-mug-guide',
+  versionNumber: 1,
+  latest: true,
+  fileName: 'mug-guide.pdf',
+  contentType: 'application/pdf',
+  sizeBytes: 1_048_576,
+  fingerprint: null,
+  versionNote: null,
+};
+
+const FINGERPRINT = 'ab'.repeat(32);
+
+const careSheet = { ...mugGuide, id: 'staged-care-sheet', lineageId: 'staged-care-sheet', fileName: 'care-sheet.pdf', fingerprint: FINGERPRINT };
+
+const mugGuideSecond = { ...mugGuide, id: 'staged-mug-guide-2', versionNumber: 2, sizeBytes: 2_097_152, fingerprint: FINGERPRINT };
+
+const samples: Record<RegisteredChangeProposalOperation, ApprovalFacts> = {
   'product.create': {
     ...product, operation: 'product.create', target: { kind: 'product', id: null }, targetLabel: null, input: { title: 'Mug' },
     effect: { exists: { before: false, after: true }, title: { before: null, after: 'Mug' } },
@@ -60,6 +95,23 @@ const samples: Record<ChangeProposalOperation, ApprovalFacts> = {
     ...product, operation: 'settings.update', target: { kind: 'settings', id: null }, targetLabel: null,
     input: { shopName: 'Acme' }, effect: { shopName: { before: 'Old', after: 'Acme' } },
   },
+  'product.set-access': {
+    ...product, operation: 'product.set-access', input: { id: 'product-mug', accessItems: [{ level: 'course', courseId: 'course-intro' }] },
+    effect: { accessItems: { before: [], after: [{ level: 'course', courseId: 'course-intro' }] } },
+    accessLabels: { courses: [{ id: 'course-intro', title: 'Intro course' }], modules: [], lessons: [] },
+  },
+  'download.add': {
+    ...product, operation: 'download.add', input: { productId: 'product-mug', stagedFileId: careSheet.id },
+    effect: { files: { before: [mugGuide], after: [mugGuide, careSheet] } },
+  },
+  'download.replace': {
+    ...product, operation: 'download.replace', input: { productId: 'product-mug', replacesAssetId: mugGuide.id, stagedFileId: mugGuideSecond.id },
+    effect: { files: { before: [mugGuide], after: [{ ...mugGuide, latest: false }, mugGuideSecond] } },
+  },
+  'download.remove': {
+    ...product, operation: 'download.remove', input: { productId: 'product-mug', assetId: mugGuide.id },
+    effect: { files: { before: [mugGuide], after: [] } },
+  },
 };
 
 const summaryOf = (proposal: ApprovalFacts): string => {
@@ -74,19 +126,20 @@ const withUnnamedRow = (proposal: ApprovalFacts): ApprovalFacts => ({
   effect: { ...proposal.effect, giftWrap: { before: false, after: true } },
 });
 
-const COUNTS_EVERY_ROW: ReadonlySet<ChangeProposalOperation> = new Set(['product.update', 'sales-link.update', 'settings.update']);
+const COUNTS_EVERY_ROW: ReadonlySet<RegisteredChangeProposalOperation> = new Set(['product.update', 'sales-link.update', 'settings.update']);
 
-const WHOLE_RECORD: ReadonlySet<ChangeProposalOperation> = new Set(['product.create', 'product.delete-draft', 'sales-link.create', 'sales-link.delete']);
+const WHOLE_RECORD: ReadonlySet<RegisteredChangeProposalOperation> = new Set(['product.create', 'product.delete-draft', 'sales-link.create', 'sales-link.delete']);
 
 describe('the approval confirmation', () => {
   it('says nothing else changes after every operation sentence that names all of its rows', () => {
-    for (const operation of changeProposalOperationSchema.options) {
+    expect(registeredChangeProposalOperationSchema.options).toHaveLength(18);
+    for (const operation of registeredChangeProposalOperationSchema.options) {
       expect(summaryOf(samples[operation]), operation).toMatch(new RegExp(`${t.approveNothingElse}$`, 'u'));
     }
   });
 
   it('never claims nothing else changes while an effect row is left unnamed', () => {
-    for (const operation of changeProposalOperationSchema.options) {
+    for (const operation of registeredChangeProposalOperationSchema.options) {
       const summary = summaryOf(withUnnamedRow(samples[operation]));
       if (COUNTS_EVERY_ROW.has(operation) || WHOLE_RECORD.has(operation)) {
         expect(summary, operation).toMatch(new RegExp(`${t.approveNothingElse}$`, 'u'));
@@ -143,5 +196,582 @@ describe('the approval confirmation', () => {
     expect(summaryOf(samples['price.create'])).toBe(normalized(
       `${t.approvePriceCreate({ target: 'Mug', price: t.priceOneTime({ price: formatPrice(2500, 'EUR', 'en') }) })} ${t.approveNothingElse}`,
     ));
+  });
+});
+
+const coverPath = (seed: string, extension = 'png'): string => `/api/public/assets/product-cover/${seed.repeat(64)}.${extension}`;
+
+const coverChange = (id: string, after: string, before: string | null = null): ApprovalFacts => ({
+  ...samples['product.update'],
+  id,
+  input: { id: 'product-mug', coverUrl: after },
+  effect: { coverUrl: { before, after } },
+});
+
+const dialogText = (element: ReactElement): string => {
+  const { container, unmount } = render(<div>{element}</div>);
+  const text = normalized(container.textContent ?? '');
+  unmount();
+  return text;
+};
+
+describe('the approval confirmation of a proposed image', () => {
+  it('adds that approving makes the proposed image public, after the sentence that names every effect row', () => {
+    const proposal = coverChange('proposal-cover', coverPath('a'));
+    expect(summaryOf(proposal)).toBe(`${t.approveFieldsChange({ target: 'Mug', count: 1 })} ${t.approveNothingElse}`);
+    render(<ApprovalSummary proposal={proposal} />);
+    expect(screen.getByTestId('proposal-approve-images')).toHaveTextContent(t.approveImagesPublic({ count: 1 }));
+    expect(t.approveImagesPublic({ count: 1 })).toContain('public at the address shown, unless it is public there already');
+    expect(t.approveImagesPublic({ count: 1 })).toContain('If it no longer exists, nothing is changed.');
+  });
+
+  it('says nothing about publication when no proposed image awaits approval', () => {
+    render(<ApprovalSummary proposal={coverChange('proposal-public-cover', '/api/public/assets/product-cover/field-guide.webp')} />);
+    render(<ApprovalSummary proposal={samples['product.update']} />);
+    expect(screen.queryByTestId('proposal-approve-images')).toBeNull();
+  });
+
+  it('counts each distinct proposed image once across a group and says none of the changes applies when one is gone', () => {
+    const items = [
+      coverChange('proposal-first', coverPath('a')),
+      coverChange('proposal-second', coverPath('b')),
+      coverChange('proposal-third', coverPath('a')),
+      samples['product.publish'],
+    ];
+    expect(dialogText(<ApprovalImagesNote proposals={items} group />)).toBe(t.approveGroupImagesPublic({ count: 2 }));
+    expect(t.approveGroupImagesPublic({ count: 2 })).toContain('If one of them no longer exists, none of the changes is applied.');
+    expect(dialogText(<ApprovalImagesNote proposals={[samples['product.publish']]} group />)).toBe('');
+  });
+
+  it('words the publication sentence with the Polish plural forms', () => {
+    const polish = pl.changeProposals;
+    expect(polish.approveImagesPublic({ count: 1 })).not.toBe(t.approveImagesPublic({ count: 1 }));
+    expectPolishPlurals(polish.approveImagesPublic);
+    expectPolishPlurals(polish.approveGroupImagesPublic);
+  });
+});
+
+const OVERRIDE = '\u202E';
+
+const filesNoteOf = (element: ReactElement): string => dialogText(element);
+
+describe('the approval confirmation of a file proposal', () => {
+  it('names the added file with its facts, the product and who can download it, then that nothing else changes', () => {
+    const summary = summaryOf(samples['download.add']);
+    expect(summary).toBe(normalized(
+      `“care-sheet.pdf” (PDF, 1 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}) will be added to “Mug”. `
+      + 'Everyone who has access to this product, current buyers included, can download it at once. Nothing else changes.',
+    ));
+    render(<ApprovalSummary proposal={samples['download.add']} />);
+    expect(screen.getByTestId('file-fingerprint')).toHaveAttribute('title', FINGERPRINT);
+    expect(screen.getByTestId('proposal-approve-files')).toHaveTextContent(t.approveFileMissing);
+    expect(screen.getByTestId('proposal-approve-files')).not.toHaveTextContent(t.fileRemoveOnlyFile);
+  });
+
+  it('names the file of a new version once when the new version keeps its name', () => {
+    const summary = summaryOf(samples['download.replace']);
+    expect(summary).toMatch(
+      /^A new version of “mug-guide\.pdf” \(PDF, 2 MB, fingerprint abababababab(ab)+\) becomes version 2 in “Mug”; buyers get the new version\. Nothing else changes\.$/u,
+    );
+    expect(summary.match(/mug-guide\.pdf/gu)).toHaveLength(1);
+    expect(dialogText(<ApprovalFilesNote proposals={[samples['download.replace']]} group={false} />)).toBe(t.approveFileMissing);
+  });
+
+  it('names both files of a new version when the new version is named differently', () => {
+    const renamed = { ...mugGuideSecond, fileName: 'mug-guide-2027.pdf' };
+    const proposal = { ...samples['download.replace'], effect: { files: { before: [mugGuide], after: [{ ...mugGuide, latest: false }, renamed] } } };
+    expect(summaryOf(proposal)).toMatch(
+      /^“mug-guide-2027\.pdf” \(PDF, 2 MB, fingerprint abababababab(ab)+\) becomes version 2 of “mug-guide\.pdf” in “Mug”; buyers get the new version\. Nothing else changes\.$/u,
+    );
+  });
+
+  it('says buyers lose a removed file and warns about a published product only when no file is left', () => {
+    expect(summaryOf(samples['download.remove'])).toBe(
+      `Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1. ${t.fileNoVersionLeft} ${t.approveNothingElse}`,
+    );
+    expect(dialogText(<ApprovalFilesNote proposals={[samples['download.remove']]} group={false} />)).toBe(t.fileRemoveOnlyFile);
+    expect(t.fileRemoveOnlyFile).toBe('This is the product’s only file. If the product is published when you approve, it stays published with nothing to download.');
+    const kept = { ...samples['download.remove'], effect: { files: { before: [{ ...mugGuide, latest: false }, mugGuideSecond], after: [mugGuide] } }, input: { productId: 'product-mug', assetId: mugGuideSecond.id } };
+    expect(summaryOf(kept)).toBe(
+      `Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 2. ${t.fileBecomesCurrent({ version: 1 })} ${t.approveNothingElse}`,
+    );
+    expect(dialogText(<ApprovalFilesNote proposals={[kept]} group={false} />)).toBe('');
+    const otherFile = { ...careSheet, id: 'file-care-sheet', lineageId: 'file-care-sheet' };
+    const otherLeft = { ...samples['download.remove'], effect: { files: { before: [mugGuide, otherFile], after: [otherFile] } } };
+    expect(summaryOf(otherLeft)).toBe(
+      `Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1. ${t.fileNoVersionLeft} ${t.approveNothingElse}`,
+    );
+    expect(dialogText(<ApprovalFilesNote proposals={[otherLeft]} group={false} />)).toBe('');
+  });
+
+  it('names the product a copied file comes from, isolated, and says plainly when that product is gone', () => {
+    const title = `Mug${OVERRIDE}tnirp`;
+    const copied = { ...samples['download.add'], proposedFiles: [{ id: careSheet.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: title, versionNumber: 2 } }] };
+    expect(summaryOf(copied)).toBe(normalized(
+      `“care-sheet.pdf” (PDF, 1 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}) will be added to “Mug”. `
+      + `Everyone who has access to this product, current buyers included, can download it at once. It is a copy of version 2 of a file from “${title}”. Nothing else changes.`,
+    ));
+    const { unmount } = render(<ApprovalSummary proposal={copied} />);
+    const summary = screen.getByTestId('proposal-approve-summary');
+    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual(['care-sheet.pdf', 'Mug', title]);
+    const outside = summary.cloneNode(true);
+    if (!(outside instanceof Element)) throw new Error('not an element');
+    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+    expect(outside.textContent).not.toContain(OVERRIDE);
+    unmount();
+
+    const version = { ...samples['download.replace'], proposedFiles: [{ id: mugGuideSecond.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: null, versionNumber: 3 } }] };
+    expect(summaryOf(version)).toMatch(/buyers get the new version\. It is a copy of version 3 of a file from a product that no longer exists\. Nothing else changes\.$/u);
+    expect(summaryOf(samples['download.add'])).not.toContain('copy');
+  });
+
+  it('isolates a file name with a direction override inside the confirmation sentence', () => {
+    const name = `care${OVERRIDE}fdp.exe`;
+    const proposal = { ...samples['download.add'], effect: { files: { before: [mugGuide], after: [mugGuide, { ...careSheet, fileName: name }] } } };
+    render(<ApprovalSummary proposal={proposal} />);
+    const summary = screen.getByTestId('proposal-approve-summary');
+    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual([name, 'Mug']);
+    const outside = summary.cloneNode(true);
+    if (!(outside instanceof Element)) throw new Error('not an element');
+    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+    expect(outside.textContent).not.toContain(OVERRIDE);
+  });
+
+  it('falls back to counting the field when the file list changed beyond the proposed file', () => {
+    const extra = { ...samples['download.add'], effect: { files: { before: [mugGuide], after: [{ ...mugGuide, fileName: 'renamed.pdf' }, careSheet] } } };
+    expect(summaryOf(extra)).toBe(`${t.approveFallback({ operation: t.operation['download.add'] })} ${t.approveFieldCount({ count: 1 })}`);
+  });
+
+  it('adds for a group the sentence of every file item, the removal warning and that none of the changes applies when a file is gone', () => {
+    const items = [
+      { ...samples['download.add'], id: 'item-add', target: { kind: 'product' as const, id: '$proposal:item-product' }, targetLabel: null },
+      { ...samples['download.remove'], id: 'item-remove' },
+      { ...samples['product.publish'], id: 'item-publish' },
+    ];
+    const references = groupReferences([
+      { id: 'item-product', operation: 'product.create', input: { title: 'Field Guide (digital)' }, targetLabel: null, groupPosition: 1 },
+    ]);
+    const sentences = dialogText(<GroupFileSentences items={items} references={references} />);
+    expect(sentences).toContain(
+      'will be added to “Field Guide (digital)”. Everyone who later gets access to this product can download the file.',
+    );
+    expect(sentences).not.toContain('current buyers included');
+    expect(sentences).toContain('Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 1.');
+    expect(sentences).not.toContain(t.approveNothingElse);
+    expect(filesNoteOf(<ApprovalFilesNote proposals={items} group />)).toBe(`${t.fileRemoveOnlyFile} ${t.approveGroupFilesMissing({ count: 1 })}`);
+    expect(t.approveGroupFilesMissing({ count: 2 })).toBe('If one of the 2 proposed files no longer exists, none of the changes is applied.');
+    expect(dialogText(<ApprovalFilesNote proposals={[samples['product.publish']]} group />)).toBe('');
+  });
+
+  it('keeps the sentence about current buyers for a file a group adds to an existing product', () => {
+    const items = [{ ...samples['download.add'], id: 'item-add' }];
+    expect(dialogText(<GroupFileSentences items={items} references={groupReferences([])} />))
+      .toContain('will be added to “Mug”. Everyone who has access to this product, current buyers included, can download it at once.');
+  });
+
+  it('promises buyers no file that a later item of the group removes or deletes with its product, and no loss of a file they never had', () => {
+    const added = { ...samples['download.add'], id: 'item-add' };
+    const removedAgain = {
+      ...samples['download.remove'],
+      id: 'item-remove-again',
+      input: { productId: 'product-mug', assetId: careSheet.id },
+      effect: { files: { before: [mugGuide, careSheet], after: [mugGuide] } },
+    };
+    const removal = normalized(dialogText(<GroupFileSentences items={[added, removedAgain]} references={groupReferences([])} />));
+    expect(removal).not.toContain('can download it at once');
+    expect(removal).toContain(normalized(t.approveGroupFileNotKept({
+      file: 'care-sheet.pdf',
+      facts: `PDF, 1 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}`,
+      target: 'Mug',
+    })));
+    expect(removal).not.toContain('will no longer be able to download');
+    expect(removal).toContain(normalized(t.approveGroupFileRemoveUnreleased({ file: 'care-sheet.pdf', version: 1, target: 'Mug' })));
+
+    const replaced = { ...samples['download.replace'], id: 'item-replace' };
+    const replacedAgain = {
+      ...samples['download.replace'],
+      id: 'item-replace-again',
+      input: { productId: 'product-mug', replacesAssetId: mugGuideSecond.id, stagedFileId: 'staged-mug-guide-3' },
+      effect: { files: {
+        before: [{ ...mugGuide, latest: false }, mugGuideSecond],
+        after: [{ ...mugGuide, latest: false }, { ...mugGuideSecond, latest: false }, { ...mugGuideSecond, id: 'staged-mug-guide-3', versionNumber: 3 }],
+      } },
+    };
+    const versions = normalized(dialogText(<GroupFileSentences items={[replaced, replacedAgain]} references={groupReferences([])} />));
+    expect(versions.match(/buyers get the new version/gu)).toHaveLength(1);
+    expect(versions).toContain(normalized(t.approveGroupFileKeptAsPrevious({
+      file: 'mug-guide.pdf',
+      facts: `PDF, 2 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}`,
+      target: 'Mug',
+    })));
+    expect(versions).not.toContain('no buyer gets');
+
+    const deleted = dialogText(<GroupFileSentences items={[added, { ...samples['product.delete-draft'], id: 'item-delete' }]} references={groupReferences([])} />);
+    expect(deleted).not.toContain('can download it at once');
+    expect(deleted).toContain('so no buyer gets this file');
+
+    const otherFile = {
+      ...samples['download.replace'],
+      id: 'item-other-file',
+      effect: { files: { before: [mugGuide, careSheet], after: [{ ...mugGuide, latest: false }, careSheet, mugGuideSecond] } },
+    };
+    const kept = dialogText(<GroupFileSentences items={[added, otherFile]} references={groupReferences([])} />);
+    expect(kept).toContain('current buyers included, can download it at once');
+  });
+
+  it('says a file a later item of the group replaces stays downloadable as a previous version', () => {
+    const added = { ...samples['download.add'], id: 'item-add' };
+    const careSheetSecond = { ...careSheet, id: 'staged-care-sheet-2', versionNumber: 2 };
+    const replacedLater = {
+      ...samples['download.replace'],
+      id: 'item-replace-later',
+      input: { productId: 'product-mug', replacesAssetId: careSheet.id, stagedFileId: careSheetSecond.id },
+      effect: { files: { before: [mugGuide, careSheet], after: [mugGuide, { ...careSheet, latest: false }, careSheetSecond] } },
+    };
+    const text = normalized(dialogText(<GroupFileSentences items={[added, replacedLater]} references={groupReferences([])} />));
+    expect(text).toContain(normalized(t.approveGroupFileKeptAsPrevious({
+      file: 'care-sheet.pdf',
+      facts: `PDF, 1 MB, fingerprint ${FINGERPRINT.slice(0, 12)}${FINGERPRINT}`,
+      target: 'Mug',
+    })));
+    expect(text).not.toContain('no buyer gets');
+  });
+
+  it('words a group removal from the lists before and after the group, without the current version of an intermediate step', () => {
+    const removedCurrent = {
+      ...samples['download.remove'],
+      id: 'item-remove',
+      input: { productId: 'product-mug', assetId: mugGuideSecond.id },
+      effect: { files: { before: [{ ...mugGuide, latest: false }, mugGuideSecond], after: [mugGuide] } },
+    };
+    const mugGuideThird = { ...mugGuideSecond, id: 'staged-mug-guide-3', versionNumber: 3 };
+    const replacedLater = {
+      ...samples['download.replace'],
+      id: 'item-replace-later',
+      input: { productId: 'product-mug', replacesAssetId: mugGuide.id, stagedFileId: mugGuideThird.id },
+      effect: { files: { before: [mugGuide], after: [{ ...mugGuide, latest: false }, mugGuideThird] } },
+    };
+    const removeThenReplace = normalized(dialogText(<GroupFileSentences items={[removedCurrent, replacedLater]} references={groupReferences([])} />));
+    expect(removeThenReplace).toContain('Buyers of “Mug” will no longer be able to download “mug-guide.pdf” version 2.');
+    expect(removeThenReplace).not.toContain(t.fileBecomesCurrent({ version: 1 }));
+
+    const replaced = { ...samples['download.replace'], id: 'item-replace' };
+    const removedAgain = {
+      ...samples['download.remove'],
+      id: 'item-remove-again',
+      input: { productId: 'product-mug', assetId: mugGuideSecond.id },
+      effect: { files: { before: [{ ...mugGuide, latest: false }, mugGuideSecond], after: [mugGuide] } },
+    };
+    const replaceThenRemove = normalized(dialogText(<GroupFileSentences items={[replaced, removedAgain]} references={groupReferences([])} />));
+    expect(replaceThenRemove).toContain(normalized(t.approveGroupFileRemoveUnreleased({ file: 'mug-guide.pdf', version: 2, target: 'Mug' })));
+    expect(replaceThenRemove).toContain(t.fileStaysCurrent({ version: 1 }));
+    expect(replaceThenRemove).not.toContain(t.fileBecomesCurrent({ version: 1 }));
+  });
+
+  it('names the product a copied file comes from in a group confirmation, isolated', () => {
+    const title = `Mug${OVERRIDE}tnirp`;
+    const copy = { ...samples['download.add'], id: 'item-copy' };
+    const items = [{ ...copy, proposedFiles: [{ id: careSheet.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: title, versionNumber: 2 } }] }];
+    const { container, unmount } = render(<GroupFileSentences items={items} references={groupReferences([])} />);
+    const sentence = screen.getByTestId('proposal-approve-file-item-copy');
+    expect(normalized(sentence.textContent ?? '')).toMatch(new RegExp(`can download it at once\\. It is a copy of version 2 of a file from “Mug${OVERRIDE}tnirp”\\.$`, 'u'));
+    expect([...sentence.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual(['care-sheet.pdf', 'Mug', title]);
+    const outside = container.cloneNode(true);
+    if (!(outside instanceof Element)) throw new Error('not an element');
+    outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+    expect(outside.textContent).not.toContain(OVERRIDE);
+    unmount();
+
+    const gone = [{ ...copy, proposedFiles: [{ id: careSheet.id, available: true, copiedFrom: { productId: 'product-cup', productTitle: null, versionNumber: 2 } }] }];
+    expect(dialogText(<GroupFileSentences items={gone} references={groupReferences([])} />)).toContain(t.approveFileCopiedFromGone({ version: 2 }));
+  });
+
+  it('warns about a product left without a file in a group only when no later item gives it a file again', () => {
+    const lastRemoved = { ...samples['download.remove'], id: 'item-remove' };
+    const kept = { ...samples['download.remove'], id: 'item-remove-kept', effect: { files: { before: [{ ...mugGuide, latest: false }, mugGuideSecond], after: [mugGuide] } } };
+    const addedAgain = { ...samples['download.add'], id: 'item-add-again', effect: { files: { before: [], after: [careSheet] } } };
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[lastRemoved, samples['product.publish']]} group />)).toBe(t.fileRemoveOnlyFile);
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[kept]} group />)).toBe('');
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[lastRemoved, addedAgain]} group />)).toBe(t.approveGroupFilesMissing({ count: 1 }));
+    expect(filesNoteOf(<ApprovalFilesNote proposals={[addedAgain, lastRemoved]} group />)).toBe(`${t.fileRemoveOnlyFile} ${t.approveGroupFilesMissing({ count: 1 })}`);
+  });
+
+  it('words the file sentences in Polish with the file and product quoted', () => {
+    const polish = pl.changeProposals;
+    const quoted = /„FILE” \(FACTS\).*„TARGET”/u;
+    const added = polish.approveFileAdd({ file: 'FILE', facts: 'FACTS', target: 'TARGET' });
+    const addedToNew = polish.approveFileAddToNewProduct({ file: 'FILE', facts: 'FACTS', target: 'TARGET' });
+    expect(added).toMatch(quoted);
+    expect(addedToNew).toMatch(quoted);
+    expect(addedToNew).not.toBe(added);
+    expect(polish.approveFileNewVersion({ file: 'FILE', facts: 'FACTS', version: 7, target: 'TARGET' })).toMatch(/„FILE” \(FACTS\).*7.*„TARGET”/u);
+    expect(polish.approveFileCopiedFrom({ version: 7, product: 'PRODUCT' })).toMatch(/7.*„PRODUCT”\.$/u);
+    expect(polish.approveFileCopiedFromGone({ version: 7 })).toContain('7');
+    expect(t.approveFileMissing).toBe('If the proposed file no longer exists, approving does nothing.');
+    for (const key of ['approveFileMissing', 'fileNoVersionLeft', 'fileRemoveOnlyFile', 'approveNothingElse'] as const) {
+      expect(polish[key]).not.toBe(t[key]);
+    }
+    expect(polish.approveFileMissing).not.toContain(polish.approveNothingElse);
+    expectPolishPlurals(polish.approveGroupFilesMissing, false);
+  });
+});
+
+type StoredAccessItem = ApprovalFacts['input'][string];
+
+const accessChange = (after: StoredAccessItem[], labels: ApprovalFacts['accessLabels'], before: StoredAccessItem[] = []): ApprovalFacts => ({
+  ...samples['product.set-access'],
+  input: { id: 'product-mug', accessItems: after },
+  effect: { accessItems: { before, after } },
+  ...(labels === undefined ? {} : { accessLabels: labels }),
+});
+
+const LABELS = {
+  courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-deep', title: 'Deep course' }],
+  modules: [{ id: 'module-basics', title: 'Basics' }, { id: 'module-extra', title: 'Extras' }],
+  lessons: [{ id: 'lesson-welcome', title: 'Welcome' }, { id: 'lesson-goodbye', title: 'Goodbye' }, { id: 'lesson-retired', title: null }],
+};
+
+const EVERY_KIND: StoredAccessItem[] = [
+  { level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] },
+  { level: 'modules', courseId: 'course-deep', moduleIds: ['module-basics'] },
+  { level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-goodbye'] },
+];
+
+const textOutsideBdi = (element: Element): string => {
+  const outside = element.cloneNode(true);
+  if (!(outside instanceof Element)) throw new Error('not an element');
+  outside.querySelectorAll('bdi').forEach((bdi) => bdi.remove());
+  return outside.textContent ?? '';
+};
+
+const groupWithNewProduct = groupReferences([
+  { id: 'item-product', operation: 'product.create', input: { title: 'Starter pack' }, targetLabel: null, groupPosition: 1 },
+]);
+
+describe('the approval confirmation of what a product grants', () => {
+  it('says what buyers get in words, that current buyers get what the list names at once, and that nothing else changes', () => {
+    expect(summaryOf(samples['product.set-access'])).toBe(
+      'Buyers of “Mug” will get access to: the whole course “Intro course”. For everyone who already has access to this product, current buyers included, '
+      + 'this product grants what this list names at once and stops granting what it no longer names; access that something else gives them, '
+      + 'such as another product, a free preview lesson or a staff role, stays. Nothing else changes.',
+    );
+  });
+
+  it('names excluded modules and says that a module or a lesson opens in every course that uses it', () => {
+    const summary = summaryOf(accessChange(EVERY_KIND, LABELS));
+    expect(summary).toContain('the course “Intro course” without its module “Extras”');
+    expect(summary).toContain('the module “Basics” in every course that uses it (chosen from “Deep course”)');
+    expect(summary).toContain('the lessons “Welcome”, “Goodbye”, each in every course that uses it (chosen from “Intro course”)');
+    expect(summary).not.toContain('as such');
+  });
+
+  it('says the product will grant nothing and that current buyers lose what it granted when the new list is empty', () => {
+    expect(summaryOf(accessChange([], LABELS, [{ level: 'course', courseId: 'course-intro' }]))).toBe(
+      `${t.approveProductSetAccessNothing({ target: 'Mug' })} ${t.approveNothingElse}`,
+    );
+    expect(t.approveProductSetAccessNothing({ target: 'Mug' })).toContain('current buyers included, this product stops granting what it granted at once');
+    expect(t.approveProductSetAccessNothing({ target: 'Mug' })).toContain('a free preview lesson or a staff role, stays');
+  });
+
+  it('adds the id to a title that another course, module or lesson of the proposal shares, in both lists and the confirmation', () => {
+    const labels = {
+      courses: [{ id: 'course-intro', title: 'Intro course' }, { id: 'course-deep', title: 'Intro course' }],
+      modules: [],
+      lessons: [{ id: 'lesson-first', title: 'Introduction' }, { id: 'lesson-second', title: 'Introduction' }, { id: 'lesson-welcome', title: 'Welcome' }],
+      archivedCourses: ['course-deep'],
+    };
+    const before = [{ level: 'lessons' as const, courseId: 'course-intro', lessonIds: ['lesson-first', 'lesson-welcome'] }];
+    const after = [{ level: 'lessons' as const, courseId: 'course-intro', lessonIds: ['lesson-second', 'lesson-welcome'] }];
+    const rows = dialogText(<AccessChangeRow change={{ before, after }} labels={labels} label="Included access" labelComponent="h3" pending={false} />);
+    expect(rows).toContain('the lessons “Introduction” (lesson-first), “Welcome”, each in every course that uses it (chosen from “Intro course” (course-intro))');
+    expect(rows).toContain('the lessons “Introduction” (lesson-second), “Welcome”, each in every course that uses it (chosen from “Intro course” (course-intro))');
+    expect(summaryOf(accessChange(after, labels, before)))
+      .toContain('the lessons “Introduction” (lesson-second), “Welcome”, each in every course that uses it (chosen from “Intro course” (course-intro))');
+    expect(dialogText(<AccessChangeRow change={{ before: [], after: [{ level: 'course', courseId: 'course-deep' }] }} labels={labels} label="Included access" labelComponent="h3" pending={false} />))
+      .toContain('the whole course “Intro course” (course-deep) (archived)');
+    expect(pl.changeProposals.accessNameWithId({ name: 'Intro', id: 'lesson-first' })).toBe('„Intro” (lesson-first)');
+  });
+
+  it('isolates every course, module and lesson title in the sentence', () => {
+    const marked = (title: string) => `${title}${OVERRIDE}desrever`;
+    const labels = {
+      ...LABELS,
+      courses: LABELS.courses.map((entry) => ({ ...entry, title: marked(entry.title) })),
+      modules: LABELS.modules.map((entry) => ({ ...entry, title: marked(entry.title) })),
+      lessons: [{ id: 'lesson-welcome', title: marked('Welcome') }, { id: 'lesson-goodbye', title: marked('Goodbye') }],
+    };
+    render(<ApprovalSummary proposal={accessChange(EVERY_KIND, labels)} />);
+    const summary = screen.getByTestId('proposal-approve-summary');
+    expect([...summary.querySelectorAll('bdi')].map((bdi) => bdi.textContent)).toEqual([
+      'Mug', marked('Intro course'), marked('Extras'), marked('Basics'), marked('Deep course'), marked('Welcome'), marked('Goodbye'), marked('Intro course'),
+    ]);
+    expect(textOutsideBdi(summary)).not.toContain(OVERRIDE);
+  });
+
+  it('says that approving would change nothing as the shop is now, and what the list grants if it passes when the owner approves', () => {
+    const refused = (access: string) => `${t.approveProductSetAccessRefused({ target: 'Mug' })} ${t.approveProductSetAccess({ target: 'Mug', access })}`;
+    expect(summaryOf(accessChange([{ level: 'lessons', courseId: 'course-intro', lessonIds: ['lesson-welcome', 'lesson-retired'] }], LABELS)))
+      .toBe(refused('the lessons “Welcome”, something that no longer exists (lesson-retired), each in every course that uses it (chosen from “Intro course”)'));
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-gone' }], LABELS))).toBe(refused('the whole course something that no longer exists (course-gone)'));
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-deep' }], { ...LABELS, archivedCourses: ['course-deep'] })))
+      .toBe(refused('the whole course “Deep course” (archived)'));
+    expect(t.approveProductSetAccessRefused({ target: 'Mug' })).toBe(
+      'As the shop is now, the new list of what “Mug” grants does not pass the shop’s check, so approving would change nothing; if it passes the check when you approve, it applies as follows.',
+    );
+    expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'TARGET' })).toContain('„TARGET”');
+    expect(pl.changeProposals.approveProductSetAccessRefused({ target: 'TARGET' })).not.toBe(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'TARGET' }));
+    expect(summaryOf(accessChange([{ level: 'course', courseId: 'course-intro' }], LABELS, [{ level: 'course', courseId: 'course-gone' }])))
+      .toMatch(/^Buyers of “Mug” will get access to: the whole course “Intro course”\. /u);
+  });
+
+  it('words an added or lifted exclusion as what the list grants in that course, with nothing about other courses', () => {
+    const plain = (access: string) =>
+      `Buyers of “Mug” will get access to: ${access}. For everyone who already has access to this product, current buyers included, `
+      + 'this product grants what this list names at once and stops granting what it no longer names; access that something else gives them, '
+      + 'such as another product, a free preview lesson or a staff role, stays. Nothing else changes.';
+    expect(summaryOf(accessChange(
+      [{ level: 'course', courseId: 'course-intro' }],
+      LABELS,
+      [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
+    ))).toBe(plain('the whole course “Intro course”'));
+    expect(summaryOf(accessChange(
+      [{ level: 'course', courseId: 'course-deep', excludedModuleIds: ['module-extra'] }],
+      LABELS,
+      [{ level: 'course', courseId: 'course-intro', excludedModuleIds: ['module-extra'] }],
+    ))).toBe(plain('the course “Deep course” without its module “Extras”'));
+  });
+
+  it('adds the access sentence of every access item to a group confirmation and nothing for other items', () => {
+    const items = [{ ...samples['product.set-access'], id: 'item-access' }, { ...samples['product.publish'], id: 'item-publish' }];
+    const text = dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />);
+    expect(text).toContain('Buyers of “Mug” will get access to: the whole course “Intro course”. For everyone who already has access to this product, current buyers included,');
+    expect(dialogText(<GroupAccessSentences items={[samples['product.publish']]} references={groupReferences([])} />)).toBe('');
+  });
+
+  it('gives one sentence per product in a group confirmation, with the list its last access item leaves', () => {
+    const step = (id: string, before: StoredAccessItem[], after: StoredAccessItem[]) => ({ ...accessChange(after, LABELS, before), id });
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const deep = [{ level: 'course' as const, courseId: 'course-deep' }];
+    const items = [
+      step('item-first', [], intro),
+      { ...samples['product.publish'], id: 'item-publish' },
+      step('item-second', intro, deep),
+    ];
+    const text = dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />);
+    expect(text).toBe(`${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}`);
+    expect(text).not.toContain('Intro course');
+    const other = { ...step('item-other', [], intro), target: { kind: 'product' as const, id: 'product-cup' }, targetLabel: 'Cup' };
+    expect(dialogText(<GroupAccessSentences items={[...items, other]} references={groupReferences([])} />)).toBe(
+      `${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}${t.approveProductSetAccess({ target: 'Cup', access: 'the whole course “Intro course”' })}`,
+    );
+    const emptied = step('item-emptied', deep, []);
+    expect(dialogText(<GroupAccessSentences items={[...items, emptied]} references={groupReferences([])} />)).toBe(t.approveProductSetAccessUnchangedNothing({ target: 'Mug' }));
+    const startsWithIntro = step('item-from-intro', intro, deep);
+    expect(dialogText(<GroupAccessSentences items={[startsWithIntro, emptied]} references={groupReferences([])} />)).toBe(t.approveProductSetAccessNothing({ target: 'Mug' }));
+  });
+
+  it('warns in a group confirmation when an earlier access item of a product is refused although its last list passes', () => {
+    const step = (id: string, before: StoredAccessItem[], after: StoredAccessItem[], labels: ApprovalFacts['accessLabels']) =>
+      ({ ...accessChange(after, labels, before), id });
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const deep = [{ level: 'course' as const, courseId: 'course-deep' }];
+    const items = [
+      step('item-first', [], intro, { ...LABELS, archivedCourses: ['course-intro'] }),
+      step('item-second', intro, deep, { courses: [{ id: 'course-deep', title: 'Deep course' }], modules: [], lessons: [] }),
+    ];
+    expect(dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />)).toBe(
+      `${t.approveGroupProductSetAccessRefused({ target: 'Mug' })} ${t.approveProductSetAccess({ target: 'Mug', access: 'the whole course “Deep course”' })}`,
+    );
+    expect(t.approveGroupProductSetAccessRefused({ target: 'Mug' })).toMatch(/would apply none of the changes; only if every change of the group passes its checks when you approve/u);
+    expect(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'TARGET' })).toContain('„TARGET”');
+    expect(pl.changeProposals.approveGroupProductSetAccessRefused({ target: 'TARGET' }))
+      .toContain(pl.changeProposals.approveGroupProductSetAccessRefusedDeleted({ target: 'TARGET' }).slice(0, -1));
+  });
+
+  it('says in a group confirmation that the group makes no net change to the list it started from when its last list grants that list', () => {
+    const step = (id: string, before: StoredAccessItem[], after: StoredAccessItem[]) => ({ ...accessChange(after, LABELS, before), id });
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const items = [step('item-add', [], intro), step('item-clear', intro, [])];
+    expect(dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />)).toBe(t.approveProductSetAccessUnchangedNothing({ target: 'Mug' }));
+    const back = [step('item-clear', intro, []), step('item-add', [], intro)];
+    expect(dialogText(<GroupAccessSentences items={back} references={groupReferences([])} />)).toBe(
+      t.approveProductSetAccessUnchanged({ target: 'Mug', access: 'the whole course “Intro course”' }),
+    );
+    const unchangedSentences = [
+      t.approveProductSetAccessUnchanged({ target: 'Mug', access: 'Intro' }),
+      t.approveProductSetAccessUnchangedNothing({ target: 'Mug' }),
+    ];
+    for (const sentence of unchangedSentences) {
+      expect(sentence).toContain('the same as the list it started from');
+      expect(sentence).toContain('makes no net change to that list');
+      expect(sentence).not.toMatch(/\bnow\b/u);
+    }
+    const polishUnchanged = pl.changeProposals.approveProductSetAccessUnchanged({ target: 'TARGET', access: 'ACCESS' });
+    expect(polishUnchanged).toMatch(/„TARGET”.*ACCESS/u);
+    expect(pl.changeProposals.approveProductSetAccessUnchangedNothing({ target: 'TARGET' })).toContain('„TARGET”');
+    expect(polishUnchanged).not.toBe(t.approveProductSetAccessUnchanged({ target: 'TARGET', access: 'ACCESS' }));
+  });
+
+  it('claims no future access for a draft the group deletes after setting its list, but keeps a refusal', () => {
+    const intro = [{ level: 'course' as const, courseId: 'course-intro' }];
+    const access = { ...accessChange(intro, LABELS), id: 'item-access' };
+    const deleted = { ...samples['product.delete-draft'], id: 'item-delete' };
+    expect(dialogText(<GroupAccessSentences items={[access, deleted]} references={groupReferences([])} />)).toBe('');
+    const refused = { ...accessChange([{ level: 'course', courseId: 'course-gone' }], LABELS), id: 'item-refused' };
+    expect(dialogText(<GroupAccessSentences items={[refused, deleted]} references={groupReferences([])} />)).toBe(
+      t.approveGroupProductSetAccessRefusedDeleted({ target: 'Mug' }),
+    );
+  });
+
+  it('adds the id to a title that a lesson of an earlier access item of the group shares with the final list', () => {
+    const labelsOf = (lessons: { id: string; title: string }[]) => ({ courses: [{ id: 'course-intro', title: 'Intro course' }], modules: [], lessons });
+    const lessons = (id: string) => [{ level: 'lessons' as const, courseId: 'course-intro', lessonIds: [id] }];
+    const items = [
+      { ...accessChange(lessons('lesson-bridge'), labelsOf([{ id: 'lesson-x', title: 'Introduction' }, { id: 'lesson-bridge', title: 'Bridge' }]), lessons('lesson-x')), id: 'item-first' },
+      { ...accessChange(lessons('lesson-y'), labelsOf([{ id: 'lesson-bridge', title: 'Bridge' }, { id: 'lesson-y', title: 'Introduction' }]), lessons('lesson-bridge')), id: 'item-second' },
+    ];
+    expect(dialogText(<GroupAccessSentences items={items} references={groupReferences([])} />)).toContain('“Introduction” (lesson-y)');
+  });
+
+  it('words the access of a product an earlier item of the group creates without current buyers', () => {
+    const created = { ...samples['product.set-access'], id: 'item-access', target: { kind: 'product' as const, id: '$proposal:item-product' }, targetLabel: null };
+    const text = dialogText(<GroupAccessSentences items={[created]} references={groupWithNewProduct} />);
+    expect(text).toBe('Everyone who later gets access to the new product “Starter pack” will get access to: the whole course “Intro course”.');
+    expect(text).not.toContain('current buyers');
+    const emptied = { ...created, effect: { accessItems: { before: [], after: [] } } };
+    expect(dialogText(<GroupAccessSentences items={[emptied]} references={groupWithNewProduct} />))
+      .toBe('The new product “Starter pack” will not grant any course, module or lesson.');
+    const gone = { ...created, effect: { accessItems: { before: [], after: [{ level: 'course', courseId: 'course-gone' }] } } };
+    expect(dialogText(<GroupAccessSentences items={[gone]} references={groupWithNewProduct} />)).toBe(
+      `${t.approveGroupProductSetAccessRefused({ target: 'Starter pack' })} ${t.approveProductSetAccessNewProduct({ target: 'Starter pack', access: 'the whole course something that no longer exists (course-gone)' })}`,
+    );
+  });
+
+  it('lets a 255-character name without a break opportunity wrap anywhere in the summary and the group sentences', () => {
+    const name = `${'quarterly_report_'.repeat(15)}final.pdf.exe`.slice(-255);
+    expect(name).toHaveLength(255);
+    const proposal = { ...samples['download.add'], effect: { files: { before: [mugGuide], after: [mugGuide, { ...careSheet, fileName: name }] } } };
+    const { unmount } = render(<ApprovalSummary proposal={proposal} />);
+    expect(getComputedStyle(screen.getByTestId('proposal-approve-summary')).overflowWrap).toBe('anywhere');
+    unmount();
+    render(<GroupFileSentences items={[{ ...proposal, id: 'item-long' }]} references={groupReferences([])} />);
+    expect(getComputedStyle(screen.getByTestId('proposal-approve-file-item-long')).overflowWrap).toBe('anywhere');
+    expect(screen.getByTestId('proposal-approve-file-item-long')).toHaveTextContent(name);
+  });
+
+  it('words what a product grants in Polish with the names after the lead-in and their own plural forms', () => {
+    const polish = pl.changeProposals;
+    expect(polish.operation['product.set-access']).not.toBe(t.operation['product.set-access']);
+    expect(polish.accessName({ name: 'NAME' })).toBe('„NAME”');
+    expect(polish.accessWholeCourse({ course: 'COURSE' })).toMatch(/ COURSE$/u);
+    expect(polish.accessModules({ course: 'COURSE', modules: 'MODULES', count: 1 })).toMatch(/^\S+ MODULES\u00a0– .*COURSE\)$/u);
+    expect(polish.accessLessons({ course: 'COURSE', lessons: 'LESSONS', count: 2 })).toMatch(/^\S+ LESSONS\u00a0– .*COURSE\)$/u);
+    expect(polish.accessModules({ course: 'COURSE', modules: 'MODULES', count: 1 }))
+      .not.toBe(polish.accessModules({ course: 'COURSE', modules: 'MODULES', count: 2 }));
+    expect(polish.accessLessons({ course: 'COURSE', lessons: 'LESSONS', count: 1 }))
+      .not.toBe(polish.accessLessons({ course: 'COURSE', lessons: 'LESSONS', count: 2 }));
+    expect(polish.approveProductSetAccess({ target: 'TARGET', access: 'ACCESS' })).toMatch(/„TARGET”[^.]*: ACCESS\. /u);
+    expect(polish.approveProductSetAccessNewProduct({ target: 'TARGET', access: 'ACCESS' })).toMatch(/„TARGET”[^.]*: ACCESS\.$/u);
+    expect(polish.accessNothing).not.toBe(t.accessNothing);
   });
 });

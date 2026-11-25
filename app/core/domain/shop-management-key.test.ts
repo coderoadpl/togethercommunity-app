@@ -152,9 +152,9 @@ describe('propose-mode shop management capabilities', () => {
     }
   });
 
-  it('turns the catalog and settings write scopes into proposal submission only', () => {
-    expect(shop('shop:catalog:write')).toEqual(['proposal:submit:catalog', 'proposal:own:manage']);
-    expect(shop('shop:settings:write')).toEqual(['proposal:submit:settings', 'proposal:own:manage']);
+  it('turns the catalog and settings write scopes into proposal submission and image upload for proposals only', () => {
+    expect(shop('shop:catalog:write')).toEqual(['proposal:submit:catalog', 'proposal:asset:upload', 'proposal:own:manage']);
+    expect(shop('shop:settings:write')).toEqual(['proposal:submit:settings', 'proposal:asset:upload', 'proposal:own:manage']);
     expect(shop('shop:fulfilment:write')).toEqual(['proposal:own:manage']);
     expect(shop('shop:integrations:write')).toEqual(['proposal:own:manage']);
   });

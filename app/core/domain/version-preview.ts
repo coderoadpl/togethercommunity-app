@@ -25,6 +25,7 @@ const VERSION_PREVIEW_FIELDS = [
   'chapters',
   'blocks',
   'price',
+  'images',
 ] as const;
 
 export const versionPreviewFieldNameSchema = z.enum(VERSION_PREVIEW_FIELDS);
@@ -93,6 +94,7 @@ const productSchemaShape = z.object({
   description: z.string(),
   priceCents: z.number(),
   currency: z.string(),
+  images: z.array(z.object({ url: z.string(), alt: z.string() })).optional(),
 });
 
 const blockDetailSchema = z.object({
@@ -169,6 +171,13 @@ const productFields = (payload: unknown): PreviewField[] => {
       value: { kind: 'price', amountCents: product.priceCents, currency: product.currency },
     },
     text('description', product.description),
+    {
+      name: 'images',
+      value: {
+        kind: 'list',
+        items: (product.images ?? []).map((image) => image.alt === '' ? image.url : `${image.url} · ${image.alt}`),
+      },
+    },
   ];
 };
 

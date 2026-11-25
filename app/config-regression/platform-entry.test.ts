@@ -5,7 +5,7 @@ import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 import { API_PATHS } from '#core/contract/index.js';
-import { HOSTED_CART_PATH } from '#core/domain/index.js';
+import { HOSTED_CART_PATH, SERVER_FUNCTION_LIMIT_MS } from '#core/domain/index.js';
 
 const appRoot = join(import.meta.dirname, '..');
 const eslintSource = readFileSync(join(appRoot, 'eslint.config.js'), 'utf8');
@@ -70,6 +70,10 @@ describe('Vercel platform entry boundary', () => {
     expect(rewrites.indexOf(API_PATHS.platformDataReset)).toBeLessThan(rewrites.indexOf('/api/(.*)'));
     expect(platformResetEntry).toContain('export const maxDuration = 300;');
     expect(vercel.functions['api/index.ts']?.maxDuration).toBe(60);
+  });
+
+  it('gives the server the function limit that request budgets are derived from', () => {
+    expect((vercel.functions['api/index.ts']?.maxDuration ?? 0) * 1000).toBe(SERVER_FUNCTION_LIMIT_MS);
   });
 
   it('sends legacy course links to the function ahead of the static fallbacks', () => {

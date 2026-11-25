@@ -91,6 +91,15 @@ export const changeProposalApproveOutputSchema = z.object({ proposal: changeProp
 
 export const changeProposalGroupOutputSchema = z.object({ group: changeProposalGroupOwnerViewSchema });
 
+export const changeProposalFileOutputSchema = z.object({
+  download: z.object({
+    url: z.string().url(),
+    expiresAt: z.string().datetime(),
+    fileName: z.string().min(1),
+    sizeBytes: z.number().int().positive(),
+  }).strict(),
+}).strict();
+
 export const changeProposalGroupApproveInputSchema = z.object({
   itemIds: z.array(z.string().min(1).max(CHANGE_PROPOSAL_LIMITS.identifierMaxLength)).min(1).max(CHANGE_PROPOSAL_GROUP_LIMITS.itemsPerGroup),
 }).strict();

@@ -153,8 +153,7 @@ export const getPublicNavigation = async (
 };
 
 const previewOnlyLookup = (lessons: CourseLesson[]): AccessLookup => ({
-  courseLevel: new Set<string>(),
-  excludedModuleIds: new Set<string>(),
+  excludedModulesByWholeCourse: new Map<string, Set<string>>(),
   moduleIds: new Set<string>(),
   lessonIds: new Set(lessons.filter((lesson) => lesson.isPreview).map((lesson) => lesson.id)),
 });

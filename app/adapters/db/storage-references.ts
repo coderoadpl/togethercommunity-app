@@ -1,11 +1,15 @@
 import { eq, sql } from 'drizzle-orm';
 
-import { storageReferenceInventorySchema } from '#core/domain/index.js';
+import { proposalImageQuarantineKey, storageReferenceInventorySchema } from '#core/domain/index.js';
 import type { StorageReferenceRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
 import {
   campaigns,
+  changeProposalDownloadDeletions,
+  changeProposalDownloadFiles,
+  changeProposalDownloadUploads,
+  changeProposalImages,
   emailLayouts,
   courseLessons,
   courseModules,
@@ -28,7 +32,7 @@ export const createStorageReferenceRepository = (db: Db): StorageReferenceReposi
     await tx.execute(sql`set transaction isolation level repeatable read, read only`);
     const lessonRows = await tx.select({ id: courseLessons.id, contents: courseLessons.contents })
       .from(courseLessons).where(eq(courseLessons.tenantId, tenantId));
-    const productRows = await tx.select({ id: products.id, coverUrl: products.coverUrl, description: products.description })
+    const productRows = await tx.select({ id: products.id, coverUrl: products.coverUrl, images: products.images, description: products.description })
       .from(products).where(eq(products.tenantId, tenantId));
     const courseRows = await tx.select({ imageUrl: courses.imageUrl, description: courses.description })
       .from(courses).where(eq(courses.tenantId, tenantId));
@@ -61,6 +65,13 @@ export const createStorageReferenceRepository = (db: Db): StorageReferenceReposi
     const layouts = await tx.select({ bodyHtml: emailLayouts.bodyHtml }).from(emailLayouts).where(eq(emailLayouts.tenantId, tenantId));
     const campaignRows = await tx.select({ bodyHtml: campaigns.bodyHtml, bodySource: campaigns.bodySource })
       .from(campaigns).where(eq(campaigns.tenantId, tenantId));
+    const quarantined = await tx.select().from(changeProposalImages).where(eq(changeProposalImages.tenantId, tenantId));
+    const stagedFiles = await tx.select({ objectKey: changeProposalDownloadFiles.objectKey })
+      .from(changeProposalDownloadFiles).where(eq(changeProposalDownloadFiles.tenantId, tenantId));
+    const uploadRecords = await tx.select({ candidateKey: changeProposalDownloadUploads.candidateKey, stagedKey: changeProposalDownloadUploads.stagedKey })
+      .from(changeProposalDownloadUploads).where(eq(changeProposalDownloadUploads.tenantId, tenantId));
+    const owedDeletions = await tx.select({ objectKey: changeProposalDownloadDeletions.objectKey })
+      .from(changeProposalDownloadDeletions).where(eq(changeProposalDownloadDeletions.tenantId, tenantId));
     return storageReferenceInventorySchema.parse({
       lessonIds: [...new Set([
         ...lessonRows.map((row) => row.id),
@@ -72,6 +83,12 @@ export const createStorageReferenceRepository = (db: Db): StorageReferenceReposi
       ])],
       attachments,
       downloads,
+      quarantinedImages: quarantined.map((row) => ({ storageKey: proposalImageQuarantineKey(tenantId, row.apiKeyId, row) })),
+      stagedDownloads: [
+        ...stagedFiles.map((row) => row.objectKey),
+        ...uploadRecords.flatMap((row) => [row.candidateKey, row.stagedKey].filter((key): key is string => key !== null)),
+        ...owedDeletions.map((row) => row.objectKey),
+      ].map((storageKey) => ({ storageKey })),
       currentDocuments: [...lessonRows, ...productRows, ...courseRows, ...moduleRows, ...branding, ...avatars,
         ...postRows, ...messages, ...spaceRows, ...events, ...layouts, ...campaignRows],
       historyDocuments: [...versions.map((row) => row.payload), ...documents],

@@ -387,13 +387,10 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps,
     );
     if (!result.ok) return respondPublic(result);
-    return new Response(null, {
-      status: 302,
-      headers: {
-        location: result.value,
-        'cache-control': 'public, max-age=300',
-      },
-    });
+    const headers = publicHeaders();
+    headers.set('location', result.value);
+    headers.set('cache-control', 'public, max-age=300');
+    return new Response(null, { status: 302, headers });
   });
 
   app.get(API_PATHS.publicOrderQr, async (c) => {

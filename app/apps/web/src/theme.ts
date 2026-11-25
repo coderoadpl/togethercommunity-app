@@ -4752,6 +4752,23 @@ export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => p
 }));
 export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
 
+const TABLE_HEAD_KEYS = ['color', 'fontSize', 'fontWeight', 'letterSpacing', 'textTransform'] as const;
+const isStyleObject = (value: unknown): value is CSSObject => typeof value === 'object' && value !== null && !Array.isArray(value);
+const tableHeadTypography = (theme: Theme): CSSObject => {
+  const head = theme.components?.MuiTableCell?.styleOverrides?.head;
+  const style: CSSObject = isStyleObject(head) ? head : {};
+  return {
+    color: theme.palette.text.primary,
+    fontWeight: theme.typography.fontWeightMedium,
+    fontSize: theme.typography.body2.fontSize,
+    letterSpacing: 'normal',
+    textTransform: 'none',
+    ...Object.fromEntries(TABLE_HEAD_KEYS.flatMap((key) => (style[key] === undefined ? [] : [[key, style[key]]]))),
+  };
+};
+
+export const STUDIO_GRID_CONTROL_CLASS = 'StudioDataGrid-control';
+
 export const StudioDataGridFrame = styled('div')(({ theme }) => ({
   minWidth: 0,
   '& .MuiDataGrid-root': {
@@ -4759,47 +4776,57 @@ export const StudioDataGridFrame = styled('div')(({ theme }) => ({
     borderColor: theme.palette.divider,
     borderRadius: 12,
     '--DataGrid-containerBackground': theme.palette.background.paper,
+    '& .MuiDataGrid-columnHeaderTitle': {
+      ...tableHeadTypography(theme),
+      whiteSpace: 'normal',
+      lineHeight: 1.3,
+    },
+    '& .MuiDataGrid-columnHeader, & .MuiDataGrid-cell': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+    '& .MuiDataGrid-cell': {
+      display: 'flex',
+      alignItems: 'center',
+      paddingTop: '0.625rem',
+      paddingBottom: '0.625rem',
+      whiteSpace: 'normal',
+      lineHeight: 1.43,
+      fontSize: '0.875rem',
+    },
+    '& .MuiDataGrid-cell > *': { minWidth: 0, maxWidth: '100%' },
+    [`& .${STUDIO_GRID_CONTROL_CLASS}`]: { paddingLeft: 0, paddingRight: 0, justifyContent: 'center' },
+    '& .MuiDataGrid-cell .MuiChip-root': { height: 'auto', minHeight: 24, maxWidth: '100%' },
+    '& .MuiDataGrid-cell .MuiChip-label': { whiteSpace: 'nowrap', paddingTop: 2, paddingBottom: 2 },
+    '& .MuiDataGrid-cell:focus, & .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus, & .MuiDataGrid-columnHeader:focus-within': {
+      outline: `2px solid ${theme.palette.primary.main}`,
+      outlineOffset: -2,
+    },
+    '& .MuiDataGrid-row:hover': { backgroundColor: theme.palette.action.hover },
+    '& .MuiDataGrid-row:last-of-type .MuiDataGrid-cell': { borderBottom: 0 },
   },
-  '& .MuiDataGrid-columnHeaderTitle': {
-    color: theme.palette.text.secondary,
-    fontWeight: 600,
-    fontSize: '0.75rem',
-    textTransform: 'uppercase',
-    letterSpacing: '0.05em',
-    whiteSpace: 'normal',
-    lineHeight: 1.3,
-  },
-  '& .MuiDataGrid-columnHeader, & .MuiDataGrid-cell': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
-  '& .MuiDataGrid-cell': {
-    display: 'flex',
-    alignItems: 'center',
-    paddingTop: '0.5rem',
-    paddingBottom: '0.5rem',
-    whiteSpace: 'normal',
-    overflowWrap: 'anywhere',
-    lineHeight: 1.43,
-    fontSize: '0.875rem',
-  },
-  '& .MuiDataGrid-cell > *': { minWidth: 0, maxWidth: '100%' },
-  '& .MuiDataGrid-cell .MuiChip-root': { height: 'auto', minHeight: 24, maxWidth: '100%' },
-  '& .MuiDataGrid-cell .MuiChip-label': { whiteSpace: 'normal', overflowWrap: 'break-word', paddingTop: 2, paddingBottom: 2 },
-  '& .MuiDataGrid-cell:focus, & .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus, & .MuiDataGrid-columnHeader:focus-within': {
-    outline: `2px solid ${theme.palette.primary.main}`,
-    outlineOffset: -2,
-  },
-  '& .MuiDataGrid-row:hover': { backgroundColor: theme.palette.action.hover },
-  '& .MuiDataGrid-row:last-of-type .MuiDataGrid-cell': { borderBottom: 0 },
   '@media (prefers-reduced-motion: reduce)': { '& *': { transition: 'none', animation: 'none' } },
 }));
-export const StudioGridCellStack = styled('div')({ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.35rem', minWidth: 0, width: '100%' });
-export const StudioGridChipRow = styled('div')({ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', minWidth: 0 });
+export const StudioGridCellStack = styled('div')({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: '0.25rem',
+  minWidth: 0,
+  width: '100%',
+  '& .MuiButton-text': { whiteSpace: 'nowrap', minWidth: 0, paddingLeft: '0.3125rem', paddingRight: '0.3125rem', marginLeft: '-0.3125rem' },
+});
+export const StudioGridChipRow = styled('div')({
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.35rem',
+  minWidth: 0,
+  '& > .MuiChip-root:not(:first-of-type) .MuiChip-label': { whiteSpace: 'normal' },
+});
 export const StudioGridHint = styled('span')(({ theme }) => ({
   ...theme.typography.body2,
   borderRadius: 4,
-  textDecorationLine: 'underline',
   textDecorationStyle: 'dotted',
   textUnderlineOffset: '0.2em',
   cursor: 'help',
+  '&:hover': { textDecorationLine: 'underline' },
   '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
 }));
 export const StudioGridMutedHint = styled(StudioGridHint)(({ theme }) => ({ color: theme.palette.text.secondary }));
@@ -4813,7 +4840,8 @@ export const StudioGridColumnRow = styled('li')(({ theme }) => ({
 }));
 export const StudioGridColumnList = styled('ul')({ listStyle: 'none', margin: 0, padding: 0 });
 export const StudioGridNoWrap = styled('span')({ whiteSpace: 'nowrap' });
-export const SalesGridMember = styled('span')({ display: 'block', minWidth: 0, width: '100%' });
+export const StudioGridEllipsis = styled('span')({ display: 'block', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+export const SalesGridMember = styled('span')({ display: 'block', minWidth: 0, width: '100%', whiteSpace: 'nowrap' });
 export const SalesOrderCardList = styled('ul')(({ theme }) => ({
   listStyle: 'none',
   margin: 0,
@@ -4834,7 +4862,6 @@ export const SalesMemberEmail = styled('span')(({ theme }) => ({
   userSelect: 'text',
 }));
 export const OrderDetailValue = styled(Typography)<AsElement>(({ theme }) => ({ minWidth: 0, [theme.breakpoints.up('sm')]: { textAlign: 'right' } }));
-export const SalesCouponCode = styled('span')({ display: 'block', width: 'max-content', maxWidth: '10rem', overflowWrap: 'break-word' });
 export const SalesDateLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'inline-flex',
   flexDirection: 'column',

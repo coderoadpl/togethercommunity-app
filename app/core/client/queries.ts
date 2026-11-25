@@ -1,9 +1,10 @@
-import type { Language, ListLayoutId } from '#core/domain/index.js';
+import type { Language, ListLayout, ListLayoutId } from '#core/domain/index.js';
 import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
+import { skipToken } from '@tanstack/query-core';
 import type {
   DefaultError,
   FetchQueryOptions,
@@ -2349,15 +2350,26 @@ export const surveyActions = (api: ApiClient) => ({
   invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
 });
 
-const listLayoutKey = (tenantId: string, userId: string | undefined, listId: ListLayoutId) =>
-  ['list-layouts', tenantId, userId, listId] as const;
+interface ListLayoutScope {
+  tenantId: string;
+  userId: string | undefined;
+  listId: ListLayoutId;
+}
 
-export const listLayoutActions = (api: ApiClient) => ({
-  get: (tenantId: string, userId: string | undefined, listId: ListLayoutId) => defineQuery({ queryKey: listLayoutKey(tenantId, userId, listId), call: ({ signal }) => api.getListLayout({ listId }, signal) }),
-  save: async (input: Parameters<ApiClient['saveListLayout']>[0]) => unwrap(await api.saveListLayout(input)),
-  reset: async (input: Parameters<ApiClient['resetListLayout']>[0]) => unwrap(await api.resetListLayout(input)),
-  invalidates: (tenantId: string, userId: string | undefined, listId: ListLayoutId) => ({ queryKey: listLayoutKey(tenantId, userId, listId) }),
-});
+export const listLayoutActions = (api: ApiClient, { tenantId, userId, listId }: ListLayoutScope) => {
+  const queryKey = ['list-layouts', tenantId, userId, listId] as const;
+  const invalidates = { queryKey };
+  if (userId === undefined) return { get: { queryKey, queryFn: skipToken } as const, write: null, invalidates };
+  const input = { listId, expectedUserId: userId };
+  return {
+    get: defineQuery({ queryKey, call: ({ signal }) => api.getListLayout(input, signal) }),
+    write: {
+      save: async (layout: ListLayout) => unwrap(await api.saveListLayout({ ...input, layout })),
+      reset: async () => unwrap(await api.resetListLayout(input)),
+    },
+    invalidates,
+  };
+};
 
 export const probeStripePermissionsMutation = (api: ApiClient) =>
   defineMutation({

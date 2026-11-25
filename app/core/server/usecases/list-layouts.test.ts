@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { LIST_LAYOUT_MAX_BYTES, type Identity, type ImpersonationPrincipal, type ListLayout, type StaffRole } from '#core/domain/index.js';
 
@@ -59,63 +59,78 @@ describe('list layouts', () => {
   it.each<StaffRole>(['owner', 'admin'])('saves, reads and resets the layout of an %s', async (staffRole) => {
     const store = createStore();
     const ctx: Ctx = { identity: identity(staffRole) };
-    expect(await getListLayout(ctx, 'orders', store.deps)).toEqual({ ok: true, value: { layout: null } });
-    expect(await saveListLayout(ctx, 'orders', layout, store.deps)).toEqual({ ok: true, value: { layout } });
-    expect(await getListLayout(ctx, 'orders', store.deps)).toEqual({ ok: true, value: { layout } });
+    expect(await getListLayout(ctx, 'orders', 'user-1', store.deps)).toEqual({ ok: true, value: { layout: null } });
+    expect(await saveListLayout(ctx, 'orders', 'user-1', layout, store.deps)).toEqual({ ok: true, value: { layout } });
+    expect(await getListLayout(ctx, 'orders', 'user-1', store.deps)).toEqual({ ok: true, value: { layout } });
     expect([...store.rows.keys()]).toEqual(['tenant-a|user-1|orders']);
-    expect(await resetListLayout(ctx, 'orders', store.deps)).toEqual({ ok: true, value: { reset: true } });
-    expect(await getListLayout(ctx, 'orders', store.deps)).toEqual({ ok: true, value: { layout: null } });
+    expect(await resetListLayout(ctx, 'orders', 'user-1', store.deps)).toEqual({ ok: true, value: { reset: true } });
+    expect(await getListLayout(ctx, 'orders', 'user-1', store.deps)).toEqual({ ok: true, value: { layout: null } });
+  });
+
+  it.each(['user-2', undefined])('refuses a non-matching expected account (%s) before touching the repository', async (expectedUserId) => {
+    const { deps } = createStore();
+    const get = vi.spyOn(deps.listLayouts, 'get');
+    const put = vi.spyOn(deps.listLayouts, 'put');
+    const remove = vi.spyOn(deps.listLayouts, 'delete');
+    const ctx: Ctx = { identity: identity('owner') };
+    const mismatch = { ok: false, error: { code: 'conflict' } };
+    expect(await getListLayout(ctx, 'orders', expectedUserId, deps)).toMatchObject(mismatch);
+    expect(await saveListLayout(ctx, 'orders', expectedUserId, layout, deps)).toMatchObject(mismatch);
+    expect(await resetListLayout(ctx, 'orders', expectedUserId, deps)).toMatchObject(mismatch);
+    expect(get).not.toHaveBeenCalled();
+    expect(put).not.toHaveBeenCalled();
+    expect(remove).not.toHaveBeenCalled();
   });
 
   it('refuses a member for every operation', async () => {
     const store = createStore();
     const ctx: Ctx = { identity: identity(null) };
-    expect(await getListLayout(ctx, 'orders', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await saveListLayout(ctx, 'orders', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await resetListLayout(ctx, 'orders', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await getListLayout(ctx, 'unknown', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await saveListLayout(ctx, 'unknown', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await resetListLayout(ctx, 'unknown', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getListLayout(ctx, 'orders', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await saveListLayout(ctx, 'orders', 'user-1', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await resetListLayout(ctx, 'orders', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getListLayout(ctx, 'unknown', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await saveListLayout(ctx, 'unknown', 'user-1', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await resetListLayout(ctx, 'unknown', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(store.rows.size).toBe(0);
   });
 
   it('refuses a staff role without the capability that reads the list', async () => {
     const store = createStore();
     const ctx: Ctx = { identity: identity('owner'), capabilities: ['product:read'] };
-    expect(await getListLayout(ctx, 'orders', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await saveListLayout(ctx, 'orders', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getListLayout(ctx, 'orders', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await saveListLayout(ctx, 'orders', 'user-1', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 
   it('never shows or changes another user\'s layout in the same workspace', async () => {
     const store = createStore();
-    await saveListLayout({ identity: identity('owner') }, 'orders', layout, store.deps);
+    await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', layout, store.deps);
     const other: Ctx = { identity: identity('admin', { userId: 'user-2', email: 'other@example.com' }) };
-    expect(await getListLayout(other, 'orders', store.deps)).toEqual({ ok: true, value: { layout: null } });
-    await resetListLayout(other, 'orders', store.deps);
-    expect(await getListLayout({ identity: identity('owner') }, 'orders', store.deps)).toEqual({ ok: true, value: { layout } });
+    expect(await getListLayout(other, 'orders', 'user-2', store.deps)).toEqual({ ok: true, value: { layout: null } });
+    await resetListLayout(other, 'orders', 'user-2', store.deps);
+    expect(await getListLayout({ identity: identity('owner') }, 'orders', 'user-1', store.deps)).toEqual({ ok: true, value: { layout } });
   });
 
   it('never shows or changes the same user\'s layout of another workspace', async () => {
     const store = createStore();
-    await saveListLayout({ identity: identity('owner') }, 'orders', layout, store.deps);
+    await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', layout, store.deps);
     const elsewhere: Ctx = { identity: identity('owner', { tenantId: 'tenant-b', tenantSlug: 'studio', tenantName: 'Studio' }) };
-    expect(await getListLayout(elsewhere, 'orders', store.deps)).toEqual({ ok: true, value: { layout: null } });
-    await resetListLayout(elsewhere, 'orders', store.deps);
+    expect(await getListLayout(elsewhere, 'orders', 'user-1', store.deps)).toEqual({ ok: true, value: { layout: null } });
+    await resetListLayout(elsewhere, 'orders', 'user-1', store.deps);
     expect([...store.rows.keys()]).toEqual(['tenant-a|user-1|orders']);
   });
 
   it('refuses an unknown list before touching the store', async () => {
     const store = createStore();
     const ctx: Ctx = { identity: identity('owner') };
-    expect(await getListLayout(ctx, 'members', store.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await saveListLayout(ctx, 'members', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
-    expect(await resetListLayout(ctx, 'members', store.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await getListLayout(ctx, 'members', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await saveListLayout(ctx, 'members', 'user-1', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await resetListLayout(ctx, 'members', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(store.rows.size).toBe(0);
   });
 
   it('refuses a malformed layout', async () => {
     const store = createStore();
-    expect(await saveListLayout({ identity: identity('owner') }, 'orders', { ...layout, version: 2 }, store.deps))
+    expect(await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', { ...layout, version: 2 }, store.deps))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(store.rows.size).toBe(0);
   });
@@ -125,7 +140,7 @@ describe('list layouts', () => {
     const filters = Object.fromEntries(Array.from({ length: 30 }, (_value, index) => [`filter-${String(index)}`, '\u0001'.repeat(200)]));
     const oversize = { ...layout, filters };
     expect(JSON.stringify(oversize).length).toBeGreaterThan(16 * 1024);
-    expect(await saveListLayout({ identity: identity('owner') }, 'orders', oversize, store.deps))
+    expect(await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', oversize, store.deps))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(store.rows.size).toBe(0);
   });
@@ -137,34 +152,34 @@ describe('list layouts', () => {
     const serialized = JSON.stringify(oversize);
     expect(serialized.length).toBeLessThan(LIST_LAYOUT_MAX_BYTES);
     expect(new TextEncoder().encode(serialized).byteLength).toBeGreaterThan(LIST_LAYOUT_MAX_BYTES);
-    expect(await saveListLayout({ identity: identity('owner') }, 'orders', oversize, store.deps))
+    expect(await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', oversize, store.deps))
       .toMatchObject({ ok: false, error: { code: 'validation', message: `A list layout is at most ${LIST_LAYOUT_MAX_BYTES} bytes` } });
     expect(store.rows.size).toBe(0);
   });
 
   it('takes the user only from the signed-in identity, ignoring a user id in the layout', async () => {
     const store = createStore();
-    expect(await saveListLayout({ identity: identity('owner') }, 'orders', { ...layout, userId: 'user-2' }, store.deps))
+    expect(await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', { ...layout, userId: 'user-2' }, store.deps))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
-    await saveListLayout({ identity: identity('owner') }, 'orders', layout, store.deps);
+    await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', layout, store.deps);
     expect([...store.rows.keys()]).toEqual(['tenant-a|user-1|orders']);
   });
 
   it('reads but never saves or resets while impersonating', async () => {
     const store = createStore();
-    await saveListLayout({ identity: identity('owner') }, 'orders', layout, store.deps);
+    await saveListLayout({ identity: identity('owner') }, 'orders', 'user-1', layout, store.deps);
     const viewing: Ctx = { identity: identity('owner'), impersonation };
-    expect(await saveListLayout(viewing, 'orders', { ...layout, sort: null }, store.deps))
+    expect(await saveListLayout(viewing, 'orders', 'user-1', { ...layout, sort: null }, store.deps))
       .toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
-    expect(await resetListLayout(viewing, 'orders', store.deps))
+    expect(await resetListLayout(viewing, 'orders', 'user-1', store.deps))
       .toMatchObject({ ok: false, error: { code: 'impersonation_read_only' } });
-    expect(await getListLayout({ identity: identity('owner') }, 'orders', store.deps)).toEqual({ ok: true, value: { layout } });
+    expect(await getListLayout({ identity: identity('owner') }, 'orders', 'user-1', store.deps)).toEqual({ ok: true, value: { layout } });
   });
 
   it('refuses a shop management key', async () => {
     const store = createStore();
     const ctx: Ctx = { identity: identity('owner'), machineActor: { kind: 'shop_management_key', apiKeyId: 'key-1', mode: 'direct' } };
-    expect(await getListLayout(ctx, 'orders', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await saveListLayout(ctx, 'orders', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getListLayout(ctx, 'orders', 'user-1', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await saveListLayout(ctx, 'orders', 'user-1', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
 });

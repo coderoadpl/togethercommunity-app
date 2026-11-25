@@ -385,7 +385,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   metaCapi: metaCapiActions(apiClient),
   salesLinks: salesLinkActions(apiClient),
   surveys: surveyActions(apiClient),
-  listLayouts: listLayoutActions(apiClient),
+  listLayouts: (scope: Parameters<typeof listLayoutActions>[1]) => listLayoutActions(apiClient, scope),
   directory: marketingDirectoryActions(apiClient),
   health: healthQuery(apiClient),
   me: meQuery(apiClient),

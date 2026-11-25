@@ -2,12 +2,14 @@ import { z } from 'zod';
 
 import { listLayoutIdSchema, listLayoutSchema } from '#core/domain/index.js';
 
-const listIdInput = z.object({ listId: listLayoutIdSchema }).strict();
+export const LIST_LAYOUT_EXPECTED_USER_HEADER = 'X-Expected-User-Id';
+
+const listLayoutScopeInput = z.object({ listId: listLayoutIdSchema, expectedUserId: z.string().min(1) }).strict();
 
 export const listLayoutContracts = {
-  getListLayout: { input: listIdInput, output: z.object({ layout: listLayoutSchema.nullable() }) },
-  saveListLayout: { input: listIdInput.extend({ layout: listLayoutSchema }), output: z.object({ layout: listLayoutSchema }) },
-  resetListLayout: { input: listIdInput, output: z.object({ reset: z.literal(true) }) },
+  getListLayout: { input: listLayoutScopeInput, output: z.object({ layout: listLayoutSchema.nullable() }) },
+  saveListLayout: { input: listLayoutScopeInput.extend({ layout: listLayoutSchema }), output: z.object({ layout: listLayoutSchema }) },
+  resetListLayout: { input: listLayoutScopeInput, output: z.object({ reset: z.literal(true) }) },
 } as const;
 
 export const LIST_LAYOUT_ROUTES = {

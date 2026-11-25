@@ -1,4 +1,5 @@
 import {
+  appError,
   err,
   forbidden,
   impersonationReadOnly,
@@ -23,9 +24,15 @@ export interface ListLayoutDeps {
 
 type LayoutKey = { tenantId: string; listId: ListLayoutId };
 
-const layoutKey = (ctx: Ctx, listId: unknown, tenant: Result<string, AppError>): Result<LayoutKey, AppError> => {
+const layoutKey = (
+  ctx: Ctx,
+  listId: unknown,
+  expectedUserId: string | undefined,
+  tenant: Result<string, AppError>,
+): Result<LayoutKey, AppError> => {
   if (!tenant.ok) return tenant;
   if (ctx.machineActor !== undefined) return err(forbidden('List layouts belong to a signed-in person'));
+  if (expectedUserId !== ctx.identity.userId) return err(appError('conflict', 'The signed-in account no longer matches this list layout request'));
   const parsed = listLayoutIdSchema.safeParse(listId);
   if (!parsed.success) return err(validation('Unknown list', parsed.error.flatten()));
   return ok({ tenantId: tenant.value, listId: parsed.data });
@@ -37,9 +44,10 @@ const writableLayoutKey = (ctx: Ctx, key: Result<LayoutKey, AppError>): Result<L
 export const getListLayout = async (
   ctx: Ctx,
   listId: unknown,
+  expectedUserId: string | undefined,
   deps: ListLayoutDeps,
 ): Promise<Result<{ layout: ListLayout | null }, AppError>> => {
-  const owner = layoutKey(ctx, listId, authorizeTenant(ctx, 'order:read'));
+  const owner = layoutKey(ctx, listId, expectedUserId, authorizeTenant(ctx, 'order:read'));
   if (!owner.ok) return owner;
   return ok({ layout: await deps.listLayouts.get(owner.value.tenantId, ctx.identity.userId, owner.value.listId) });
 };
@@ -47,10 +55,11 @@ export const getListLayout = async (
 export const saveListLayout = async (
   ctx: Ctx,
   listId: unknown,
+  expectedUserId: string | undefined,
   layout: unknown,
   deps: ListLayoutDeps,
 ): Promise<Result<{ layout: ListLayout }, AppError>> => {
-  const owner = writableLayoutKey(ctx, layoutKey(ctx, listId, authorizeTenant(ctx, 'order:read')));
+  const owner = writableLayoutKey(ctx, layoutKey(ctx, listId, expectedUserId, authorizeTenant(ctx, 'order:read')));
   if (!owner.ok) return owner;
   const parsed = listLayoutSchema.safeParse(layout);
   if (!parsed.success) return err(validation('Invalid list layout', parsed.error.flatten()));
@@ -64,9 +73,10 @@ export const saveListLayout = async (
 export const resetListLayout = async (
   ctx: Ctx,
   listId: unknown,
+  expectedUserId: string | undefined,
   deps: ListLayoutDeps,
 ): Promise<Result<{ reset: true }, AppError>> => {
-  const owner = writableLayoutKey(ctx, layoutKey(ctx, listId, authorizeTenant(ctx, 'order:read')));
+  const owner = writableLayoutKey(ctx, layoutKey(ctx, listId, expectedUserId, authorizeTenant(ctx, 'order:read')));
   if (!owner.ok) return owner;
   await deps.listLayouts.delete(owner.value.tenantId, ctx.identity.userId, owner.value.listId);
   return ok({ reset: true });

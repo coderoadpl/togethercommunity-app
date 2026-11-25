@@ -33,9 +33,22 @@ interface SavedGridLayoutInput {
 
 interface WriteSession {
   active: boolean;
+  mounted: boolean;
   revision: number;
-  timer?: ReturnType<typeof setTimeout>;
+  pending: { timer: ReturnType<typeof setTimeout>; save: () => void } | null;
 }
+
+const clearPendingSave = (session: WriteSession) => {
+  const pending = session.pending;
+  if (pending !== null) clearTimeout(pending.timer);
+  session.pending = null;
+  return pending;
+};
+
+const discardSession = (session: WriteSession) => {
+  session.active = false;
+  clearPendingSave(session);
+};
 
 export const useSavedGridLayout = ({ tenantId, userId, listId, schema, readOnly = false }: SavedGridLayoutInput) => {
   const queryClient = useQueryClient();
@@ -47,22 +60,27 @@ export const useSavedGridLayout = ({ tenantId, userId, listId, schema, readOnly 
       : null,
   }), [tenantId, userId, listId, readOnly]);
   const cached = useMemo(() => scope.cache?.load() ?? null, [scope]);
-  const saved = useQuery({ ...actions.listLayouts.get(tenantId, userId, listId), enabled: scope.writable });
+  const layouts = actions.listLayouts({ tenantId, userId, listId });
+  const saved = useQuery({ ...layouts.get, enabled: scope.writable });
   const [state, setState] = useState<{ scope: typeof scope; local: ListLayout | null; error: Error | null }>({ scope, local: null, error: null });
   if (state.scope !== scope) setState({ scope, local: null, error: null });
   const current = state.scope === scope ? state : null;
   const layout = current?.local ?? reconcileGridLayout(scope.writable && saved.isSuccess ? saved.data.layout : cached, schema);
-  const sessionRef = useRef<WriteSession | null>(null);
+  const sessionRef = useRef<{ scope: typeof scope; session: WriteSession } | null>(null);
 
   useLayoutEffect(() => {
-    const session: WriteSession = { active: scope.writable, revision: 0 };
-    sessionRef.current = session;
-    const discard = () => {
-      session.active = false;
-      clearTimeout(session.timer);
+    const previous = sessionRef.current;
+    if (previous !== null && previous.scope !== scope) discardSession(previous.session);
+    const session: WriteSession = { active: scope.writable, mounted: true, revision: 0, pending: null };
+    sessionRef.current = { scope, session };
+    const unsubscribe = onListLayoutCopiesCleared(() => discardSession(session));
+    return () => {
+      session.mounted = false;
+      clearPendingSave(session)?.save();
+      const queued = writes.get(scope.key);
+      if (queued === undefined) unsubscribe();
+      else void queued.then(unsubscribe, unsubscribe);
     };
-    const unsubscribe = onListLayoutCopiesCleared(discard);
-    return () => { discard(); unsubscribe(); };
   }, [scope]);
 
   const updateLocal = (next: ListLayout) => setState({ scope, local: next, error: null });
@@ -71,9 +89,9 @@ export const useSavedGridLayout = ({ tenantId, userId, listId, schema, readOnly 
       if (!session.active || (supersedable && session.revision !== revision)) return;
       try {
         await operation();
-        if (session.active) void queryClient.invalidateQueries(actions.listLayouts.invalidates(tenantId, userId, listId));
+        if (session.active) void queryClient.invalidateQueries(layouts.invalidates);
       } catch (error) {
-        if (session.active && session.revision === revision) {
+        if (session.active && session.mounted && session.revision === revision) {
           setState((previous) => ({ ...previous, error: error instanceof Error ? error : new Error(String(error)) }));
         }
       }
@@ -83,24 +101,26 @@ export const useSavedGridLayout = ({ tenantId, userId, listId, schema, readOnly 
   const change = (next: ListLayout) => {
     if (sameGridLayout(next, layout)) return;
     updateLocal(next);
-    const session = sessionRef.current;
-    if (!session?.active) return;
+    const session = sessionRef.current?.session;
+    const operations = layouts.write;
+    if (!session?.active || operations === null) return;
     scope.cache?.save(next);
-    clearTimeout(session.timer);
+    clearPendingSave(session);
     const revision = ++session.revision;
-    session.timer = setTimeout(() => {
-      write(session, revision, () => actions.listLayouts.save({ listId, layout: next }), true);
-    }, GRID_LAYOUT_SAVE_DELAY_MS);
+    const save = () => write(session, revision, () => operations.save(next), true);
+    const timer = setTimeout(() => clearPendingSave(session)?.save(), GRID_LAYOUT_SAVE_DELAY_MS);
+    session.pending = { timer, save };
   };
 
   const reset = () => {
     updateLocal(defaultGridLayout(schema));
-    const session = sessionRef.current;
-    if (!session?.active) return;
+    const session = sessionRef.current?.session;
+    const operations = layouts.write;
+    if (!session?.active || operations === null) return;
     scope.cache?.clear();
-    clearTimeout(session.timer);
+    clearPendingSave(session);
     const revision = ++session.revision;
-    write(session, revision, () => actions.listLayouts.reset({ listId }), false);
+    write(session, revision, operations.reset, false);
   };
 
   return { layout, change, reset, saveError: current?.error ?? null };

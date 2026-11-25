@@ -1,4 +1,4 @@
-import { act, render as renderReact, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render as renderReact, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
@@ -415,7 +415,55 @@ describe('orders grid', () => {
     }
   });
 
-  it('waits for a delayed save before resetting and discards a superseded queued save', async () => {
+  it('flushes a pending layout save when leaving the page before the debounce ends', async () => {
+    const user = userEvent.setup();
+    const recorded = serve(null);
+    const { unmount } = await render();
+    await screen.findByTestId('sales-grid');
+    await user.click(screen.getByRole('button', { name: en.dataGrid.columns }));
+    const dialog = await screen.findByRole('dialog', { name: en.dataGrid.columnsDialogTitle });
+    const column = within(dialog).getByRole('checkbox', { name: en.sales.invoiceData });
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      fireEvent.click(column);
+      expect(recorded.saves).toEqual([]);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+    await waitFor(() => expect(recorded.saves).toEqual([
+      { layout: expect.objectContaining({ columns: expect.arrayContaining([{ field: 'billing', visible: false }]) }) },
+    ]));
+  });
+
+  it('rejects a pending save when browser authentication changes before the panel account updates', async () => {
+    const user = userEvent.setup();
+    serve(null);
+    let signedInUserId = 'u1';
+    const stored = new Map<string, ListLayout>();
+    const expectedAccounts: (string | null)[] = [];
+    server.use(http.put('/api/panel/list-layouts/orders', async ({ request }) => {
+      const expectedUserId = request.headers.get('X-Expected-User-Id');
+      expectedAccounts.push(expectedUserId);
+      if (expectedUserId !== signedInUserId) {
+        return HttpResponse.json({ ok: false, error: { code: 'conflict', message: 'The signed-in account changed' } }, { status: 409 });
+      }
+      const { layout } = z.object({ layout: listLayoutSchema }).parse(await request.json());
+      stored.set(signedInUserId, layout);
+      return HttpResponse.json({ ok: true, data: { layout } });
+    }));
+    await render();
+    await screen.findByTestId('sales-grid');
+    await user.click(screen.getByRole('button', { name: en.dataGrid.columns }));
+    const dialog = await screen.findByRole('dialog', { name: en.dataGrid.columnsDialogTitle });
+    await user.click(within(dialog).getByRole('checkbox', { name: en.sales.invoiceData }));
+    signedInUserId = 'u2';
+    expect(await screen.findByText(en.dataGrid.layoutSaveFailed({ message: en.errors.messageConflict }), {}, { timeout: 2000 })).toBeInTheDocument();
+    expect(expectedAccounts).toEqual(['u1']);
+    expect(stored.has('u2')).toBe(false);
+  });
+
+  it('finishes a reset after a delayed save and unmount, discarding a superseded queued save', async () => {
     const user = userEvent.setup();
     serve(null);
     let finishPut: () => void = () => undefined;
@@ -449,12 +497,12 @@ describe('orders grid', () => {
       await user.click(within(dialog).getByRole('button', { name: en.dataGrid.resetLayout }));
       await new Promise((resolve) => setTimeout(resolve, 100));
       expect(operations).toEqual(['put']);
+      unmount();
     } finally {
       finishPut();
     }
     await waitFor(() => expect(operations).toEqual(['put', 'delete']));
     expect(stored).toBeNull();
-    unmount();
     await render();
     await waitFor(() => expect(headers()).toContain(en.sales.invoiceData));
   });
@@ -469,8 +517,8 @@ describe('orders grid', () => {
     await user.click(within(dialog).getByRole('checkbox', { name: en.sales.invoiceData }));
     expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).not.toBeNull();
     clearListLayoutCopies();
-    await new Promise((resolve) => setTimeout(resolve, 850));
     unmount();
+    await new Promise((resolve) => setTimeout(resolve, 850));
     expect(recorded.saves).toEqual([]);
     expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).toBeNull();
   });

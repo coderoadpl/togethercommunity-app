@@ -41,6 +41,7 @@ import {
   envelopeSchema,
   healthOutputSchema,
   imageAssetUploadOutputSchema,
+  LIST_LAYOUT_EXPECTED_USER_HEADER,
   myProductsOutputSchema,
   ordersListOutputSchema,
   salesLinkContracts,
@@ -13391,7 +13392,7 @@ describe('checkout personalisation through the public routes', () => {
 });
 
 describe('saved list layout routes', () => {
-  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json' };
+  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json', [LIST_LAYOUT_EXPECTED_USER_HEADER]: 'user-1' };
   const path = API_PATHS.getListLayout.replace(':listId', 'orders');
   const layout = { version: 1, columns: [{ field: 'createdAt', visible: true, width: 180 }], sort: null, filters: { billing: 'requested' } };
   const storeApp = (scope: 'member' | 'staff') => {
@@ -13413,10 +13414,28 @@ describe('saved list layout routes', () => {
     const saved = await app.request(path, { method: 'PUT', headers, body: JSON.stringify({ layout }) });
     expect(saved.status).toBe(200);
     expect([...rows.keys()]).toHaveLength(1);
-    expect([...rows.keys()][0]).toMatch(new RegExp(`^${acme.id}\\|[^|]+\\|orders$`));
+    expect([...rows.keys()]).toEqual([`${acme.id}|user-1|orders`]);
     expect(await (await app.request(path, { headers })).json()).toEqual({ ok: true, data: { layout } });
     expect((await app.request(path, { method: 'DELETE', headers })).status).toBe(200);
     expect(rows.size).toBe(0);
+  });
+
+  it('rejects every operation when the expected account does not match the signed-in user', async () => {
+    const { app, rows } = storeApp('staff');
+    const body = JSON.stringify({ layout });
+    expect((await app.request(path, { method: 'PUT', headers, body })).status).toBe(200);
+    const attemptedHeaders = { ...headers, [LIST_LAYOUT_EXPECTED_USER_HEADER]: 'user-2' };
+    const requests = [
+      { method: 'GET', headers: attemptedHeaders },
+      { method: 'PUT', headers: attemptedHeaders, body: JSON.stringify({ layout: { ...layout, filters: {} } }) },
+      { method: 'DELETE', headers: attemptedHeaders },
+    ];
+    for (const request of requests) {
+      const response = await app.request(path, request);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    }
+    expect([...rows.entries()]).toEqual([[`${acme.id}|user-1|orders`, layout]]);
   });
 
   it('refuses a member, an unknown list and a malformed layout', async () => {

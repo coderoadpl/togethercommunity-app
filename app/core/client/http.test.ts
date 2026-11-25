@@ -854,18 +854,18 @@ it('sends the invoice, billing and sort parameters to the order list and the exp
 
 it('reads, saves and resets a saved list layout on the panel route', async () => {
   const layout = { version: 1 as const, columns: [{ field: 'createdAt', visible: true }], sort: null, filters: {} };
-  const calls: Array<{ url: string; method: string | undefined; body: unknown }> = [];
+  const calls: Array<{ url: string; method: string | undefined; expectedUserId: string | null; body: unknown }> = [];
   const answers = [{ layout: null }, { layout }, { reset: true }];
   const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input, init) => {
-    calls.push({ url: String(input), method: init?.method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body });
+    calls.push({ url: String(input), method: init?.method, expectedUserId: new Headers(init?.headers).get('X-Expected-User-Id'), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body });
     return jsonResponse({ ok: true, data: answers.shift() });
   } });
-  expect(await client.getListLayout({ listId: 'orders' })).toEqual({ ok: true, value: { layout: null } });
-  expect(await client.saveListLayout({ listId: 'orders', layout })).toEqual({ ok: true, value: { layout } });
-  expect(await client.resetListLayout({ listId: 'orders' })).toEqual({ ok: true, value: { reset: true } });
+  expect(await client.getListLayout({ listId: 'orders', expectedUserId: 'user-1' })).toEqual({ ok: true, value: { layout: null } });
+  expect(await client.saveListLayout({ listId: 'orders', expectedUserId: 'user-1', layout })).toEqual({ ok: true, value: { layout } });
+  expect(await client.resetListLayout({ listId: 'orders', expectedUserId: 'user-1' })).toEqual({ ok: true, value: { reset: true } });
   expect(calls).toEqual([
-    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'GET', body: null },
-    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'PUT', body: { layout } },
-    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'DELETE', body: null },
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'GET', expectedUserId: 'user-1', body: null },
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'PUT', expectedUserId: 'user-1', body: { layout } },
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'DELETE', expectedUserId: 'user-1', body: null },
   ]);
 });

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { userEvent, within } from 'storybook/test';
 import fixture from '../fixtures/panel-order-detail.json';
+import { fixtureKey } from '../fixture-key.js';
 import { withPage } from '../page-decorators.js';
 
 const recorded = fixture.calls['getOrder:["order-studio-active-js"]'].value.order;
@@ -123,7 +124,7 @@ const meta = {
         'listCouponOptions:[]': { ok: true, value: { coupons: [] } },
         'listOrderReconciliation:[{}]': { ok: true, value: { rows: [], checkedThrough: '2026-06-01T12:00:00.000Z' } },
         'listPaymentEventRejections:[{}]': { ok: true, value: { rejections: [] } },
-        'getListLayout:[{"listId":"orders"}]': { ok: true, value: { layout: null } },
+        [fixtureKey('getListLayout', [{ listId: 'orders', expectedUserId: fixture.calls['me:[]'].value.userId }])]: { ok: true, value: { layout: null } },
         [listCall()]: { ok: true, value: { orders, total: orders.length, page: 1, pageSize: 25, sources: ['meta', 'newsletter', 'www'] } },
         [listCall({ billing: 'requested', status: 'paid' })]: { ok: true, value: { orders: requested, total: requested.length, page: 1, pageSize: 25, sources: ['meta', 'newsletter', 'www'] } },
       },

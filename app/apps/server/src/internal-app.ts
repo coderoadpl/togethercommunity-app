@@ -117,6 +117,7 @@ import {
   notificationsListInputSchema,
   ordersExportQuerySchema,
   ordersReconciliationQuerySchema,
+  paymentEventRejectionsQuerySchema,
   postCreateInputSchema,
   postDeleteInputSchema,
   postPinInputSchema,
@@ -197,7 +198,6 @@ import {
   type LessonAttachmentMetadata,
   type LessonAttachmentView,
   type ProductDownloadAsset,
-  type ProductDownloadAssetMetadata,
   type ProductDownloadAssetView,
   type MemberCourseProgress,
   type ProgressView,
@@ -214,6 +214,7 @@ import {
   beginCourseCoverUpload,
   beginLessonAttachmentUpload,
   beginProductCoverUpload,
+  beginProductImageUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
   authLinkBaseUrl,
@@ -252,6 +253,7 @@ import {
   completeCourseCoverUpload,
   completeLessonAttachmentUpload,
   completeProductCoverUpload,
+  completeProductImageUpload,
   completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
@@ -354,6 +356,7 @@ import {
   listNotifications,
   listOrders,
   listPaidOrdersWithoutGrant,
+  listPaymentEventRejections,
   listProductAccessIssues,
   listProductDownloadAssets,
   listDownloadCopies,
@@ -481,7 +484,8 @@ import {
   type AuthenticatedUser,
   type Ctx,
   type PaymentWebhookEvent,
-  type SimulatePurchaseResult
+  type SimulatePurchaseResult,
+  type StagingSweepOutcome
 } from '#core/server/index.js';
 
 import { ctxOf } from './ctx-of.js';
@@ -496,7 +500,9 @@ import { registerReportRoutes } from './report-routes.js';
 import { registerM2mImportRoutes } from './import-routes.js';
 import { shopCatalogRoutes } from './shop-catalog-routes.js';
 import { shopOrderRoutes } from './shop-order-routes.js';
+import { productDownloadMetadata } from './product-download-metadata.js';
 import { shopAssetsRoutes } from './shop-assets-routes.js';
+import { shopDownloadRoutes } from './shop-download-routes.js';
 import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
 import { shopProposalRoutes } from './shop-proposal-routes.js';
@@ -593,21 +599,6 @@ const lessonAttachmentView = (attachment: LessonAttachment): LessonAttachmentVie
     .replace(':attachmentId', encodeURIComponent(attachment.id)),
 });
 
-const productDownloadMetadata = (asset: ProductDownloadAsset, personalisationMaxBytes: number): ProductDownloadAssetMetadata => ({
-  lineageId: asset.lineageId,
-  versionNumber: asset.versionNumber,
-  versionNote: asset.versionNote,
-  supersededAt: asset.supersededAt,
-  id: asset.id,
-  productId: asset.productId,
-  fileName: asset.fileName,
-  contentType: asset.contentType,
-  sizeBytes: asset.sizeBytes,
-  status: asset.status,
-  createdAt: asset.createdAt,
-  personalisationSizeExceeded: asset.sizeBytes > personalisationMaxBytes,
-});
-
 const productDownloadView = (
   asset: ProductDownloadAsset & { previousVersions?: ProductDownloadAsset[] },
   personalisationMaxBytes: number,
@@ -642,7 +633,7 @@ const respondImageAssetUpload = async (
 };
 
 const respondImageAssetCompletion = async (
-  complete: typeof completeCourseCoverUpload,
+  complete: (ctx: Ctx, input: { key: string }, deps: AppDeps) => ReturnType<typeof completeCourseCoverUpload>,
   ctx: Ctx,
   body: unknown,
   deps: AppDeps,
@@ -825,6 +816,41 @@ const sweepExpiredStockReservations = async (deps: Pick<AppDeps, 'releaseExpired
   }
 };
 
+const CRON_FUNCTION_LIMIT_MS = 60_000;
+
+// A sweep starts a row only when what is left covers its lock wait and each delete, endpoint lookup included, so the
+// sweeps' lock waits and storage requests end by the tick end; the margin is for their database statements and the answer.
+const STAGING_SWEEP_MARGIN_MS = 10_000;
+
+const STAGING_SWEEP_TICK_END_MS = CRON_FUNCTION_LIMIT_MS - STAGING_SWEEP_MARGIN_MS;
+
+const runStagingSweep = async (
+  failure: string,
+  sweep: () => Promise<Result<StagingSweepOutcome, AppError>>,
+  logger: AppDeps['logger'],
+): Promise<void> => {
+  try {
+    const swept = await sweep();
+    if (!swept.ok) logger.error(`${failure}: ${swept.error.message}`);
+    else if (swept.value.failed > 0) logger.error(`${failure}: ${String(swept.value.failed)} of its steps failed`);
+  } catch (error) {
+    logger.error(`${failure}: ${safeErrorMessage(error)}`);
+  }
+};
+
+/** Runs after e-mail and refund dispatch, and the two sweeps side by side, so a sweep that uses its budget delays neither. */
+const sweepStagedObjects = async (
+  deps: Pick<AppDeps, 'sweepQuarantinedImages' | 'sweepKeyDownloadFiles' | 'logger' | 'clock'>,
+  tickStartedAt: number,
+): Promise<void> => {
+  const tick = { deadlineAt: tickStartedAt + STAGING_SWEEP_TICK_END_MS };
+  if (Date.parse(deps.clock.nowIso()) >= tick.deadlineAt) return;
+  await Promise.all([
+    runStagingSweep('[change-proposal] quarantined image sweep failed', () => deps.sweepQuarantinedImages(tick), deps.logger),
+    runStagingSweep('[key-download] staged download file sweep failed', () => deps.sweepKeyDownloadFiles(tick), deps.logger),
+  ]);
+};
+
 const dispatchDueOrderRefunds = async (
   deps: Pick<AppDeps, 'dispatchOrderRefundJobs' | 'logger'>,
   tickStartedAt: number,
@@ -855,6 +881,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     await sweepExpiredStockReservations(deps);
     const emails = await deps.dispatchEmails('manual');
     await dispatchDueOrderRefunds(deps, tickStartedAt);
+    await sweepStagedObjects(deps, tickStartedAt);
     return respond(emails);
   });
 
@@ -868,6 +895,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const emails = await deps.dispatchEmails('cron');
     await dispatchDueOrderRefunds(deps, tickStartedAt, { maxJobs: ORDER_REFUND_CRON_TICK_MAX_JOBS, jobBudgetMs: ORDER_REFUND_JOB_WORST_CASE_MS });
     await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'cron');
+    await sweepStagedObjects(deps, tickStartedAt);
     return respond(emails);
   });
 
@@ -1343,7 +1371,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerMarketingImportWorkerRoute(app, deps);
   registerM2mImportRoutes(app, deps);
   registerReportRoutes(app, deps);
-  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
+  registerShopMachineRoutes(app, deps, [...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps), ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps)]);
 
   assertSelfAuthenticatingRouteManifest(
     app.routes.slice(selfAuthenticatingRouteStart),
@@ -2211,6 +2239,16 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respondImageAssetCompletion(completeProductCoverUpload, ctxOf(c), body, deps);
   });
 
+  app.post(API_PATHS.productImageUpload, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    return respondImageAssetUpload(beginProductImageUpload, ctxOf(c), body, deps);
+  });
+
+  app.post(API_PATHS.productImageComplete, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    return respondImageAssetCompletion(completeProductImageUpload, ctxOf(c), body, deps);
+  });
+
   app.post(API_PATHS.brandingAssetUpload, async (c) => {
     const body: unknown = await readJson(c.req.raw);
     return respondImageAssetUpload(beginBrandingAssetUpload, ctxOf(c), body, deps);
@@ -2946,6 +2984,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     );
   });
 
+  app.get(API_PATHS.paymentEventRejections, async (c) => {
+    const query = c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') };
+    const parsed = paymentEventRejectionsQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid payment event rejection query', parsed.error.flatten())));
+    }
+    return respond(await listPaymentEventRejections(ctxOf(c), parsed.data, deps));
+  });
+
   registerConsumerSalesRoutes(app, deps);
 
   app.get(API_PATHS.ordersExport, async (c) => {
@@ -3488,7 +3535,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const body: unknown = await readJson(c.req.raw);
     const parsed = lessonCompleteInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson completion payload', parsed.error.flatten())));
-    const result = await markLessonCompleted(ctxOf(c), parsed.data.lessonId, deps);
+    const result = await markLessonCompleted(ctxOf(c), parsed.data.lessonId, deps, parsed.data.courseId);
     return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
   });
 
@@ -3496,7 +3543,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const body: unknown = await readJson(c.req.raw);
     const parsed = lessonUncompleteInputSchema.safeParse(body);
     if (!parsed.success) return respond(err(validation('Invalid lesson un-completion payload', parsed.error.flatten())));
-    const result = await unmarkLessonCompleted(ctxOf(c), parsed.data.lessonId, deps);
+    const result = await unmarkLessonCompleted(ctxOf(c), parsed.data.lessonId, deps, parsed.data.courseId);
     return respond(result.ok ? ok({ progress: toProgressView(result.value) }) : result);
   });
 

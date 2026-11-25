@@ -4,6 +4,7 @@ import { productDownloadAssetSchema } from '#core/domain/index.js';
 import type { ProductDraftRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { oweKeyFileDeletions } from './key-download-files.js';
 import { checkoutSnapshots, couponCheckoutSessions, memberSubscriptions, orders, productDownloadAssets, productGrants, productPriceHistory, productPrices, products, salesLinks } from './schema.js';
 
 export const createProductDraftRepository = (db: Db): ProductDraftRepository => ({
@@ -36,6 +37,7 @@ export const createProductDraftRepository = (db: Db): ProductDraftRepository => 
     if (subscription !== undefined) return { kind: 'refused', reason: 'subscriptions' };
     const assets = await tx.delete(productDownloadAssets)
       .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.productId, productId))).returning();
+    await oweKeyFileDeletions(tx, tenantId, assets, new Date().toISOString());
     await tx.delete(productPriceHistory)
       .where(and(eq(productPriceHistory.tenantId, tenantId), eq(productPriceHistory.productId, productId)));
     await tx.delete(productPrices).where(and(eq(productPrices.tenantId, tenantId), eq(productPrices.productId, productId)));

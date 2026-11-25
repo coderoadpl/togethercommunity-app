@@ -9,7 +9,7 @@ import type {
   ProductGrantRepository,
   SpaceRepository,
 } from '../ports.js';
-import { isLessonAccessibleByLookup, locateLesson } from './access.js';
+import { lessonLocations, locateAccessibleLesson } from './access.js';
 import { spaceVisibleToMemberScope } from './community-access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
 
@@ -21,9 +21,15 @@ export interface ThreadContextDeps {
   links: DiscussionLinkPort;
 }
 
+interface ThreadLessonLocation {
+  courseId: string;
+  moduleId: string;
+  lessonId: string;
+}
+
 export interface ThreadContextInfo {
   space: Space | null;
-  lessonLocation: { courseId: string; moduleId: string; lessonId: string } | null;
+  lessonLocations: ThreadLessonLocation[];
   courseId: string | null;
   contextName: string;
   contextUrl: string;
@@ -39,7 +45,7 @@ export const threadContextInfo = async (
     const space = await deps.spaces.findById(tenantId, post.contextId);
     return {
       space,
-      lessonLocation: null,
+      lessonLocations: [],
       courseId: null,
       contextName: space?.name ?? '',
       contextUrl: await deps.links.spaceUrl({
@@ -55,11 +61,11 @@ export const threadContextInfo = async (
     deps.modules.list(tenantId),
     deps.lessons.findById(tenantId, post.contextId),
   ]);
-  const location = locateLesson(post.contextId, courses, modules);
-  const courseId = location?.course.id ?? null;
+  const locations = lessonLocations(post.contextId, courses, modules);
+  const courseId = locations[0]?.course.id ?? null;
   return {
     space: null,
-    lessonLocation: location === null ? null : { courseId: location.course.id, moduleId: location.moduleId, lessonId: post.contextId },
+    lessonLocations: locations.map((location) => ({ courseId: location.course.id, moduleId: location.moduleId, lessonId: post.contextId })),
     courseId,
     contextName: lesson?.name ?? '',
     contextUrl: await deps.links.lessonDiscussionUrl({ tenantId, tenantSlug, courseId, lessonId: post.contextId }),
@@ -85,12 +91,6 @@ export const subscriberCanAccessContext = async (
     return space !== null && (await spaceVisibleToMemberScope({ tenantId, memberId }, space, deps));
   }
   const [courses, modules] = await Promise.all([deps.courses.list(tenantId), deps.modules.list(tenantId)]);
-  const location = locateLesson(post.contextId, courses, modules);
-  if (!location) return false;
   const lookup = await resolveMemberAccessLookup({ tenantId, memberId }, deps);
-  return isLessonAccessibleByLookup(lookup, {
-    courseId: location.course.id,
-    moduleId: location.moduleId,
-    lessonId: post.contextId,
-  });
+  return locateAccessibleLesson(post.contextId, courses, modules, lookup) !== null;
 };

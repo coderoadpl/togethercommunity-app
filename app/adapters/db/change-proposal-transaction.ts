@@ -8,7 +8,7 @@ import type {
   TenantSecretResolver,
 } from '#core/server/index.js';
 
-import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
+import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
 import {
   boundStatementTime,
   changeProposalBounds,
@@ -17,14 +17,19 @@ import {
   type ChangeProposalBounds,
 } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createQuarantinedImageLocks } from './change-proposal-images.js';
 import {
   createChangeProposalEventRepository,
   createChangeProposalRepository,
   createChangeProposalTargetLocks,
 } from './change-proposals.js';
 import type { Db } from './client.js';
+import { createChangeProposalProductFiles, createKeyDownloadAttachRepository } from './key-download-files.js';
 import { createProductDraftRepository } from './product-drafts.js';
 import {
+  createCourseLessonRepository,
+  createCourseModuleRepository,
+  createCourseRepository,
   createProductDownloadAssetRepository,
   createProductPriceRepository,
   createProductRepository,
@@ -42,6 +47,9 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
   const tenants = createTenantRepository(tx);
   const downloadAssets = createProductDownloadAssetRepository(tx);
   const spaces = createSpaceRepository(tx);
+  const courses = createCourseRepository(tx);
+  const modules = createCourseModuleRepository(tx);
+  const lessons = createCourseLessonRepository(tx);
   return {
     products: createProductRepository(tx),
     prices: createProductPriceRepository(tx),
@@ -57,6 +65,12 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
       list: (tenantId, options) => spaces.list(tenantId, options),
       findById: (tenantId, id) => spaces.findById(tenantId, id),
     },
+    courses: { findByIds: (tenantId, ids) => courses.findByIds(tenantId, ids) },
+    modules: {
+      findByIds: (tenantId, ids) => modules.findByIds(tenantId, ids),
+      list: (tenantId) => modules.list(tenantId),
+    },
+    lessons: { existingIds: (tenantId, ids) => lessons.existingIds(tenantId, ids) },
     stock: createStockRepository(tx),
     productDrafts: createProductDraftRepository(tx),
     salesLinks: createSalesLinkRepository(tx),
@@ -64,6 +78,9 @@ const repositoriesOver = (tx: Db, bounds: ChangeProposalBounds): ChangeProposalR
     changeProposalEvents: createChangeProposalEventRepository(tx),
     changeProposalGroups: createChangeProposalGroupRepository(tx, bounds),
     targets: createChangeProposalTargetLocks(tx),
+    quarantinedImages: createQuarantinedImageLocks(tx),
+    keyDownloadAttach: createKeyDownloadAttachRepository(tx),
+    productFiles: createChangeProposalProductFiles(tx),
   };
 };
 
@@ -126,13 +143,15 @@ export const createChangeProposalTransaction = (
   options: ChangeProposalBoundOptions = {},
 ): ChangeProposalTransaction => {
   const bounds = changeProposalBounds(options);
-  const waits = { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs };
   const runScoped = async <T>(
     tenantId: string,
     operation: ScopedOperation<T>,
     rollBackAlways: boolean,
     groupId: string | null,
+    lockWait: number | undefined = undefined,
   ) => {
+    const scopedBounds = lockWait === undefined ? bounds : { ...bounds, lockWaitMs: Math.min(bounds.lockWaitMs, lockWaitMs(lockWait)) };
+    const waits = { lockWaitMs: scopedBounds.lockWaitMs, lockWaitAfterMs: scopedBounds.lockWaitMs };
     const effects: PostCommitEffect[] = [];
     let open = true;
     try {
@@ -142,7 +161,7 @@ export const createChangeProposalTransaction = (
         }
         if (!await boundedAdvisoryLock(tx, `change-proposal-transaction:${tenantId}`, waits)) return err(changeProposalsBusy());
         await boundStatementTime(tx, rollBackAlways ? bounds.dryRunStatementMs : bounds.approvalStatementMs);
-        return operation(scopeOver(tx, bounds, secretResolverOver, effects, () => open));
+        return operation(scopeOver(tx, scopedBounds, secretResolverOver, effects, () => open));
       }, rollBackAlways).finally(() => { open = false; });
       return { result, effects: result.ok && !rollBackAlways ? effects : [] };
     } catch (cause) {
@@ -153,8 +172,8 @@ export const createChangeProposalTransaction = (
   };
 
   return {
-    run: async (tenantId, operation) => {
-      const { result, effects } = await runScoped(tenantId, operation, false, null);
+    run: async (tenantId, operation, options = {}) => {
+      const { result, effects } = await runScoped(tenantId, operation, false, null, options.lockWaitMs);
       for (const effect of effects) {
         try {
           await effect();

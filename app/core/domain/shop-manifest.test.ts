@@ -24,6 +24,7 @@ describe('shop manifest v1', () => {
     { ...manifest, company: { settings: { stripeSecretKey: 'forbidden' } } },
     { ...manifest, shops: [{ ...manifest.shops[0], provisioning: {} }] },
     { ...manifest, shops: [{ workspace: 'acme', products: [{ ...productInput, price: { ...productInput.price, token: 'forbidden' } }] }] },
+    { ...manifest, shops: [{ workspace: 'acme', products: [{ ...productInput, images: [{ url: 'https://cdn.example.test/front.jpg', alt: '', token: 'forbidden' }] }] }] },
     { ...manifest, company: { settings: { checkoutAppearance: { password: 'forbidden' } } } },
     { ...manifest, company: { settings: { socialLinks: [{ label: 'Acme', url: 'https://togethercommunity.app', token: 'forbidden' }] } } },
     { ...manifest, company: { settings: { shippingRates: [{ id: 'courier', label: 'Courier', amountCents: 1000, carrier: 'other', pickupPoint: 'none', active: true, token: 'forbidden' }] } } },
@@ -87,6 +88,19 @@ describe('shop manifest v1', () => {
     expect(diffManifestProduct(desired, current)).toMatchObject({ product: 'update', fields: ['title'], price: 'add', deactivatePriceIds: ['price1'], stock: 'unchanged', cover: 'update', publication: 'unpublish' });
     expect(diffManifestProduct({ ...desired, stock: { onHand: 5 } }, current).stock).toBe('adjust');
     expect(diffManifestProduct(desired, { ...current, stock: null }).stock).toBe('enable');
+  });
+
+  it('manages the gallery only when the manifest lists it and compares it in order', () => {
+    const front = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000001.webp', alt: 'Front' };
+    const side = { url: 'https://cdn.example.test/side.jpg', alt: '' };
+    const withGallery = { ...current, product: { ...current.product, images: [front, side] } };
+    expect(diffManifestProduct(shopManifestProductSchema.parse(productInput), withGallery)).toMatchObject({ product: 'unchanged', managedFields: ['title'] });
+    expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [] }), current)).toMatchObject({ product: 'unchanged', managedFields: ['title', 'images'] });
+    expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [front, side] }), withGallery).product).toBe('unchanged');
+    expect(diffManifestProduct(shopManifestProductSchema.parse({ ...productInput, images: [side, front] }), withGallery)).toMatchObject({ product: 'update', fields: ['images'] });
+    expect(shopManifestProductSchema.safeParse({ ...productInput, images: [front, front] }).success).toBe(false);
+    expect(shopManifestProductSchema.safeParse({ ...productInput, images: [{ ...front, caption: 'Front' }] }).error?.issues)
+      .toEqual([expect.objectContaining({ code: 'unrecognized_keys', keys: ['caption'], path: ['images', 0] })]);
   });
 
   it('keeps one matching active non-imported price and retires alternatives', () => {

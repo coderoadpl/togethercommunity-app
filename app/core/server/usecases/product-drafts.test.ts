@@ -23,6 +23,8 @@ const depsFor = (result: ProductDraftDeletion) => {
       list: async () => ok({ objects: [], continuationToken: null }),
       getObject: async () => ok(new Uint8Array()),
       probe: async () => ok({ code: 'storage.available', message: 'Available' }),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async () => [],
       presignPut: () => ok('https://storage.example.test'),
       presignGet: () => ok('https://storage.example.test'),

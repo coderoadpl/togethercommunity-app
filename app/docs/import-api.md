@@ -121,6 +121,8 @@ Optional `salesChannel` is `any` or `sales_links_only` (see [sales links](sales-
 
 Optional `personalization` is `{ "label", "description", "inputLabel", "maxLength", "condition" }` or `null` (see [personalisation](shop.md#personalisation)): `label` and `inputLabel` 1–80 characters, `description` up to 1000 characters (default empty), `maxLength` 1–500 (default 200) and `condition` 1–1000 characters or `null` (default). Unknown fields fail with `validation`. An omitted field creates a product without a personalisation and leaves the stored setting of an existing imported product unchanged on update, so a setting made later in the panel survives a re-import that omits the field; `null` removes it. A `membership` cannot offer a personalisation: such a record, or an update that turns a personalised product into a membership, fails with `validation`.
 
+Optional `images` is the ordered [product gallery](products.md#gallery): an array of at most 12 `{ "url", "alt" }` objects. Each `url` follows the same absolute URL or public asset path rules as `coverUrl` (for example `/api/public/assets/product-image/<file>`) and appears at most once; `alt` is trimmed text of up to 250 characters and defaults to `""`. Absolute URLs on the workspace's own hosts are normalized to the public asset path, as for `coverUrl`. Unknown fields fail with `validation`. An omitted field creates a product with an empty gallery and leaves the stored gallery of an existing imported product unchanged on update; `[]` removes every image.
+
 ### Member
 
 ```jsonl
@@ -314,7 +316,7 @@ These limits apply to new import inputs in both write and validation requests. E
 | `importKey`, reference/source keys and `legacyId` | 200 |
 | Course/lesson names, module titles and prefixes, chapter/content names | 500 |
 | Chapter/content ids and progress `lastViewedChapterId` | 200 |
-| Absolute image/cover URLs; lesson embed, PDF and link URLs; compliance `instructionsUrl` | 2,048 |
+| Absolute image/cover/gallery URLs; lesson embed, PDF and link URLs; compliance `instructionsUrl` | 2,048 |
 | PDF block names and link descriptions | 2,000 |
 | Lesson HTML blocks | 1,000,000 |
 | Video `storageKey` | 1,024 |

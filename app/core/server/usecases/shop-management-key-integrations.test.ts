@@ -79,6 +79,8 @@ const harness = (initial: readonly TenantSecret[] = []) => {
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (input, key) => new URL(`${input.endpoint}/${input.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'probe complete' }),
+    copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+    digestObject: () => Promise.reject(new Error('digestObject is not used here')),
     probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
     presignPut: (input) => ok(input.url),
     presignGet: (input) => ok(input.url),

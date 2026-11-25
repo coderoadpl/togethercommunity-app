@@ -34,3 +34,21 @@ describe('public offer stock counts', () => {
     expect(publicOfferOutputSchema.safeParse(offer({ ...recordedProduct, variants: [{ ...recordedProduct.variants[0], available: -2 }] })).success).toBe(false);
   });
 });
+
+describe('public offer gallery', () => {
+  it('parses an ordered gallery with workspace-relative and absolute URLs', () => {
+    const images = [
+      { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000001.webp', alt: 'Front view' },
+      { url: 'https://cdn.example.test/side.jpg', alt: '' },
+    ];
+    expect(publicOfferOutputSchema.parse(offer({ ...recordedProduct, images })).products[0]?.images).toEqual(images);
+  });
+
+  it('defaults the gallery of an offer recorded before it existed to an empty list', () => {
+    expect(publicOfferOutputSchema.parse(offer(recordedProduct)).products[0]?.images).toEqual([]);
+  });
+
+  it('rejects a gallery URL the cover would not accept', () => {
+    expect(publicOfferOutputSchema.safeParse(offer({ ...recordedProduct, images: [{ url: 'javascript:alert(1)', alt: '' }] })).success).toBe(false);
+  });
+});

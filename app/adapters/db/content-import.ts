@@ -111,6 +111,7 @@ const updateResource = async (
     title: product.title,
     description: product.description,
     coverUrl: product.coverUrl,
+    ...(product.images === undefined ? {} : { images: product.images }),
     priceCents: product.priceCents,
     vatRate: product.vatRate ?? null,
     vatExemptionBasis: product.vatExemptionBasis ?? null,

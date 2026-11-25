@@ -9,6 +9,7 @@ import {
   changeProposalEventSchema,
   changeProposalSchema,
   changeProposalTargetPriceSchema,
+  computeCourseModuleName,
   type ChangeProposal,
   type ChangeProposalCountCap,
   type ChangeProposalEvent,
@@ -30,12 +31,24 @@ import type {
   ChangeProposalWrite,
 } from '#core/server/index.js';
 
-import { boundedAdvisoryLock } from './bounded-advisory-lock.js';
-import { boundLockWait, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import {
+  boundLockWait,
+  busyAfterRollback,
+  changeProposalBounds,
+  lockWorkspaceProposals,
+  type ChangeProposalBoundOptions,
+  type ChangeProposalBounds,
+} from './change-proposal-bounds.js';
+import { quarantinedImagesPresent } from './change-proposal-images.js';
 import type { Db } from './client.js';
+import { lockActiveCourses } from './course-reference-lock.js';
+import { holdProposedFiles, linkProposedFiles, lockProductFiles } from './key-download-files.js';
 import {
   changeProposalEvents,
   changeProposals,
+  courseLessons,
+  courseModules,
+  courses,
   productDownloadAssets,
   productPrices,
   products,
@@ -71,9 +84,6 @@ export const parseProposal = (row: ChangeProposalRow): ChangeProposal => changeP
 });
 
 const parseEvent = (event: ChangeProposalEvent): ChangeProposalEvent => changeProposalEventSchema.parse(event);
-
-export const lockWorkspaceProposals = (executor: Db, tenantId: string, bounds: ChangeProposalBounds): Promise<boolean> =>
-  boundedAdvisoryLock(executor, `change-proposals:${tenantId}`, { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs });
 
 export const boundedWrite = <T>(db: Db, bounds: ChangeProposalBounds, work: (tx: Db) => Promise<T>): Promise<ChangeProposalWrite<T>> =>
   busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalWrite<T>> => {
@@ -324,7 +334,7 @@ export const withdrawPendingChangeProposalsOfKey = async (
 };
 
 const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangeProposalRepository => ({
-  create: async (tenantId, proposal, event, now) => {
+  create: async (tenantId, proposal, event, now, images = [], files = []) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
@@ -332,9 +342,13 @@ const changeProposalRepositoryOver = (db: Db, bounds: ChangeProposalBounds): Cha
     return busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalCreation> => {
       if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, now)) return { kind: 'key_inactive' };
+      if (!await quarantinedImagesPresent(tx, tenantId, parsed.proposedByKeyId, images)) return { kind: 'image_missing' };
+      if (!await holdProposedFiles(tx, tenantId, parsed.proposedByKeyId, files)) return { kind: 'file_unavailable' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
-      return { kind: 'created', proposal: await insertProposal(tx, tenantId, parsed, event) };
+      const created = await insertProposal(tx, tenantId, parsed, event);
+      await linkProposedFiles(tx, tenantId, parsed.proposedByKeyId, files, created.id);
+      return { kind: 'created', proposal: created };
     }), { kind: 'busy' } as const);
   },
   countCapReached: (tenantId, keyId, now) => countCapReached(db, tenantId, keyId, now),
@@ -426,6 +440,15 @@ export const createChangeProposalEventRepository = (db: Db): ChangeProposalEvent
 const idsOfKind = (targets: readonly ChangeProposalTargetLabelRequest[], kind: ChangeProposalTargetLabelRequest['kind']): string[] =>
   [...new Set(targets.filter((target) => target.kind === kind).map((target) => target.id))];
 
+// Postgres binds at most 65,535 parameters per statement; a page of proposals can name more ids than that.
+const IDS_PER_TITLE_QUERY = 10_000;
+
+const inIdChunks = async <T>(ids: readonly string[], read: (chunk: string[]) => PromiseLike<T[]>): Promise<T[]> => {
+  const found: T[] = [];
+  for (let start = 0; start < ids.length; start += IDS_PER_TITLE_QUERY) found.push(...await read(ids.slice(start, start + IDS_PER_TITLE_QUERY)));
+  return found;
+};
+
 export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTargetLabelReader => ({
   labels: async (tenantId, targets) => {
     const productIds = idsOfKind(targets, 'product');
@@ -458,6 +481,17 @@ export const createChangeProposalTargetLabelReader = (db: Db): ChangeProposalTar
       ...salesLinkRows.map((row) => ({ kind: 'sales-link' as const, ...row, price: null })),
     ];
   },
+  accessTitles: async (tenantId, ids) => ({
+    courses: (await inIdChunks(ids.courseIds, (chunk) => db.select({ id: courses.id, title: courses.name, archivedAt: courses.archivedAt }).from(courses)
+      .where(and(eq(courses.tenantId, tenantId), inArray(courses.id, chunk)))))
+      .map((row) => ({ id: row.id, title: row.title, archived: row.archivedAt !== null })),
+    modules: (await inIdChunks(ids.moduleIds, (chunk) => db.select({ id: courseModules.id, prefix: courseModules.prefix, title: courseModules.title })
+      .from(courseModules)
+      .where(and(eq(courseModules.tenantId, tenantId), inArray(courseModules.id, chunk)))))
+      .map((row) => ({ id: row.id, title: computeCourseModuleName(row.prefix, row.title) })),
+    lessons: await inIdChunks(ids.lessonIds, (chunk) => db.select({ id: courseLessons.id, title: courseLessons.name }).from(courseLessons)
+      .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, chunk)))),
+  }),
 });
 
 const lockedRowExists = async (rows: PromiseLike<readonly unknown[]>): Promise<boolean> => (await rows).length > 0;
@@ -487,6 +521,7 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
       case 'product': {
         if (target.id === null) return true;
         if (purpose === 'delete') return lockProductForDeletion(db, tenantId, target.id);
+        if (purpose === 'files') return await lockProductFiles(db, tenantId, target.id) !== null;
         const found = await lockedRowExists(db.select({ id: products.id }).from(products)
           .where(and(eq(products.tenantId, tenantId), eq(products.id, target.id))).for('no key update'));
         if (found) {
@@ -506,5 +541,8 @@ export const createChangeProposalTargetLocks = (db: Db): ChangeProposalTargetLoc
         return lockedRowExists(db.select({ id: salesLinks.id }).from(salesLinks)
           .where(and(eq(salesLinks.tenantId, tenantId), eq(salesLinks.id, target.id), isNull(salesLinks.deletedAt))).for('no key update'));
     }
+  },
+  lockCourses: async (tenantId, courseIds) => {
+    await lockActiveCourses(db, tenantId, [...courseIds]);
   },
 });

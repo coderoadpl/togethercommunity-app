@@ -4,8 +4,9 @@ A physical product is either collected in person or shipped by parcel. This
 page covers shipping: delivery methods, delivery options (rates), the parcel
 locker flow, what an order stores, fulfilment (packing and marking orders as
 shipped), InPost ShipX shipments and labels, product safety information,
-product variants, the content security policy for the parcel locker map, and
-the CLI. The last section covers stock tracking with checkout reservations.
+product variants, product photos, the content security policy for the parcel
+locker map, and the CLI. The last section covers stock tracking with checkout
+reservations.
 
 ## Delivery methods
 
@@ -1142,6 +1143,18 @@ cancellation and Retry. Chip navigation reloads the form; typed details and
 consent ticks are not preserved. See [Sales links](sales-links.md) for request
 validation and checkout behaviour.
 
+## Product photos
+
+A product shows its cover (`coverUrl`) and an ordered gallery of up to 12
+further photos (`images`, each `{ "url", "alt" }` with alternative text of up
+to 250 characters). Storefronts read both from the public offer and fall back
+to the cover when the gallery is empty. Gallery photos are uploaded with the
+`product-image` asset kind and attached by a product update that lists the
+whole gallery; the field rules, upload steps and rollback notes are in
+[Products: Gallery](products.md#gallery) and
+[Shop integration: Product gallery](shop-integration.md#product-gallery).
+Studio has no gallery editor yet; saving a product in Studio keeps its gallery.
+
 ## Personalisation
 
 A product may offer one optional request the buyer can add at checkout, with
@@ -1383,6 +1396,8 @@ pnpm --silent run cli --tenant acme product update <id> \
   --compliance '{"manufacturerName":"Example Workshop","manufacturerAddress":"Example Street 1, 00-001 Warsaw","manufacturerEmail":"safety@example.com","modelIdentifier":"STAND-1"}' \
   --variant-group printed-stand --variant-label 'Black · ASA'
 pnpm --silent run cli --tenant acme product update <id> --personalization-file engraving.json
+pnpm --silent run cli --tenant acme product image-upload ./front.png
+pnpm --silent run cli --tenant acme product update <id> --images-file images.json
 pnpm --silent run cli --tenant acme product update <id> --no-personalization
 pnpm --silent run cli --tenant acme checkout session --sales-link <link-id> --product <id> \
   --personalization '<id>:For Ann' --accept-condition
@@ -1409,7 +1424,11 @@ outside the EU, `--compliance` adds `"manufacturerOutsideEu":true` with
 --personalization-file <path>` sets the [personalisation](#personalisation)
 from a JSON file (`{ "label", "description", "inputLabel", "maxLength",
 "condition" }`, validated before the request) and `--no-personalization`
-removes it; the two flags exclude each other. `checkout session` and
+removes it; the two flags exclude each other. `product image-upload <file>`
+uploads a gallery photo and prints its URL; `product create|update
+--images-file <path>` sets the ordered [gallery](products.md#gallery) from a
+JSON array of `{ "url", "alt" }` objects (`-` reads stdin, `[]` removes every
+photo). `checkout session` and
 `simulate-purchase` take a repeatable `--personalization <product-id>:<text>`
 (the text is everything after the first colon) and `--accept-condition`, which
 accepts the condition of every entry; `checkout session --line` refuses

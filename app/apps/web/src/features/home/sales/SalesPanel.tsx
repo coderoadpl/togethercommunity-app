@@ -1,5 +1,6 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
+import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
 import { ChevronIcon } from './refund-icons.js';
 import { useState, type ReactNode } from 'react';
@@ -235,6 +236,7 @@ export const SalesPanel = () => {
           ))}
         </Alert>
       ) : null}
+      {canWriteInvoice ? <RejectedPaymentsSection /> : null}
       <ConsumerSalesCard />
       <ListSection
         data-testid="sales-list"

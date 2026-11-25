@@ -26,6 +26,7 @@ import {
   type PriceInterval,
   type PriceKind,
   type Product,
+  type ProductImage,
   type ProductPrice,
   type ProductType,
   type Result,
@@ -87,6 +88,7 @@ interface PublicOfferProduct {
   title: string;
   description: string;
   coverUrl: string | null;
+  images: ProductImage[];
   priceCents: number;
   currency: string;
   prices: PublicOfferPrice[];
@@ -222,6 +224,7 @@ const toPublicProduct = (product: Product, prices: PublicOfferPrice[]): PublicOf
   title: product.title,
   description: product.description,
   coverUrl: product.coverUrl,
+  images: product.images ?? [],
   priceCents: product.priceCents,
   currency: product.currency,
   prices,

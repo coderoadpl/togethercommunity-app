@@ -120,14 +120,14 @@ export const SalesPanel = () => {
   const { language } = useLanguage();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { tenant, email, impersonating = false } = usePanelContext();
+  const { tenant, userId, impersonating = false } = usePanelContext();
   const theme = useTheme();
   const phone = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   const narrow = useMediaQuery(theme.breakpoints.down('xl'), { noSsr: true });
   const canWriteInvoice = tenant.staffRole === 'owner' || tenant.staffRole === 'admin';
   const urlSearch = validateOrdersSearch(useSearch({ strict: false }));
   const schema = ordersLayoutSchema(narrow);
-  const saved = useSavedGridLayout({ tenantId: tenant.id, viewer: email, listId: 'orders', schema, readOnly: impersonating });
+  const saved = useSavedGridLayout({ tenantId: tenant.id, userId, listId: 'orders', schema, readOnly: impersonating });
   const layout = saved.layout;
   const [selected, setSelected] = useState<string[]>([]);
   const [sendingSelected, setSendingSelected] = useState(false);

@@ -8,6 +8,7 @@ import { UserRoundIcon as ManageAccountIcon } from '../../components/ui/account-
 import { UserAvatar } from '../../components/ui/UserAvatar.js';
 import { localizeError, useTranslations } from '../../i18n/index.js';
 import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
+import { clearListLayoutCopies } from '../../theme-mode.js';
 import { navigateFresh } from '../../lib/navigation.js';
 import {
   streamlessPollInterval,
@@ -72,6 +73,7 @@ export const useMemberAccountActions = ({
     ...actions.signOut,
     onSuccess: async () => {
       forgetLoginIdentifier();
+      clearListLayoutCopies();
       queryClient.clear();
       await navigate({ to: '/login' });
     },

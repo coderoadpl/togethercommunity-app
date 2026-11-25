@@ -10,6 +10,7 @@ export interface PanelTenant {
 
 export interface PanelContextValue {
   tenant: PanelTenant;
+  userId?: string;
   email: string;
   emailVerified: boolean;
   impersonating?: boolean;

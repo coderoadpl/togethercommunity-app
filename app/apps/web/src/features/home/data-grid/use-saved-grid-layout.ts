@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { listLayoutSchema, type ListLayout, type ListLayoutId } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { persistedJsonPreference } from '../../../theme-mode.js';
+import { LIST_LAYOUT_STORAGE_PREFIX, persistedJsonPreference } from '../../../theme-mode.js';
 import { defaultGridLayout, reconcileGridLayout, sameGridLayout, type GridLayoutSchema } from '../../../components/ui/data-grid/grid-layout.js';
 
 const GRID_LAYOUT_SAVE_DELAY_MS = 800;
@@ -16,7 +16,7 @@ const parseGridLayout = (value: unknown): ListLayout | null => {
 
 interface SavedGridLayoutInput {
   tenantId: string;
-  viewer: string;
+  userId: string | undefined;
   listId: ListLayoutId;
   schema: GridLayoutSchema;
   readOnly?: boolean;
@@ -24,10 +24,15 @@ interface SavedGridLayoutInput {
 
 interface LocalChange { layout: ListLayout; persist: boolean }
 
-export const useSavedGridLayout = ({ tenantId, viewer, listId, schema, readOnly = false }: SavedGridLayoutInput) => {
+export const useSavedGridLayout = ({ tenantId, userId, listId, schema, readOnly = false }: SavedGridLayoutInput) => {
   const queryClient = useQueryClient();
-  const cache = useMemo(() => persistedJsonPreference<ListLayout | null>(`together-list-layout:${listId}:${tenantId}:${viewer}`, parseGridLayout, null), [listId, tenantId, viewer]);
-  const [cached] = useState(() => cache.load());
+  const cache = useMemo(
+    () => userId && !readOnly
+      ? persistedJsonPreference<ListLayout | null>(`${LIST_LAYOUT_STORAGE_PREFIX}${listId}:${tenantId}:${userId}`, parseGridLayout, null)
+      : null,
+    [listId, tenantId, userId, readOnly],
+  );
+  const cached = useMemo(() => cache?.load() ?? null, [cache]);
   const saved = useQuery(actions.listLayouts.get(tenantId, listId));
   const [local, setLocal] = useState<LocalChange | null>(null);
   const save = useMutation({
@@ -60,13 +65,13 @@ export const useSavedGridLayout = ({ tenantId, viewer, listId, schema, readOnly 
 
   const change = (next: ListLayout) => {
     if (sameGridLayout(next, layout)) return;
-    cache.save(next);
+    cache?.save(next);
     setLocal({ layout: next, persist: true });
   };
 
   const resetLayout = () => {
     pending.current = null;
-    cache.clear();
+    cache?.clear();
     setLocal({ layout: defaultGridLayout(schema), persist: false });
     if (!readOnly) reset.mutate({ listId });
   };

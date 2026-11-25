@@ -63,7 +63,7 @@ const savedLayout: ListLayout = {
   filters: { status: 'paid', legacy: 'x' },
 };
 
-const ownerContext: PanelContextValue = { tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, email: 'owner@example.com', emailVerified: true };
+const ownerContext: PanelContextValue = { tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, userId: 'u1', email: 'owner@example.com', emailVerified: true };
 
 interface Recorded { list: URLSearchParams[]; exports: URLSearchParams[]; saves: unknown[]; resets: number }
 
@@ -302,13 +302,17 @@ describe('orders grid', () => {
     expect(within(dialog).getByRole('button', { name: en.dataGrid.moveDown({ column: en.sales.invoiceData }) })).toBeDisabled();
     await waitFor(() => expect(recorded.saves.length).toBe(1), { timeout: 3000 });
     expect(recorded.saves[0]).toMatchObject({ layout: { version: 1, sort: null, filters: {} } });
-    const savedColumns = z.object({ layout: listLayoutSchema }).parse(recorded.saves[0]).layout.columns;
+    const { layout } = z.object({ layout: listLayoutSchema }).parse(recorded.saves[0]);
+    const savedColumns = layout.columns;
     expect(savedColumns.slice(0, 2).map((column) => column.field)).toEqual(['member', 'date']);
     expect(savedColumns.find((column) => column.field === 'billing')?.visible).toBe(false);
+    expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).toBe(JSON.stringify(layout));
+    expect(Array.from({ length: window.localStorage.length }, (_, index) => window.localStorage.key(index))).not.toEqual(expect.arrayContaining([expect.stringContaining('@')]));
     await user.click(within(dialog).getByRole('button', { name: en.dataGrid.resetLayout }));
     await waitFor(() => expect(recorded.resets).toBe(1));
     await waitFor(() => expect(headers().slice(1, 3)).toEqual([en.sales.date, en.sales.member]));
     expect(headers()).toContain(en.sales.invoiceData);
+    expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).toBeNull();
   });
 
   it('keeps changes on screen without saving them while impersonating', async () => {
@@ -322,6 +326,7 @@ describe('orders grid', () => {
     await waitFor(() => expect(headers()).not.toContain(en.sales.invoiceData));
     await new Promise((resolve) => { setTimeout(resolve, 1200); });
     expect(recorded.saves).toEqual([]);
+    expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).toBeNull();
   });
 
   it('speaks Polish, with Polish plural forms of the count', async () => {

@@ -66,6 +66,17 @@ export const persistedJsonPreference = <T,>(
   },
 });
 
+export const LIST_LAYOUT_STORAGE_PREFIX = 'together-list-layout:';
+
+export const clearListLayoutCopies = (): void => {
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(LIST_LAYOUT_STORAGE_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {}
+};
+
 export const sessionFlag = (key: string) => ({
   load: (): boolean => {
     try { return window.sessionStorage.getItem(key) === '1'; } catch { return false; }

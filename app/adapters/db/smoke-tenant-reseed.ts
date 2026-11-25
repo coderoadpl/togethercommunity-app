@@ -1,6 +1,7 @@
-import { and, eq, getTableName, like, sql } from 'drizzle-orm';
+import { and, eq, getTableName, inArray, like, sql } from 'drizzle-orm';
 
 import {
+  normalizeEmail,
   SMOKE_TENANT_ID,
   SMOKE_TENANT_PURCHASE_EMAIL,
   SMOKE_TENANT_PURCHASE_USER_ID,
@@ -42,6 +43,16 @@ export interface SmokeTenantReseedSummary {
   seed: SmokeTenantSeedSummary;
 }
 
+const magicLinkEmail = (value: string): string | null => {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== 'object' || parsed === null || !('email' in parsed)) return null;
+    return typeof parsed.email === 'string' ? normalizeEmail(parsed.email) : null;
+  } catch {
+    return null;
+  }
+};
+
 const refuse = (reason: string): never => {
   throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${reason}`);
 };
@@ -71,6 +82,19 @@ export const revokePurchaseAccess = async (db: Db): Promise<void> =>
         like(verification.identifier, 'reset-password:%'),
         eq(verification.value, SMOKE_TENANT_PURCHASE_USER_ID),
       ));
+    const pendingMagicLinks = await tx
+      .select({ id: verification.id, value: verification.value })
+      .from(verification)
+      .where(and(
+        like(verification.identifier, 'magic-link:%'),
+        sql`strpos(lower(${verification.value}), ${SMOKE_TENANT_PURCHASE_EMAIL}) > 0`,
+      ));
+    const purchaseMagicLinkIds = pendingMagicLinks
+      .filter(({ value }) => magicLinkEmail(value) === SMOKE_TENANT_PURCHASE_EMAIL)
+      .map(({ id }) => id);
+    if (purchaseMagicLinkIds.length > 0) {
+      await tx.delete(verification).where(inArray(verification.id, purchaseMagicLinkIds));
+    }
     await tx
       .update(user)
       .set({ twoFactorEnabled: false })

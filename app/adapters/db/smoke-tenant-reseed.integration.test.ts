@@ -4,7 +4,7 @@ import { verifyPassword } from 'better-auth/crypto';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
-import { createAuthE2eClient, type AuthE2eClient } from '#adapters/auth/e2e-http.js';
+import { AUTH_MAGIC_LINK_VERIFICATION_PATH, createAuthE2eClient, type AuthE2eClient } from '#adapters/auth/e2e-http.js';
 import { databaseHostFingerprint } from '#adapters/crypto/database-fingerprint.js';
 import {
   SMOKE_PURCHASE_PRODUCT,
@@ -249,31 +249,48 @@ const untouchedCreatorSignIns = {
 const AUTH_ORIGIN = 'http://localhost:48730';
 let requestCount = 0;
 
+const authHandler = () => createAuth(db, {
+  secret: 'seed-integration-secret-at-least-32-characters',
+  baseUrl: AUTH_ORIGIN,
+  baseDomain: 'localhost',
+  singleTenantMode: false,
+  trustedOrigins: () => [AUTH_ORIGIN],
+  secureCookies: false,
+  exposeMagicLinks: false,
+  emailOutbox: createEmailOutboxRepository(db),
+  emailSender: { send: async () => ({ ok: true, value: { messageId: 'reseed-test', transport: 'platform' as const } }) },
+  authSendLog: { queue: async () => ({ ok: true, value: undefined }), settle: async () => ({ ok: true, value: undefined }) },
+  ids: { nextId: () => crypto.randomUUID() },
+  clock: { nowIso: () => new Date().toISOString() },
+  dispatchEmail: () => undefined,
+  defaultTenantName: 'Together',
+  google: null,
+}).handler;
+
 const authHttp = (): AuthE2eClient => {
-  const auth = createAuth(db, {
-    secret: 'seed-integration-secret-at-least-32-characters',
-    baseUrl: AUTH_ORIGIN,
-    baseDomain: 'localhost',
-    singleTenantMode: false,
-    trustedOrigins: () => [AUTH_ORIGIN],
-    secureCookies: false,
-    exposeMagicLinks: false,
-    emailOutbox: createEmailOutboxRepository(db),
-    emailSender: { send: async () => ({ ok: true, value: { messageId: 'reseed-test', transport: 'platform' as const } }) },
-    authSendLog: { queue: async () => ({ ok: true, value: undefined }), settle: async () => ({ ok: true, value: undefined }) },
-    ids: { nextId: () => crypto.randomUUID() },
-    clock: { nowIso: () => new Date().toISOString() },
-    dispatchEmail: () => undefined,
-    defaultTenantName: 'Together',
-    google: null,
-  });
+  const handler = authHandler();
   requestCount += 1;
   return createAuthE2eClient({
     connectUrl: AUTH_ORIGIN,
     origin: AUTH_ORIGIN,
     headers: { 'x-forwarded-for': `198.51.100.${String(requestCount % 250)}` },
-    request: async (input, init) => auth.handler(new Request(input, init)),
+    request: async (input, init) => handler(new Request(input, init)),
   });
+};
+
+const magicLinkIdentifiers = async (): Promise<string[]> =>
+  idsOf(`SELECT identifier AS id FROM verification WHERE identifier LIKE 'magic-link:%' ORDER BY identifier`);
+
+const issueMagicLink = async (email: string): Promise<string> => {
+  const before = new Set(await magicLinkIdentifiers());
+  const requested = await authHttp().requestMagicLink({
+    email,
+    callbackURL: `${AUTH_ORIGIN}/`,
+    errorCallbackURL: `${AUTH_ORIGIN}/login`,
+  });
+  expect(requested.status).toBe(200);
+  const issued = (await magicLinkIdentifiers()).find((identifier) => !before.has(identifier)) ?? '';
+  return issued.slice('magic-link:'.length);
 };
 
 const purchaseSignInStatus = async (): Promise<number> =>
@@ -660,5 +677,24 @@ describe('smoke tenant reseed', () => {
       password: PURCHASE_PASSWORD,
     })).resolves.toBe(true);
     expect(await resetPasswordStatus('creator-reset', 'creator-new-password-15')).toBe(200);
+  }, 180_000);
+
+  it('voids a magic link issued for the purchase account before the reseed', async () => {
+    runSucceeds('reseed-acme.ts', withPurchase);
+    const purchaseToken = await issueMagicLink(SMOKE_TENANT_PURCHASE_EMAIL.toUpperCase());
+    const creatorToken = await issueMagicLink(SMOKE_TENANT_CREATOR_EMAIL);
+    expect(new Set(await magicLinkIdentifiers())).toEqual(
+      new Set([`magic-link:${purchaseToken}`, `magic-link:${creatorToken}`]),
+    );
+    expect(purchaseToken).not.toBe(creatorToken);
+
+    runSucceeds('reseed-acme.ts', withPurchase);
+
+    const verification = new URL(AUTH_MAGIC_LINK_VERIFICATION_PATH, AUTH_ORIGIN);
+    verification.search = new URLSearchParams({ token: purchaseToken, callbackURL: `${AUTH_ORIGIN}/` }).toString();
+    const verified = await authHandler()(new Request(verification));
+    expect(verified.headers.get('location')).toContain('error=INVALID_TOKEN');
+    expect((await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).sessions).toEqual([]);
+    expect(await magicLinkIdentifiers()).toEqual([`magic-link:${creatorToken}`]);
   }, 180_000);
 });

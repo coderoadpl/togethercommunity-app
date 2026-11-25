@@ -4,6 +4,8 @@ import { ORDER_SOURCE_FILTER_PREFIX, ORDER_SOURCE_MAX_LENGTH } from './commerce.
 
 export const LIST_LAYOUT_MAX_BYTES = 16 * 1024;
 
+const LIST_LAYOUT_FILTER_MAX_LENGTH = 200;
+
 export const listLayoutIdSchema = z.enum(['orders']);
 
 export type ListLayoutId = z.infer<typeof listLayoutIdSchema>;
@@ -20,8 +22,13 @@ export const listLayoutSchema = z.object({
   version: z.literal(1),
   columns: z.array(listLayoutColumnSchema).max(40),
   sort: z.object({ field: listLayoutKeySchema, direction: z.enum(['asc', 'desc']) }).strict().nullable(),
-  filters: z.record(listLayoutKeySchema, z.string().max(ORDER_SOURCE_MAX_LENGTH + ORDER_SOURCE_FILTER_PREFIX.length))
-    .refine((filters) => Object.keys(filters).length <= 30, 'At most 30 filters'),
+  filters: z.record(listLayoutKeySchema, z.string())
+    .refine((filters) => Object.keys(filters).length <= 30, 'At most 30 filters')
+    .refine((filters) => Object.entries(filters).every(([key, value]) => value.length <= (
+      key === 'source' && value.startsWith(ORDER_SOURCE_FILTER_PREFIX)
+        ? ORDER_SOURCE_MAX_LENGTH + ORDER_SOURCE_FILTER_PREFIX.length
+        : LIST_LAYOUT_FILTER_MAX_LENGTH
+    )), 'A filter value exceeds its maximum length'),
 }).strict();
 
 export type ListLayout = z.infer<typeof listLayoutSchema>;

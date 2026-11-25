@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import {
@@ -2711,6 +2711,33 @@ describe('password-only purchase identity', () => {
     expect(signedIn.status).toBe(200);
     expect(signedIn.headers.get('set-auth-token')).not.toBeNull();
     expect(await purchaseSessions()).toHaveLength(1);
+  });
+
+  it('drops a session of the identity issued before its current password was set', async () => {
+    const { auth, authPort } = buildAuth();
+    await seedPurchaseIdentity(auth, CURRENT_PASSWORD);
+    const signedIn = await passwordSignIn(auth, SMOKE_TENANT_PURCHASE_EMAIL, CURRENT_PASSWORD);
+    const token = signedIn.headers.get('set-auth-token') ?? '';
+    const headers = new Headers({ authorization: `Bearer ${token}` });
+    expect(await authPort.getAuthenticatedUser(headers)).toMatchObject({ userId: SMOKE_TENANT_PURCHASE_USER_ID });
+
+    await database.db.update(account)
+      .set({ updatedAt: new Date(Date.now() + 60_000) })
+      .where(and(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID), eq(account.providerId, 'credential')));
+
+    expect(await authPort.getAuthenticatedUser(headers)).toBeNull();
+    expect(await purchaseSessions()).toEqual([]);
+  });
+
+  it('drops a session of the identity that has no password login', async () => {
+    const { auth, authPort } = buildAuth();
+    await seedPurchaseIdentity(auth, CURRENT_PASSWORD);
+    const signedIn = await passwordSignIn(auth, SMOKE_TENANT_PURCHASE_EMAIL, CURRENT_PASSWORD);
+    const headers = new Headers({ authorization: `Bearer ${signedIn.headers.get('set-auth-token') ?? ''}` });
+
+    await database.db.delete(account).where(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID));
+
+    expect(await authPort.getAuthenticatedUser(headers)).toBeNull();
   });
 
   it('creates no session for the identity from a magic link while an ordinary user still signs in', async () => {

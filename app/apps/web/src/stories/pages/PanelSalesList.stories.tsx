@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { userEvent, within } from 'storybook/test';
 import fixture from '../fixtures/panel-order-detail.json';
 import { withPage } from '../page-decorators.js';
 
@@ -25,10 +26,29 @@ const bundle = [
 
 const listed = (overrides: Record<string, unknown>) => ({
   ...recorded,
-  provider: 'stripe', discountCents: 0, couponCode: null, couponId: null, paidAt: null, invoice: null, fulfilmentStatus: 'to_pack', shipment: null,
+  provider: 'stripe', discountCents: 0, couponCode: null, couponId: null, paidAt: null, invoice: null, billing: null, fulfilmentStatus: 'to_pack', shipment: null,
   attribution: { utmSource: 'www', utmMedium: 'cta' },
   ...overrides,
 });
+
+const companyBilling = { nip: '5555555555', companyName: 'Sample Printing Studio', address: 'Main Street 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' };
+const privateBilling = { ...companyBilling, nip: null, companyName: 'Sam Rivera' };
+
+const invoice = (orderId: string, overrides: Record<string, unknown> = {}) => ({
+  id: `invoice-${orderId}`, tenantId: recorded.tenantId, orderId, status: 'issued', provider: 'ifirma', providerInvoiceId: '1001',
+  invoiceNumber: 'FV/2026/11/001', pdfUrl: null, error: null, issuedAt: '2026-11-21T09:00:00.000Z', createdAt: '2026-11-21T09:00:00.000Z',
+  ...overrides,
+});
+
+const heldKsef = {
+  environment: 'test', credentialMode: 'test', schemaSystemCode: 'FA (3)', schemaVersion: '1-0E', contextNip: '5555555555',
+  sellerName: 'Studio', sellerAddress: 'Main Street 1', p2: null, invoiceType: 'VAT', issueDate: null, xmlArtifactKey: null,
+  xmlByteSize: null, xmlSha256: null, state: 'held', authConfigVersion: 1, sessionReference: null, invoiceReference: null,
+  ksefNumber: null, lastStatusCode: null, lastStatusDescription: null, lastStatusDetails: [], lastStatusExtensions: {},
+  lastPolledAt: null, acquisitionAt: null, invoicingAt: null, permanentStorageAt: null, upoArtifactKey: null, upoSha256: null,
+  upoRetrievedAt: null, originalSessionReference: null, originalKsefNumber: null, lastTransportError: null, retryAt: null,
+  attempt: 0, correlationChecks: 0, version: 0,
+};
 
 const orders = [
   listed({
@@ -55,7 +75,31 @@ const orders = [
     productTitle: 'Workshop recording access', fulfilmentStatus: null, attribution: null,
     lines: [line('Workshop recording access', 'course')],
   }),
+  listed({
+    id: 'order-demo-invoiced', createdAt: '2026-11-21T08:58:00.000Z', memberName: 'Alex Morgan', memberEmail: 'alex.morgan@example.com', amountCents: 8900,
+    productTitle: 'Printed workbook', billing: companyBilling, invoice: invoice('order-demo-invoiced'), fulfilmentStatus: 'shipped',
+    lines: [line('Printed workbook'), line('Parcel locker delivery', 'shipping')],
+  }),
+  listed({
+    id: 'order-demo-ksef-held', createdAt: '2026-11-20T15:12:00.000Z', memberName: 'Taylor Brooks', memberEmail: 'taylor.brooks@example.com', amountCents: 8900,
+    productTitle: 'Printed workbook', billing: companyBilling, invoice: invoice('order-demo-ksef-held', { status: 'requested', provider: 'ksef', providerInvoiceId: null, invoiceNumber: null, issuedAt: null, ksef: heldKsef }),
+    lines: [line('Printed workbook'), line('Parcel locker delivery', 'shipping')],
+  }),
+  listed({
+    id: 'order-demo-company', createdAt: '2026-11-19T11:40:00.000Z', memberName: 'Jordan Hale', memberEmail: 'jordan.hale@example.com', amountCents: 4900,
+    productTitle: 'Workshop recording access', billing: companyBilling, fulfilmentStatus: null, attribution: { utmSource: 'newsletter', utmMedium: 'email' },
+    lines: [line('Workshop recording access', 'course')],
+  }),
+  listed({
+    id: 'order-demo-private', createdAt: '2026-11-18T19:05:00.000Z', memberName: 'Sam Rivera', memberEmail: 'sam.rivera@example.com', amountCents: 4900,
+    productTitle: 'Workshop recording access', billing: privateBilling, fulfilmentStatus: null,
+    lines: [line('Workshop recording access', 'course')],
+  }),
 ];
+
+const listCall = (filters: Record<string, unknown> = {}) =>
+  `listOrders:[${JSON.stringify(Object.fromEntries(Object.entries({ ...filters, page: 1, pageSize: 25 }).sort(([a], [b]) => a.localeCompare(b, 'en'))))}]`;
+const requested = orders.filter((order) => order.billing !== null && order.status === 'paid');
 
 const meta = {
   title: 'Pages/PanelSalesList',
@@ -79,7 +123,9 @@ const meta = {
         'listCouponOptions:[]': { ok: true, value: { coupons: [] } },
         'listOrderReconciliation:[{}]': { ok: true, value: { rows: [], checkedThrough: '2026-06-01T12:00:00.000Z' } },
         'listPaymentEventRejections:[{}]': { ok: true, value: { rejections: [] } },
-        'listOrders:[{"page":1,"pageSize":25}]': { ok: true, value: { orders, total: orders.length, page: 1, pageSize: 25, sources: [] } },
+        'getListLayout:[{"listId":"orders"}]': { ok: true, value: { layout: null } },
+        [listCall()]: { ok: true, value: { orders, total: orders.length, page: 1, pageSize: 25, sources: ['meta', 'newsletter', 'www'] } },
+        [listCall({ billing: 'requested', status: 'paid' })]: { ok: true, value: { orders: requested, total: requested.length, page: 1, pageSize: 25, sources: ['meta', 'newsletter', 'www'] } },
       },
     },
   },
@@ -87,6 +133,37 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const ready = async (canvasElement: HTMLElement) => {
+  await document.fonts.ready;
+  return within(canvasElement).findByTestId('sales-grid', {}, { timeout: 10_000 });
+};
+
 export const Polish: Story = {};
 export const English: Story = { parameters: { locale: 'en' } };
 export const Dark: Story = { parameters: { colorScheme: 'dark' } };
+export const GridCapture: Story = {
+  name: 'Grid capture',
+  parameters: { locale: 'en', docs: { description: { story: 'Default grid layout in Shadcn, captured at the desktop and mobile widths; phones show the order cards.' } } },
+};
+export const ColumnsDialogOpen: Story = {
+  name: 'Columns dialog open',
+  parameters: { locale: 'en' },
+  play: async ({ canvasElement }) => {
+    await ready(canvasElement);
+    await userEvent.click(within(canvasElement).getByRole('button', { name: 'Columns' }));
+  },
+};
+export const FilterPopoverOpen: Story = {
+  name: 'Filter popover open',
+  parameters: { locale: 'en' },
+  play: async ({ canvasElement }) => {
+    const grid = await ready(canvasElement);
+    await userEvent.click(within(grid).getByRole('columnheader', { name: 'Invoice data' }));
+    await userEvent.keyboard('{Control>}{Enter}{/Control}');
+    await userEvent.click(await within(document.body).findByRole('menuitem', { name: 'Filter' }));
+  },
+};
+export const ActiveFilterChips: Story = {
+  name: 'Active filter chips',
+  parameters: { locale: 'en', fixture: { ...meta.parameters.fixture, route: '/panel/sales?billing=requested&status=paid' } },
+};

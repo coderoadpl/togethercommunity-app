@@ -3,8 +3,18 @@ import { BASE_ERROR_CODES } from 'better-auth';
 import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { err, MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
-import { emailEvents, members, passkey, session, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
+import {
+  err,
+  MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
+  normalizeEmail,
+  ok,
+  PASSWORD_MIN_LENGTH,
+  SMOKE_TENANT_PURCHASE_EMAIL,
+  SMOKE_TENANT_PURCHASE_USER_ID,
+  unavailable,
+  validation,
+} from '#core/domain/index.js';
+import { account, devEmails, emailEvents, members, passkey, session, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
 import { createDevEmailReader, createDevMagicLinkReader, createTenantTeamRepository } from '#adapters/db/repositories.js';
@@ -2657,5 +2667,149 @@ describe('operator owner lookup', () => {
     expect(await authPort.findUserByEmail(` ${email.toUpperCase()} `)).toEqual({ userId: owner.id, emailVerified: false });
     await internalAdapter.updateUser(owner.id, { emailVerified: true });
     expect(await authPort.findUserByEmail(email)).toEqual({ userId: owner.id, emailVerified: true });
+  });
+});
+
+describe('password-only purchase identity', () => {
+  const origin = 'http://studio.localhost:48730';
+
+  const seedPurchaseIdentity = async (auth: ReturnType<typeof buildAuth>['auth'], secret: string): Promise<void> => {
+    const db = database.db;
+    const now = new Date();
+    const { password } = await auth.$context;
+    await db.delete(user).where(eq(user.id, SMOKE_TENANT_PURCHASE_USER_ID));
+    await db.insert(user).values({
+      id: SMOKE_TENANT_PURCHASE_USER_ID, name: 'Purchase', email: SMOKE_TENANT_PURCHASE_EMAIL,
+      emailVerified: true, createdAt: now, updatedAt: now,
+    });
+    await db.insert(account).values({
+      id: crypto.randomUUID(), accountId: SMOKE_TENANT_PURCHASE_USER_ID, providerId: 'credential',
+      userId: SMOKE_TENANT_PURCHASE_USER_ID, password: await password.hash(secret), createdAt: now, updatedAt: now,
+    });
+  };
+
+  const purchaseSessions = async () =>
+    database.db.select({ id: session.id }).from(session).where(eq(session.userId, SMOKE_TENANT_PURCHASE_USER_ID));
+
+  const passwordSignIn = (auth: ReturnType<typeof buildAuth>['auth'], email: string, secret: string) =>
+    auth.handler(new Request(`${origin}/api/auth/sign-in/email`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin,
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify({ email, password: secret }),
+    }));
+
+  it('signs the identity in with its current password', async () => {
+    const { auth } = buildAuth();
+    await seedPurchaseIdentity(auth, CURRENT_PASSWORD);
+
+    const signedIn = await passwordSignIn(auth, SMOKE_TENANT_PURCHASE_EMAIL, CURRENT_PASSWORD);
+
+    expect(signedIn.status).toBe(200);
+    expect(signedIn.headers.get('set-auth-token')).not.toBeNull();
+    expect(await purchaseSessions()).toHaveLength(1);
+  });
+
+  it('creates no session for the identity from a magic link while an ordinary user still signs in', async () => {
+    const { auth, authPort, magicLinks } = buildAuth();
+    await seedPurchaseIdentity(auth, CURRENT_PASSWORD);
+    const ordinaryEmail = `purchase-neighbour-${crypto.randomUUID()}@together.dev`;
+    const follow = async (email: string) => {
+      await authPort.requestMagicLink({
+        email, callbackURL: `${origin}/`, tenantName: 'Studio', language: 'en', baseUrl: origin,
+      });
+      const link = await magicLinks.findByEmail(normalizeEmail(email));
+      return auth.handler(new Request(link?.url ?? ''));
+    };
+
+    const purchase = await follow(SMOKE_TENANT_PURCHASE_EMAIL);
+    const ordinary = await follow(ordinaryEmail);
+
+    expect(purchase.headers.get('set-auth-token')).toBeNull();
+    expect(purchase.headers.get('location')).toContain('error=failed_to_create_session');
+    expect(await purchaseSessions()).toEqual([]);
+    expect(await authPort.getAuthenticatedUser(new Headers({
+      authorization: `Bearer ${ordinary.headers.get('set-auth-token') ?? ''}`,
+    }))).toMatchObject({ email: ordinaryEmail });
+  });
+
+  it('refuses the identity a session created outside the password sign-in', async () => {
+    const { auth, authPort } = buildAuth();
+    await seedPurchaseIdentity(auth, CURRENT_PASSWORD);
+    const ordinary = await authPort.ensureUser(`purchase-direct-${crypto.randomUUID()}@together.dev`);
+    const { internalAdapter } = await auth.$context;
+
+    expect(await internalAdapter.createSession(SMOKE_TENANT_PURCHASE_USER_ID)).toBeNull();
+    expect(await internalAdapter.createSession(ordinary.userId)).toMatchObject({ userId: ordinary.userId });
+    expect(await purchaseSessions()).toEqual([]);
+  });
+
+  it('ends a password sign-in whose password rotates after verification without a session', async () => {
+    const { auth } = buildAuth();
+    await seedPurchaseIdentity(auth, OLD_PASSWORD);
+    const { password } = await auth.$context;
+    const rotatedHash = await password.hash(NEW_PASSWORD);
+    const verifyPassword = password.verify;
+    let releasePassword: () => void = () => undefined;
+    let passwordVerified: () => void = () => undefined;
+    const passwordReleased = new Promise<void>((resolve) => { releasePassword = resolve; });
+    const passwordChecked = new Promise<void>((resolve) => { passwordVerified = resolve; });
+    const verificationSpy = vi.spyOn(password, 'verify').mockImplementationOnce(async (input) => {
+      const valid = await verifyPassword(input);
+      passwordVerified();
+      await passwordReleased;
+      return valid;
+    });
+    const pendingSignIn = passwordSignIn(auth, SMOKE_TENANT_PURCHASE_EMAIL, OLD_PASSWORD);
+    try {
+      await passwordChecked;
+      await database.db.update(account).set({ password: rotatedHash })
+        .where(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID));
+      releasePassword();
+      const signedIn = await pendingSignIn;
+
+      expect(signedIn.status).toBe(401);
+      expect(await signedIn.json()).toMatchObject({ code: BASE_ERROR_CODES.INVALID_EMAIL_OR_PASSWORD.code });
+      expect(signedIn.headers.get('set-auth-token')).toBeNull();
+      expect(await purchaseSessions()).toEqual([]);
+    } finally {
+      releasePassword();
+      try {
+        await pendingSignIn;
+      } finally {
+        verificationSpy.mockRestore();
+      }
+    }
+  });
+
+  it('issues the identity no password-reset token or e-mail and links no provider login', async () => {
+    const { auth, db, emails, flushEmails } = buildAuth();
+    await seedPurchaseIdentity(auth, CURRENT_PASSWORD);
+    await flushEmails();
+    await auth.flushAuthEmails();
+    await db.delete(devEmails).where(eq(devEmails.to, SMOKE_TENANT_PURCHASE_EMAIL));
+    const { internalAdapter } = await auth.$context;
+
+    const requested = await auth.handler(new Request(`${origin}/api/auth/request-password-reset`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin, 'x-forwarded-for': `198.51.100.${signUpIpSuffix++}` },
+      body: JSON.stringify({ email: SMOKE_TENANT_PURCHASE_EMAIL, redirectTo: `${origin}/reset-password` }),
+    }));
+    await flushEmails();
+    await auth.flushAuthEmails();
+    const linked = await internalAdapter.linkAccount({
+      userId: SMOKE_TENANT_PURCHASE_USER_ID, providerId: 'google', accountId: 'google-purchase',
+    });
+
+    expect(requested.status).toBe(200);
+    expect(await db.select({ id: verification.id }).from(verification)
+      .where(eq(verification.value, SMOKE_TENANT_PURCHASE_USER_ID))).toEqual([]);
+    expect(await emails.findByRecipient(SMOKE_TENANT_PURCHASE_EMAIL)).toBeNull();
+    expect(linked).toBeNull();
+    expect(await db.select({ providerId: account.providerId }).from(account)
+      .where(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID))).toEqual([{ providerId: 'credential' }]);
   });
 });

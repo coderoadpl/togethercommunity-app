@@ -91,16 +91,16 @@ export const createSeedUsers = (db: Db, clock: Clock): SeedUsers => {
         .where(and(eq(account.userId, id), eq(account.providerId, 'credential')))
         .returning({ id: account.id });
       if (credentials.length === 0) {
-        await context.internalAdapter.linkAccount({
+        // Better Auth refuses to create any account for the password-only identity this seeds.
+        await db.insert(account).values({
+          id: crypto.randomUUID(),
           userId: id,
           accountId: id,
           providerId: 'credential',
           password: hashed,
+          createdAt: seededAt,
+          updatedAt: seededAt,
         });
-        await db
-          .update(account)
-          .set({ createdAt: seededAt, updatedAt: seededAt })
-          .where(eq(account.userId, id));
       }
       return id;
     },

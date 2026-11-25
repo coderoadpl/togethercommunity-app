@@ -1469,9 +1469,11 @@ pnpm --silent run cli --tenant acme orders personalization <orderId> <productId>
 `order delivery` reads the current order and sends expected previous values with
 the corrections. `--line1`, `--postal-code` and `--city` must be given together;
 `--line2` is optional, stays unchanged when omitted and is cleared with an empty
-string. A live InPost shipment or unresolved create attempt blocks corrections;
-change the receiver in InPost Manager instead. A known canceled label does not
-block corrections, and saving a correction does not replace it.
+string. If InPost has already assigned a shipment ID, change the receiver in
+InPost Manager. If a creation attempt is in progress or unresolved and no ID
+exists, refresh the shipment or discard the attempt before correcting the
+details. A known canceled label does not block corrections, and saving a
+correction does not replace it.
 
 `--shipping-rates` replaces the whole list; an empty string for
 `--inpost-geowidget-token` clears the token. `--checkout-return-origins` replaces

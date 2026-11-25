@@ -194,9 +194,9 @@ describe('checkout delivery step', () => {
     expect(bodies[0]).toMatchObject({ productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
   });
 
-  it('requires a Polish phone for an InPost courier and shows the courier hint and server refusal', async () => {
+  it('requires a Polish phone for an InPost courier without suggesting another courier', async () => {
     const bodies: unknown[] = [];
-    serve({ inpostOnly: true, onSession: (body) => bodies.push(body), sessionErrorCode: 'locker_phone_invalid' });
+    serve({ onSession: (body) => bodies.push(body), sessionErrorCode: 'locker_phone_invalid' });
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('radio', { name: /^InPost courier/u }));

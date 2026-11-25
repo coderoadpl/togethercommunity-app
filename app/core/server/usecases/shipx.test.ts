@@ -1031,6 +1031,14 @@ describe('InPost shipment view and label', () => {
   const ebook = productSchema.parse({ ...product('ebook', 'small'), type: 'digital_download', deliveryMethod: 'pickup', parcelTemplate: undefined });
   const course = productSchema.parse({ ...product('course', 'large'), type: 'course', deliveryMethod: 'pickup' });
 
+  it('exposes a held creation claim in the refreshed shipment without exposing its token', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: null, status: 'creating', createAttemptedAt: null, operationToken: 'held-token' });
+    const result = await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { shipment: { shipxShipmentId: null, createAttemptedAt: null, operationClaimed: true } } });
+    expect(JSON.stringify(result)).not.toContain('held-token');
+  });
+
   const sizedParcel = async (lines: OrderLine[] | undefined, catalog: ReturnType<typeof product>[]) => {
     const h = harness({ order: orderListItemSchema.parse({ ...baseOrder, lines }) });
     h.deps.products = { findByIds: async (_tenantId, productIds) => catalog.filter((row) => productIds.includes(row.id)) };

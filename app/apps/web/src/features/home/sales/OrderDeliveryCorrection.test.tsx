@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useQuery } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#core/client/index.js';
-import { SHIPX_STATUS_CANCELED, type OrderShipping, type ShipxOrderView } from '#core/domain/index.js';
+import { SHIPX_STATUS_CANCELED, type OrderShipping, type ShipxOrderView, type ShipxShipment } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
+import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
 import { OrderDeliveryCorrection, OrderDeliveryCorrectionDialog } from './OrderDeliveryCorrection.js';
@@ -15,6 +17,9 @@ const shipping: OrderShipping = {
   address: { name: 'Example Buyer', line1: 'Street 1', line2: null, postalCode: '00-001', city: 'Example City', country: 'PL' },
 };
 const ready: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'small', shipment: null };
+const shipment = (data: Partial<ShipxShipment> = {}): ShipxShipment => ({
+  shipxShipmentId: null, status: 'creating', trackingNumber: null, environment: 'production', createAttemptedAt: null, boughtAt: null, labelFetchedAt: null, createdAt: '2026-11-25T09:00:00.000Z', updatedAt: '2026-11-25T09:00:00.000Z', ...data,
+});
 const dialog = (change: Partial<Parameters<typeof OrderDeliveryCorrectionDialog>[0]> = {}) => {
   const onSave = vi.fn();
   const onClose = vi.fn();
@@ -27,10 +32,9 @@ afterEach(() => { vi.restoreAllMocks(); });
 describe('delivery correction UI', () => {
   it('saves, closes, refreshes order queries and does not discard shipment attempts', async () => {
     const order = { ...sampleBundleOrder, shipping, fulfilmentStatus: 'to_pack' as const };
-    const save = vi.spyOn(actions.correctOrderDelivery, 'mutationFn').mockResolvedValue({ order, recreateShipment: false });
+    const save = vi.spyOn(actions.correctOrderDelivery, 'mutationFn').mockResolvedValue({ order });
     const discard = vi.spyOn(actions.shipxDiscard, 'mutationFn');
-    const view = { ...ready, shipment: { shipxShipmentId: null, status: 'creating', trackingNumber: null, environment: 'production' as const, createAttemptedAt: null, boughtAt: null, labelFetchedAt: null, createdAt: '2026-11-25T09:00:00.000Z', updatedAt: '2026-11-25T09:00:00.000Z' } };
-    const { queryClient } = renderWithProviders(<OrderDeliveryCorrection order={order} view={view} canCorrect>{() => null}</OrderDeliveryCorrection>);
+    const { queryClient } = renderWithProviders(<OrderDeliveryCorrection order={order} view={ready} canCorrect>{() => null}</OrderDeliveryCorrection>);
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     await userEvent.click(screen.getByTestId('order-delivery-correct'));
     fireEvent.change(screen.getByLabelText('Recipient name'), { target: { value: 'Corrected Buyer' } });
@@ -40,6 +44,35 @@ describe('delivery correction UI', () => {
     expect(save.mock.calls[0]?.[0]).toEqual({ orderId: order.id, expected: { recipientName: 'Example Buyer' }, recipientName: 'Corrected Buyer' });
     expect(invalidate).toHaveBeenCalledWith(actions.ordersInvalidates());
     expect(discard).not.toHaveBeenCalled();
+  });
+  it.each([null, shipment({ shipxShipmentId: 'canceled', status: SHIPX_STATUS_CANCELED })])('restores correction after a shipment refusal and refetch (%o)', async (refreshedShipment) => {
+    const order = { ...sampleBundleOrder, shipping, fulfilmentStatus: 'to_pack' as const };
+    vi.spyOn(actions.correctOrderDelivery, 'mutationFn')
+      .mockRejectedValueOnce(new ApiError({ code: 'delivery_correction_shipment_exists', message: 'Shipment already exists' }))
+      .mockResolvedValue({ order });
+    const queryFn = vi.fn().mockResolvedValueOnce(ready).mockResolvedValue({ ...ready, shipment: refreshedShipment });
+    const CorrectionWithQuery = () => {
+      const view = useQuery({ ...actions.shipxRefreshedShipment(order.id), queryFn }).data;
+      return <OrderDeliveryCorrection order={order} view={view} canCorrect>{() => null}</OrderDeliveryCorrection>;
+    };
+    renderWithProviders(<CorrectionWithQuery />);
+    await userEvent.click(await screen.findByTestId('order-delivery-correct'));
+    fireEvent.change(screen.getByLabelText('Recipient name'), { target: { value: 'Corrected Buyer' } });
+    await userEvent.click(screen.getByTestId('delivery-correction-save'));
+    await waitFor(() => expect(screen.queryByTestId('delivery-correction-dialog')).not.toBeInTheDocument());
+    expect(queryFn).toHaveBeenCalledTimes(2);
+    await userEvent.click(screen.getByTestId('order-delivery-correct'));
+    expect(screen.getByRole('dialog', { name: en.deliveryCorrection.action })).not.toHaveTextContent(en.deliveryCorrection.shipmentRefresh);
+  });
+  it.each([
+    [{ ...shipment(), operationClaimed: true }, en.deliveryCorrection.shipmentAttempt],
+    [shipment({ status: 'unknown', createAttemptedAt: '2026-11-25T09:00:00.000Z' }), en.deliveryCorrection.shipmentAttempt],
+    [shipment({ status: 'offers_prepared', shipxShipmentId: 'shipment' }), en.deliveryCorrection.shipmentExists],
+  ] as const)('explains the shipment state blocking correction (%o)', (blockedShipment, message) => {
+    const order = { ...sampleBundleOrder, shipping, fulfilmentStatus: 'to_pack' as const };
+    renderWithProviders(<OrderDeliveryCorrection order={order} view={{ ...ready, shipment: blockedShipment }} canCorrect>{() => null}</OrderDeliveryCorrection>);
+    expect(screen.queryByTestId('order-delivery-correct')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(message);
   });
   it('offers delivery correction after a canceled InPost label', async () => {
     const order = { ...sampleBundleOrder, shipping, fulfilmentStatus: 'to_pack' as const };
@@ -51,6 +84,7 @@ describe('delivery correction UI', () => {
   it('keeps the country read-only and refuses a foreign locker phone inline', async () => {
     const h = dialog();
     expect(screen.getByLabelText('Country (read-only)')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Delivery phone')).toHaveAccessibleDescription(en.shipping.lockerPhoneHint);
     expect(screen.getByTestId('delivery-correction-save')).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Delivery phone'), { target: { value: '+44 7700 900000' } });
     expect(screen.getByTestId('delivery-correction-save')).toBeDisabled();
@@ -80,6 +114,7 @@ describe('delivery correction UI', () => {
   });
   it('rejects a foreign InPost courier phone without advising courier delivery', () => {
     dialog({ shipping: { ...shipping, pickupPoint: null } });
+    expect(screen.getByLabelText('Delivery phone')).toHaveAccessibleDescription(en.shipping.courierPhoneHint);
     fireEvent.change(screen.getByLabelText('Delivery phone'), { target: { value: '+44 7700 900000' } });
     expect(screen.getByTestId('delivery-correction-save')).toBeDisabled();
     expect(screen.getByText(/This is not a Polish mobile number/)).not.toHaveTextContent('choose courier');

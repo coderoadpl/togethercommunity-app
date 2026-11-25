@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { deliveryCorrectionInputSchema, correctOrderPersonalizationInputSchema, orderExportFileSchema, orderListItemSchema, packingListQuerySchema, shipOrderInputSchema } from '#core/domain/index.js';
 
 export const orderFulfilmentContracts = {
-  correctOrderDelivery: { input: deliveryCorrectionInputSchema, output: z.object({ order: orderListItemSchema, recreateShipment: z.boolean() }) },
+  correctOrderDelivery: { input: deliveryCorrectionInputSchema, output: z.object({ order: orderListItemSchema }) },
   shipOrder: { input: shipOrderInputSchema, output: z.object({ order: orderListItemSchema }) },
   ordersPackingList: { input: packingListQuerySchema, output: orderExportFileSchema },
   correctOrderPersonalization: { input: correctOrderPersonalizationInputSchema, output: z.object({ order: orderListItemSchema }) },

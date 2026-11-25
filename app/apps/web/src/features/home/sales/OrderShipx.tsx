@@ -22,12 +22,20 @@ interface OrderShipxProps {
 
 const AUTOMATIC = 'automatic';
 const receiverRejectionSchema = z.object({ error: z.literal('validation_failed'), fields: z.record(z.unknown()) });
-const receiverRejected = (error: unknown): boolean => {
+const editableReceiverFields = new Set([
+  'receiver.phone', 'receiver.first_name', 'receiver.last_name', 'receiver.address.street',
+  'receiver.address.building_number', 'receiver.address.post_code', 'receiver.address.city',
+]);
+const readOnlyReceiverFields = new Set(['receiver.email', 'receiver.country', 'receiver.country_code', 'receiver.address.country', 'receiver.address.country_code']);
+const receiverRejection = (error: unknown, usesLocker: boolean): 'editable' | 'email_or_country' | null => {
   const details = errorDetailsOf(error);
   const state = shipxErrorStateSchema.safeParse(details);
-  if (state.success && state.data.state === 'receiver_invalid') return true;
+  if (state.success && state.data.state === 'receiver_invalid') return 'editable';
   const rejected = receiverRejectionSchema.safeParse(details);
-  return rejected.success && Object.keys(rejected.data.fields).some((field) => field === 'receiver' || field.startsWith('receiver.') || field === 'custom_attributes.target_point');
+  if (!rejected.success) return null;
+  const fields = Object.keys(rejected.data.fields);
+  if (fields.some((field) => editableReceiverFields.has(field) || (usesLocker && (field === 'target_point' || field === 'custom_attributes.target_point')))) return 'editable';
+  return fields.length > 0 && fields.every((field) => readOnlyReceiverFields.has(field)) ? 'email_or_country' : null;
 };
 
 const hintReason = (reason: ShipxOrderView['reason']): (typeof SHIPX_SETUP_GAPS)[number] | null =>
@@ -51,6 +59,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const discardable = shipment !== null && shipment.shipxShipmentId === null;
   const awaitingPayment = shipment?.shipxShipmentId != null && !labelReady && !labelCanceled && view.reason === null;
   const failure = error === null ? null : localizeShipxError(error, t);
+  const rejection = receiverRejection(error, view.service === 'inpost_locker_standard');
   const service = t.shipx.services[view.service];
   const createsShipment = shipment?.shipxShipmentId == null && !unconfirmed;
   const chosenTemplate = createsShipment ? parcelTemplate : undefined;
@@ -108,7 +117,8 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
       {failure === null || (labelCanceled && failure.message === t.shipx.labelCanceled) ? null : (
         <Alert severity="error" data-testid="order-shipx-error">
           {failure.message}
-          {onCorrectDelivery !== undefined && receiverRejected(error) ? <Button onClick={onCorrectDelivery}>{t.deliveryCorrection.action}</Button> : null}
+          {onCorrectDelivery !== undefined && rejection === 'editable' ? <Button onClick={onCorrectDelivery}>{t.deliveryCorrection.action}</Button> : null}
+          {rejection === 'email_or_country' ? <Typography component="div" variant="body2">{t.deliveryCorrection.receiverEmailOrCountry}</Typography> : null}
           {failure.detail === null ? null : <Typography component="div" variant="body2">{t.shipx.errorDetail({ detail: failure.detail })}</Typography>}
         </Alert>
       )}

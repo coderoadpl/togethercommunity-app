@@ -1154,6 +1154,9 @@ export interface Messages {
   };
   deliveryCorrection: {
     shipmentExists: string;
+    shipmentAttempt: string;
+    shipmentRefresh: string;
+    receiverEmailOrCountry: string;
     memberErased: string;
     conflict: string;
     action: string;

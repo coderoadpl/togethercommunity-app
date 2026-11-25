@@ -9,7 +9,7 @@ export const correctOrderDelivery = async (
   ctx: Ctx,
   input: unknown,
   deps: { deliveries: OrderDeliveryRepository; orderDetails: OrderDetailRepository; pickupPoints?: PickupPointDirectory | undefined; clock: Clock },
-): Promise<Result<{ order: OrderListItem; recreateShipment: boolean }, AppError>> => {
+): Promise<Result<{ order: OrderListItem }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:write');
   if (!tenant.ok) return tenant;
   const parsed = deliveryCorrectionInputSchema.safeParse(input);

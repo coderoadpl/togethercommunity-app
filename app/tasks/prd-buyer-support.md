@@ -69,7 +69,7 @@ paying that only a Polish mobile number works, so my parcel is not stuck.
 - [ ] The order stores the canonical `+48XXXXXXXXX` form.
 - [ ] Polish and English copy.
 - [ ] The project's own checks pass.
-- [ ] Verified in the running app (skills `run` / `codex-computer-use`).
+- [ ] Verified in the running app.
 
 #### US-002: Staff correct delivery details of an order to pack
 **Description:** As staff, I want to correct the delivery phone, the recipient name,
@@ -93,7 +93,7 @@ created again without a database edit.
 contact for messages without an order) to hold every entry.
 
 **Acceptance Criteria:**
-- [ ] New additive tables for conversations and entries (tenant-scoped, migration numbers assigned by the deployments thread).
+- [ ] New additive tables for conversations and entries (tenant-scoped, migration numbers assigned by the release coordinator).
 - [ ] Entry kinds: `email_out`, `email_in`, `sms_out`, `sms_in`, `note`, plus read-only references to automatic e-mails already in the outbox. No closed enum the previous release reads gets a new value.
 - [ ] Rollback proven against literal copies of the production release's schemas.
 - [ ] The project's own checks pass.
@@ -307,7 +307,7 @@ messages.
 ## 10. Pull request plan
 
 Each slice is one pull request against `staging`, reviewed locally first. Migration
-numbers come from the deployments thread.
+numbers come from the release coordinator.
 
 | # | Slice | Owner sees after merge | Needs |
 | --- | --- | --- | --- |

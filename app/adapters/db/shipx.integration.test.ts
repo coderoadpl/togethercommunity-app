@@ -50,6 +50,13 @@ const readRow = async (repository: ShipxShipmentRepository, orderId: string) => 
   return row;
 };
 
+it('loads a previously stored sender with a leading zero in the phone number', async () => {
+  const legacySender = { ...sender, phone: '050000000' };
+  const tenantId = 'legacy-workspace';
+  await database.db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Legacy workspace', createdAt: now, shipxSender: legacySender });
+  expect(await createShipxSettingsRepository(database.db).findSender(tenantId)).toEqual(legacySender);
+});
+
 describe('ShipX shipment repository', () => {
   it('acquires an order once, reports a running operation and lets an expired lease be taken over', async () => {
     const repository = createShipxShipmentRepository(database.db);

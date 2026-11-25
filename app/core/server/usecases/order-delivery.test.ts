@@ -29,7 +29,7 @@ const harness = (change: Partial<OrderListItem> = {}) => {
     const corrected = correctedOrderShipping(order.shipping, command);
     if (!corrected.ok) return corrected;
     order = { ...order, shipping: corrected.value };
-    return ok({ order, recreateShipment: shipments.length > 0 });
+    return ok({ order });
   });
   return { correctDelivery, lookup, shipments, deps: {
     deliveries: { correctDelivery }, pickupPoints: { lookup }, clock: { nowIso: () => '2026-11-25T10:00:00.000Z' },
@@ -66,7 +66,7 @@ describe('correct order delivery', () => {
     expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { phone: null, pickupPoint: 'ABC01M' }, phone: '500 000 000', pickupPoint: { code: 'abc02m', name: 'Untrusted', address: 'Untrusted' } }, h.deps)).toMatchObject({ ok: true, value: { order: { shipping: {
       phone: '+48500000000', pickupPoint: { code: 'ABC02M', name: 'From directory', address: 'Directory Street 2' },
       corrections: [{ field: 'phone', byUserId: 'staff', byEmail: 'staff@example.org' }, { field: 'pickup_point', from: 'ABC01M', to: 'ABC02M' }],
-    } }, recreateShipment: false } });
+    } } } });
     expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { recipientName: 'Example Buyer' }, recipientName: 'Corrected Buyer' }, h.deps)).toMatchObject({ ok: true, value: { order: { shipping: { corrections: [expect.anything(), expect.anything(), { field: 'recipient_name', from: 'Example Buyer', to: 'Corrected Buyer', at: '2026-11-25T10:00:00.000Z', byUserId: 'staff', byEmail: 'staff@example.org' }] } } } });
   });
   it.each(['not_found', 'unavailable'] as const)('refuses an unverified locker: %s', async (kind) => {

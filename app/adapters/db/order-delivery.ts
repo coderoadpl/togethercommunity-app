@@ -26,7 +26,7 @@ export const createOrderDeliveryRepository = (db: Db): OrderDeliveryRepository =
       if (!corrected.ok) return corrected;
       await tx.update(orders).set({ shipping: corrected.value }).where(and(eq(orders.tenantId, tenantId), eq(orders.id, orderId)));
       const updated = await createOrderRepository(tx).findById(tenantId, orderId);
-      return updated === null ? err(notFound('Order was not found')) : ok({ order: updated, recreateShipment: false });
+      return updated === null ? err(notFound('Order was not found')) : ok({ order: updated });
     });
     return result;
   },

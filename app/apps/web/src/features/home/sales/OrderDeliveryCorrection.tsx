@@ -1,6 +1,6 @@
 import { Alert, Button, Stack, TextField } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { z } from 'zod';
 import { deliveryCorrectionInputSchema, deliveryCorrectionReasonSchema, normalizeLockerPhone, rateNeedsPolishMobile, orderShipmentAllowed, SHIPX_STATUS_CANCELED, shipxLabelUsable, type DeliveryCorrectionInput, type OrderListItem, type OrderShipping, type ShipxOrderView } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
@@ -49,6 +49,7 @@ export const OrderDeliveryCorrectionDialog = ({ orderId, shipping, pending, erro
   const copy = t.deliveryCorrection;
   const [original] = useState(shipping);
   const [draft, setDraft] = useState(() => draftOf(shipping));
+  const phoneHint = !rateNeedsPolishMobile(original) ? undefined : original.pickupPoint === null ? t.shipping.courierPhoneHint : t.shipping.lockerPhoneHint;
   const input = correctionOf(orderId, original, draft);
   const parsed = deliveryCorrectionInputSchema.safeParse(input);
   const errors: Partial<Record<keyof Draft, string>> = {};
@@ -71,7 +72,7 @@ export const OrderDeliveryCorrectionDialog = ({ orderId, shipping, pending, erro
       pending={pending} confirmDisabled={!valid} onClose={onClose} onConfirm={() => { if (parsed.success && valid) onSave(parsed.data); }}
       confirmTestId="delivery-correction-save" data-testid="delivery-correction-dialog"
       body={<>
-        {field('phone', copy.phone, rateNeedsPolishMobile(original) ? t.shipping.courierPhoneHint : undefined)}
+        {field('phone', copy.phone, phoneHint)}
         {field('recipientName', copy.recipientName)}
         {field('line1', copy.line1)}{field('line2', copy.line2)}{field('postalCode', copy.postalCode)}{field('city', copy.city)}
         <TextField fullWidth label={copy.country} value={shipping.address.country} slotProps={{ input: { readOnly: true } }} />
@@ -87,24 +88,28 @@ export const OrderDeliveryCorrection = ({ order, view, canCorrect, children }: {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
+  const shipmentQuery = actions.shipxShipmentInvalidates(order.id);
   const correction = useMutation({
     ...actions.correctOrderDelivery,
     onSuccess: async () => {
       setOpen(false);
       await queryClient.invalidateQueries(actions.ordersInvalidates());
-      await queryClient.invalidateQueries(actions.shipxShipmentInvalidates(order.id));
     },
-    onError: async () => {
+    onError: async (error) => {
       await queryClient.invalidateQueries(actions.ordersInvalidates());
-      await queryClient.invalidateQueries(actions.shipxShipmentInvalidates(order.id));
+      if (errorCodeOf(error) === 'delivery_correction_shipment_exists' && queryClient.getQueryState(shipmentQuery.queryKey)?.status === 'success') setOpen(false);
     },
   });
-  if (order.shipping == null) return children(undefined);
   const shipment = view?.shipment?.status === SHIPX_STATUS_CANCELED ? null : view?.shipment;
-  const refused = errorCodeOf(correction.error);
-  const bought = (shipment != null && (shipxLabelUsable(shipment) || shipment.boughtAt !== null)) || refused === 'delivery_correction_shipment_bought';
-  const shipped = order.fulfilmentStatus === 'shipped' || refused === 'delivery_correction_shipped';
-  const exists = (shipment != null && (shipment.shipxShipmentId !== null || shipment.createAttemptedAt !== null)) || refused === 'delivery_correction_shipment_exists';
+  const bought = shipment != null && (shipxLabelUsable(shipment) || shipment.boughtAt !== null);
+  const shipped = order.fulfilmentStatus === 'shipped';
+  const exists = shipment != null && (shipment.shipxShipmentId !== null || shipment.createAttemptedAt !== null || shipment.operationClaimed === true);
+  const { error, reset } = correction;
+  useEffect(() => {
+    if (view !== undefined && !exists && !bought && errorCodeOf(error) === 'delivery_correction_shipment_exists' &&
+      queryClient.getQueryState(actions.shipxShipmentInvalidates(order.id).queryKey)?.status === 'success') reset();
+  }, [bought, error, exists, order.id, queryClient, reset, view]);
+  if (order.shipping == null) return children(undefined);
   const allowed = canCorrect && !bought && !shipped && !exists && orderShipmentAllowed(order).ok && (order.shipping.carrier !== 'inpost' || view !== undefined);
   const show = () => { correction.reset(); setOpen(true); };
   return (
@@ -113,7 +118,7 @@ export const OrderDeliveryCorrection = ({ order, view, canCorrect, children }: {
         {allowed ? <Button variant="outlined" onClick={show} data-testid="order-delivery-correct">{t.deliveryCorrection.action}</Button> : null}
         {!canCorrect || (!bought && !shipped) ? null : <Alert severity="info">{bought ? t.deliveryCorrection.bought : t.deliveryCorrection.shipped}</Alert>}
         {correction.isSuccess ? <Alert severity="success">{t.deliveryCorrection.saved}</Alert> : null}
-        {canCorrect && exists && !bought && !shipped ? <Alert severity="info">{t.deliveryCorrection.shipmentExists}</Alert> : null}
+        {canCorrect && shipment != null && exists && !bought && !shipped ? <Alert severity="info">{shipment.shipxShipmentId === null ? t.deliveryCorrection.shipmentAttempt : t.deliveryCorrection.shipmentExists}</Alert> : null}
       </Stack>
       {children(allowed ? show : undefined)}
       <OrderDeliveryCorrectionHistory shipping={order.shipping} />

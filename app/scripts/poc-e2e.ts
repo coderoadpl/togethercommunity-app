@@ -815,7 +815,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
 
   const oneStepPurchase = expectOk(await cli([
     '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipx-dispatch@example.org', '--product', shippedProduct.id,
-    '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
+    '--shipping-rate', 'locker', '--pickup-point', 'WAW02M', '--shipping-phone', '+48 500 000 000',
   ], buyerHome), 'one-step InPost purchase', simulatePurchaseOutputSchema);
   assert(oneStepPurchase.orderId !== null, 'The one-step purchase should return its order id');
   const oneStepShipment = expectOk(await cli([

@@ -34,7 +34,7 @@ const harness = (correctPersonalization: OrderPersonalizationRepository['correct
     const current = stored.find((row) => row.id === command.input.orderId && row.tenantId === tenantId);
     if (current?.shipping == null) return err(notFound());
     const corrected = correctedOrderShipping(current.shipping, command);
-    return corrected.ok ? ok({ order: { ...current, shipping: corrected.value }, recreateShipment: false }) : corrected;
+    return corrected.ok ? ok({ order: { ...current, shipping: corrected.value } }) : corrected;
   });
   const app = new Hono<AppVars>();
   app.use('*', async (c, next) => { c.set('identity', viewer); await next(); });
@@ -133,7 +133,7 @@ describe('order delivery correction HTTP route', () => {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: 'test-order', phone: '500 000 000', expected: { phone: null } }),
     });
     expect(response.status).toBe(200);
-    const body = z.object({ data: z.object({ order: orderListItemSchema, recreateShipment: z.boolean() }) }).parse(await response.json());
+    const body = z.object({ data: z.object({ order: orderListItemSchema }).strict() }).parse(await response.json());
     expect(body.data.order.id).toBe('live-order');
     expect(body.data.order.shipping?.corrections).toEqual([{ field: 'phone', from: null, to: '+48500000000', at: '2026-11-05T10:00:00.000Z', byUserId: 'staff', byEmail: 'staff@example.org' }]);
   });

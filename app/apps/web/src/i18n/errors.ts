@@ -123,7 +123,7 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
     case 'delivery_correction_shipped':
       return t.deliveryCorrection.shipped;
     case 'delivery_correction_shipment_exists':
-      return t.deliveryCorrection.shipmentExists;
+      return t.deliveryCorrection.shipmentRefresh;
     case 'delivery_correction_member_erased':
       return t.deliveryCorrection.memberErased;
     case 'delivery_correction_conflict':

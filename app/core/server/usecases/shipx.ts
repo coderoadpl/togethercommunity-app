@@ -333,7 +333,7 @@ const orderShipmentState = async (tenantId: string, input: unknown, deps: ShipxV
 };
 
 const orderShipmentView = (state: OrderShipmentState, shipment: ShipxShipmentRecord | null): ShipxOrderView =>
-  ({ ...state.view, shipment: shipment === null ? null : publicShipment(shipment) });
+  ({ ...state.view, shipment: shipment === null ? null : { ...publicShipment(shipment), operationClaimed: shipment.operationToken !== null } });
 
 export const getInpostShipment = async (
   ctx: Ctx,

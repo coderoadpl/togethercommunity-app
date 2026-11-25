@@ -473,7 +473,7 @@ beforeEach(() => {
   h.createOrderRefund.mockReset().mockResolvedValue(ok({ created: true, refund: { id: 'refund-1', kind: 'amount', status: 'pending', amountCents: 1250, currency: 'PLN', restocked: false, removedFromPackingList: false } }));
   h.shipOrderAnyway.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' } }));
   h.getOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', shipping: { phone: null, pickupPoint: { code: 'ABC02M' }, address: { name: 'Original Buyer', line1: 'Street 1', line2: 'Apartment 2', postalCode: '00-001', city: 'City' } } } }));
-  h.correctOrderDelivery.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' }, recreateShipment: false }));
+  h.correctOrderDelivery.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.listPaymentEventRejections.mockReset().mockResolvedValue(ok({ rejections: [] }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
@@ -2634,6 +2634,7 @@ describe('personalisation CLI', () => {
   it('corrects delivery details through the order alias', async () => {
     await run('--json', 'order', 'delivery', 'order-number', '--phone', '500000000', '--recipient-name', 'Example Buyer', '--locker', 'ABC01M');
     expect(h.correctOrderDelivery).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', expected: { phone: null, recipientName: 'Original Buyer', pickupPoint: 'ABC02M' }, phone: '500000000', recipientName: 'Example Buyer', pickupPoint: { code: 'ABC01M' } });
+    expect(soleJson()).toEqual({ ok: true, data: { order: { id: 'order-number' } } });
   });
 
   it('corrects the personalisation text of an order line through the order alias', async () => {

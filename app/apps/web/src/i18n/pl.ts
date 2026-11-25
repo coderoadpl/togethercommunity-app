@@ -1398,7 +1398,10 @@ export const pl: Messages = {
   },
   deliveryCorrection: {
     shipmentExists: 'Przesyłka InPost jest już utworzona — zmień odbiorcę w Managerze Paczek InPost.',
-    memberErased: 'Dane tego członka zostały usunięte. Nie można zmienić danych dostawy.',
+    shipmentAttempt: 'Trwa lub nie zakończyła się próba utworzenia przesyłki. Odśwież przesyłkę albo odrzuć tę próbę, potem popraw dane.',
+    shipmentRefresh: 'Odśwież przesyłkę przed poprawieniem danych dostawy.',
+    receiverEmailOrCountry: 'InPost odrzucił adres e-mail lub kraj odbiorcy — tych danych nie poprawisz w tym formularzu.',
+    memberErased: 'Dane tego uczestnika zostały usunięte. Nie można zmienić danych dostawy.',
     conflict: 'Ktoś właśnie zmienił te dane. Odśwież i spróbuj ponownie.',
     action: 'Popraw dane dostawy',
     save: 'Zapisz dane dostawy',
@@ -1418,7 +1421,7 @@ export const pl: Messages = {
     postalInvalid: 'Wpisz kod pocztowy w formacie 00-000.',
     fields: { phone: 'Telefon', recipient_name: 'Odbiorca', address: 'Adres', pickup_point: 'paczkomat' },
     reasons: {
-      unchanged: 'Przed zapisem zmień co najmniej jedną daną dostawy.',
+      unchanged: 'Przed zapisem zmień co najmniej jedno pole danych dostawy.',
       history_full: 'Osiągnięto limit 50 zmian danych dostawy dla tego zamówienia.',
       country: 'Ten kraj dostawy nie jest obsługiwany. Skontaktuj się z pomocą techniczną.',
       postal_code: 'Wpisz kod pocztowy w formacie 00-000.',

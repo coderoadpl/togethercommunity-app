@@ -56,6 +56,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   const phoneInvalid = state.lockerPhoneValidationFailed || (phoneTouched && normalizeLockerPhone(state.lockerPhone) === null);
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
   const usesLocker = selected?.pickupPoint === 'inpost_locker';
+  const canSwitchToCourier = usesLocker && rates.some((rate) => rate.carrier !== 'inpost' && rate.pickupPoint === 'none');
   const [codeBlurred, setCodeBlurred] = useState(false);
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
   const check = typedLockerCheck(state);
@@ -180,7 +181,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
         onBlur={() => setPhoneTouched(true)}
       />
       <FormHelperText id={`${phoneId}-hint`} error={false} sx={{ mx: 0 }}>{usesLocker ? t.shipping.lockerPhoneHint : t.shipping.courierPhoneHint}</FormHelperText>
-      {phoneInvalid ? <FormHelperText id={`${phoneId}-error`} role="alert" sx={{ mx: 0 }}>{rates.some((rate) => !rateNeedsPolishMobile(rate)) ? t.shipping.lockerPhoneInvalid : t.shipping.inpostPhoneInvalid}</FormHelperText> : null}
+      {phoneInvalid ? <FormHelperText id={`${phoneId}-error`} role="alert" sx={{ mx: 0 }}>{canSwitchToCourier ? t.shipping.lockerPhoneInvalid : t.shipping.inpostPhoneInvalid}</FormHelperText> : null}
     </FormControl>
   ) : null;
   const lockerChoice = picked === null ? (

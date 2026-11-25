@@ -4,10 +4,10 @@ import { DELETED_MEMBER_DISPLAY, memberTombstone, orderSchema, SHIPX_STATUS_CANC
 import { createOrderDeliveryRepository } from './order-delivery.js';
 import { createMemberErasureRepository, createOrderRepository } from './repositories.js';
 import { createShipxShipmentRepository } from './shipx.js';
-import { checkoutSnapshots, members, orderChanges, orderShipments, orders, products, tenants, user } from './schema.js';
+import { checkoutSnapshots, couponCheckoutSessions, coupons, members, orderChanges, orderShipments, orders, products, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
-const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together_buyer_support';
+const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
 const now = '2026-11-25T10:00:00.000Z';
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
 const shipping = {
@@ -78,7 +78,7 @@ describe('delivery correction persistence', () => {
     await createOrderRepository(database.db).create('workspace', order('canceled-label'));
     await seedShipment('canceled-label', { status: SHIPX_STATUS_CANCELED, trackingNumber: 'TRACK001', boughtAt: now, createAttemptedAt: now });
     expect(await createOrderDeliveryRepository(database.db).correctDelivery('workspace', command('canceled-label'))).toMatchObject({
-      ok: true, value: { order: { shipping: { phone: '+48500000000' } }, recreateShipment: false },
+      ok: true, value: { order: { shipping: { phone: '+48500000000' } } },
     });
     const [shipment] = await database.db.select().from(orderShipments).where(and(eq(orderShipments.tenantId, 'workspace'), eq(orderShipments.orderId, 'canceled-label')));
     expect(shipment).toMatchObject({ status: SHIPX_STATUS_CANCELED, trackingNumber: 'TRACK001', providerShipmentId: 'draft' });
@@ -107,18 +107,38 @@ describe('delivery correction persistence', () => {
   });
   it('removes historical delivery personal data when the member is erased', async () => {
     await createOrderRepository(database.db).create('workspace', { ...order('snapshot-order'), providerObjectIds: { checkoutSession: 'session-erased' } });
-    for (const tenantId of ['workspace', 'other']) await database.db.insert(checkoutSnapshots).values({
-      id: tenantId + '-snapshot', tenantId, providerSessionId: 'session-erased', currency: 'PLN', lines: [], createdAt: now,
+    await database.db.insert(coupons).values({ id: 'coupon', tenantId: 'workspace', code: 'SAVE', kind: 'percent', value: 10, scope: { kind: 'all' }, appliesTo: 'one_time', createdAt: now });
+    const abandoned = { tenantId: 'workspace', couponId: 'coupon', productId: 'book', originalCents: 1200, discountCents: 120, finalCents: 1080, currency: 'PLN', startedAt: now };
+    await database.db.insert(couponCheckoutSessions).values([
+      { ...abandoned, id: 'coupon-buyer', providerSessionId: 'session-abandoned', memberEmail: 'Buyer@example.org' },
+      { ...abandoned, id: 'coupon-unrelated', providerSessionId: 'session-unrelated', memberEmail: 'someone@example.org' },
+      { ...abandoned, id: 'coupon-other-order', providerSessionId: 'session-other-order', memberEmail: 'buyer@example.org' },
+    ]);
+    await database.db.insert(user).values({ id: 'other-buyer', email: 'other@example.org', name: 'Other Buyer' });
+    await database.db.insert(members).values({ id: 'other-member', tenantId: 'workspace', userId: 'other-buyer', email: 'other@example.org', displayName: 'Other Buyer', createdAt: now });
+    await createOrderRepository(database.db).create('workspace', { ...order('other-order'), memberId: 'other-member', providerObjectIds: { checkoutSession: 'session-other-order' } });
+    const snapshotSessions = [
+      { tenantId: 'workspace', providerSessionId: 'session-erased' },
+      { tenantId: 'other', providerSessionId: 'session-erased' },
+      { tenantId: 'workspace', providerSessionId: 'session-abandoned' },
+      { tenantId: 'other', providerSessionId: 'session-abandoned' },
+      { tenantId: 'workspace', providerSessionId: 'session-unrelated' },
+      { tenantId: 'workspace', providerSessionId: 'session-unlinked' },
+      { tenantId: 'workspace', providerSessionId: 'session-other-order' },
+    ];
+    await database.db.insert(checkoutSnapshots).values(snapshotSessions.map<typeof checkoutSnapshots.$inferInsert>(({ tenantId, providerSessionId }) => ({
+      id: `${tenantId}:${providerSessionId}`, tenantId, providerSessionId, currency: 'PLN', lines: [], createdAt: now,
       shipping: { rateId: 'locker', label: 'Locker', amountCents: 1200, vatRatePercent: 23, carrier: 'inpost', pickupPoint: null, allowedCountries: ['PL'], phone: '+48500000000' },
-    });
+    })));
     const tombstone = memberTombstone('member');
     await createMemberErasureRepository(database.db, { compute: (tenantId, value) => `${tenantId}:${value}` }).pseudonymize('workspace', {
       memberId: 'member', deletedAt: now, tombstoneEmail: tombstone.email, severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY,
     });
     const [stored] = await database.db.select().from(orders).where(eq(orders.id, 'concurrent'));
     const snapshots = await database.db.select().from(checkoutSnapshots);
-    expect(snapshots.find((row) => row.tenantId === 'workspace')?.shipping).not.toHaveProperty('phone');
-    expect(snapshots.find((row) => row.tenantId === 'other')?.shipping).toHaveProperty('phone', '+48500000000');
+    const redacted = snapshots.filter((row) => row.shipping != null && !('phone' in row.shipping));
+    expect(redacted.map((row) => row.id).sort()).toEqual(['workspace:session-abandoned', 'workspace:session-erased']);
+    expect(snapshots).toHaveLength(snapshotSessions.length);
     expect(await createOrderDeliveryRepository(database.db).correctDelivery('workspace', command('snapshot-order'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_member_erased' } });
     expect(stored?.shipping?.corrections ?? []).toEqual([]);
     expect(JSON.stringify(stored?.shipping)).not.toContain('Corrected Buyer');

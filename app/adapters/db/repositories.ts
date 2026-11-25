@@ -8,7 +8,7 @@ import { erasedPersonalizationLines, erasedPurchasePersonalizations, linesHavePe
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers, storedProductCompliance, type StoredProductCompliance } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
-import { and, asc, desc, eq, exists, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
@@ -2936,12 +2936,23 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), eq(orders.id, metaCapiOutbox.orderId),
         ))),
       ));
+      const snapshotOrder = and(
+        eq(orders.tenantId, tenantId),
+        eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
+      );
       await tx.update(checkoutSnapshots).set({ shipping: sql`${checkoutSnapshots.shipping} - 'phone'` }).where(and(
         eq(checkoutSnapshots.tenantId, tenantId),
-        exists(tx.select({ id: orders.id }).from(orders).where(and(
-          eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
-          eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
-        ))),
+        or(
+          exists(tx.select({ id: orders.id }).from(orders).where(and(snapshotOrder, eq(orders.memberId, input.memberId)))),
+          and(
+            notExists(tx.select({ id: orders.id }).from(orders).where(snapshotOrder)),
+            exists(tx.select({ id: couponCheckoutSessions.id }).from(couponCheckoutSessions).where(and(
+              eq(couponCheckoutSessions.tenantId, tenantId),
+              eq(couponCheckoutSessions.providerSessionId, checkoutSnapshots.providerSessionId),
+              sql`lower(${couponCheckoutSessions.memberEmail}) = lower(${member.email})`,
+            ))),
+          ),
+        ),
       ));
       const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({

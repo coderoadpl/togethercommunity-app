@@ -1352,6 +1352,9 @@ export const en: Messages = {
   },
   deliveryCorrection: {
     shipmentExists: 'An InPost shipment already exists — change the receiver in InPost Manager.',
+    shipmentAttempt: 'A shipment creation attempt is in progress or unresolved. Refresh the shipment or discard the attempt, then correct the details.',
+    shipmentRefresh: 'Refresh the shipment before correcting the delivery details.',
+    receiverEmailOrCountry: "InPost rejected the receiver's e-mail or country — these cannot be changed in this form.",
     memberErased: 'This member has been erased. Delivery details cannot be changed.',
     conflict: 'Someone just changed these details. Refresh and try again.',
     action: 'Correct delivery details',

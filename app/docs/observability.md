@@ -590,7 +590,13 @@ for that account (once), one consent capture of the sales-link checkout, and
 two staff refunds with their provider refunds. On staging also the fixture
 rates, product, price, stock row, course VAT rate and sales link (once), a new
 test-slot webhook endpoint replacing the previous one, and the forwarding
-signing secret; on production the run writes no setting, fixture or secret.
+signing secret; on production the run writes no setting, fixture or secret (the
+provider's verified test webhooks update the test-slot event timestamp). Each
+staff refund wakes the shared refund dispatcher, which may also process other
+workspaces' already approved refund jobs before the next minute tick; it creates
+none. Before a refund the run checks that the order is a test order of the test
+payment it made, and afterwards that the provider lists exactly one refund of
+that payment.
 Every order carries `mode=test` and the client reference
 `purchase-e2e:<run id>`; test rows stay out of revenue, exports and
 reconciliation. Test-mode purchases send no Together e-mail to members. On

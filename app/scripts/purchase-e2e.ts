@@ -562,6 +562,11 @@ export const runPurchaseE2e = async (
   const refund = async (purchased: Purchase, amountCents: number | null, expectedStatus: 'refunded' | 'partially_refunded'): Promise<void> => {
     const preview = valueOf(await api.orderRefundPreview({ orderId: purchased.orderId }), 'refund preview');
     if (!preview.refundable) throw new Error(`order ${purchased.orderId} is not refundable: ${preview.blockedReason ?? 'no reason'}`);
+    if (preview.mode !== 'test') throw new Error(`order ${purchased.orderId} is a ${preview.mode} order; the run refunds only test orders`);
+    const before = valueOf(await api.getOrder(purchased.orderId), 'order read').order;
+    if (before.mode !== 'test' || before.providerObjectIds['paymentIntent'] !== purchased.paymentIntentId) {
+      throw new Error(`order ${purchased.orderId} is not the test payment ${purchased.paymentIntentId} this run made`);
+    }
     const created = valueOf(await api.createOrderRefund({
       orderId: purchased.orderId,
       requestKey: `purchase-e2e:${options.runId}:${purchased.orderId}`,
@@ -592,6 +597,9 @@ export const runPurchaseE2e = async (
     }
     const refunds = await listPaymentRefunds(request, options.keys.restricted, purchased.paymentIntentId);
     if (refunds.length !== 1) throw new Error(`payment ${purchased.paymentIntentId} lists ${String(refunds.length)} refunds, expected exactly one`);
+    if (refunds.some((candidate) => candidate.payment_intent !== purchased.paymentIntentId)) {
+      throw new Error(`the provider listed a refund of another payment for ${purchased.paymentIntentId}`);
+    }
     const [providerRefund] = refunds;
     if (providerRefund?.amount !== refundAmount) throw new Error(`the provider refunded ${String(providerRefund?.amount)}, expected ${String(refundAmount)}`);
     if (providerRefund.status !== 'succeeded') throw new Error(`the provider refund is ${String(providerRefund.status)}, expected succeeded`);

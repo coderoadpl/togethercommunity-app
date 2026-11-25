@@ -205,6 +205,7 @@ const providerRefundListSchema = z.object({
     id: z.string(),
     amount: z.number().int(),
     status: z.string().nullable(),
+    payment_intent: z.string().nullable(),
     metadata: z.record(z.string()).nullable().optional(),
   })),
   has_more: z.boolean(),

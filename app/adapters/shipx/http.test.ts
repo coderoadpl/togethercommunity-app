@@ -23,6 +23,7 @@ const sender = shipxSenderSchema.parse({
 const lockerRequest: ShipxShipmentRequest = {
   reference: 'order-1',
   service: 'inpost_locker_standard',
+  sendingMethod: 'parcel_locker',
   parcelTemplate: 'medium',
   targetPoint: 'BTO02M',
   receiver: { firstName: 'Jan', lastName: 'Kowalski', email: 'receiver@example.com', phone: '111222333', address: null },
@@ -72,18 +73,19 @@ describe('ShipX HTTP client', () => {
       },
       receiver: { first_name: 'Jan', last_name: 'Kowalski', email: 'receiver@example.com', phone: '111222333' },
       parcels: [{ template: 'medium' }],
-      custom_attributes: { target_point: 'BTO02M' },
+      custom_attributes: { sending_method: 'parcel_locker', target_point: 'BTO02M' },
       service: 'inpost_locker_standard',
       additional_services: [],
       reference: 'order-1',
     });
   });
 
-  it('sends courier parcels as dimensions and weight with the receiver address', async () => {
+  it.each(['dispatch_order', 'pop'] as const)('sends courier parcels with %s, dimensions, weight and receiver address', async (sendingMethod) => {
     const fetchImpl = vi.fn<typeof fetch>(async () => json(fixture('create-locker-response.json'), 201));
     await createShipxHttpClient({ fetchImpl }).createShipment({ ...credentials, environment: 'production' }, {
       ...lockerRequest,
       service: 'inpost_courier_standard',
+      sendingMethod,
       targetPoint: null,
       parcelTemplate: 'large',
       receiver: { ...lockerRequest.receiver, address: { street: 'Cybernetyki', buildingNumber: '10', city: 'Warszawa', postCode: '02-677', countryCode: 'PL' } },
@@ -95,7 +97,7 @@ describe('ShipX HTTP client', () => {
       parcels: [{ dimensions: { length: '640', width: '380', height: '410', unit: 'mm' }, weight: { amount: '5', unit: 'kg' }, is_non_standard: false }],
       receiver: { address: { street: 'Cybernetyki', building_number: '10', city: 'Warszawa', post_code: '02-677', country_code: 'PL' } },
     });
-    expect(sent.body).not.toHaveProperty('custom_attributes');
+    expect(sent.body).toHaveProperty('custom_attributes', { sending_method: sendingMethod });
   });
 
   it('omits the sender so InPost uses the organization data when the workspace saved no sender', async () => {

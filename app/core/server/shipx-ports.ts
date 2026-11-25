@@ -6,10 +6,10 @@ import type {
   ShipxLabel,
   ShipxOperationOutcome,
   ShipxRemoteShipment,
-  ShipxSender,
   ShipxShipment,
   ShipxShipmentEventType,
   ShipxShipmentRequest,
+  ShipxWorkspaceSettings,
 } from '#core/domain/index.js';
 
 export interface ShipxCredentials {
@@ -121,8 +121,8 @@ export interface ShipxShipmentRepository {
 }
 
 export interface ShipxSettingsRepository {
-  findSender(tenantId: string): Promise<ShipxSender | null>;
-  saveSender(tenantId: string, sender: ShipxSender | null): Promise<void>;
+  findSettings(tenantId: string): Promise<ShipxWorkspaceSettings>;
+  saveSettings(tenantId: string, patch: Partial<ShipxWorkspaceSettings>): Promise<void>;
   /**
    * The environment the previous release stored on the workspace. Its single
    * connection (the legacy credential rows) keeps serving the slot of this name

@@ -194,12 +194,12 @@ describe('shop management key integration allow-list', () => {
     expect(await probeStripePermissions(keyCtx, { mode: 'live' }, h.deps)).toMatchObject({ ok: true, value: { allOk: true } });
   });
 
-  it('lets a key ctx configure the carrier credentials and the object storage connection', async () => {
+  it('lets a key ctx configure the carrier credentials and sending method and the object storage connection', async () => {
     const h = harness();
-    expect(await configureShipx(keyCtx, { sandbox: { organizationId: '5678', token: 'sandbox-token-4321' } }, h.deps))
+    expect(await configureShipx(keyCtx, { sendingMethod: 'dispatch_order', sandbox: { organizationId: '5678', token: 'sandbox-token-4321' } }, h.deps))
       .toMatchObject({ ok: true, value: { sandbox: { token: { maskedPreview: '••••4321' }, configured: true }, production: { configured: false } } });
     expect(await configureShipx(keyCtx, { production: { organizationId: '1234', token: 'carrier-token-9876' } }, h.deps))
-      .toMatchObject({ ok: true, value: { sandbox: { configured: true }, production: { token: { maskedPreview: '••••9876' }, configured: true } } });
+      .toMatchObject({ ok: true, value: { sendingMethod: 'dispatch_order', sandbox: { configured: true }, production: { token: { maskedPreview: '••••9876' }, configured: true } } });
     expect(await configureStorageConnection(keyCtx, {
       provider: 'minio', endpoint: 'http://127.0.0.1:19000', region: 'us-east-1', bucket: 'shop', accessKeyId: 'access', secretAccessKey: 'secret',
     }, h.deps)).toMatchObject({ ok: true, value: { secret: { key: 's3.configuration' } } });

@@ -19,7 +19,7 @@ const shipping = {
 
 const toPack: OrderListItem = { ...sampleBundleOrder, mode: 'live', shipping, fulfilmentStatus: 'to_pack' };
 
-const ready: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'large', shipment: null };
+const ready: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', sendingMethod: 'parcel_locker', parcelTemplate: 'large', shipment: null };
 
 const shipment = (change: Partial<ShipxShipment> = {}): ShipxShipment => ({
   shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311', environment: 'production', createAttemptedAt: null,
@@ -33,16 +33,24 @@ const props = {
 };
 
 describe('OrderShipx', () => {
-  it('creates the shipment after a confirmation that names the service, size and buyer', async () => {
+  it('shows the sending method before creating the shipment and in the confirmation', async () => {
     const onCreate = vi.fn();
-    renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);
+    renderWithProviders(<OrderShipx {...props} onCreate={onCreate} view={{ ...ready, sendingMethod: 'pop' }} />);
+    expect(screen.getByText('Sending method: Drop off at an InPost point')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/Parcel locker shipment, size Large/)).toBeVisible();
+    expect(within(dialog).getByText('Sending method: Drop off at an InPost point')).toBeVisible();
     expect(within(dialog).getByText(/buyer@example\.org/)).toBeVisible();
     expect(onCreate).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
     expect(onCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains why an incompatible sending method prevents creation', () => {
+    renderWithProviders(<OrderShipx {...props} view={{ ...ready, service: 'inpost_courier_standard', available: false, reason: 'sending_method_incompatible' }} />);
+    expect(screen.getByText(/courier shipments cannot be sent from a parcel locker/)).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
   });
 
   it('offers the parcel size only when the click creates a shipment', async () => {

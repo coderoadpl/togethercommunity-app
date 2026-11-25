@@ -569,6 +569,10 @@ works as before.
    name, optional company, e-mail, phone (a Polish 9-digit number, `+48`
    accepted), street, building number, city and post code (`00-000`). The
    sender country is always `PL`.
+4. **Sending method** is also shared by both connections. It controls how the
+   sender hands the parcel over to InPost, not how the buyer receives it. The
+   default is parcel locker drop-off (`parcel_locker`); you can also choose
+   courier pickup (`dispatch_order`) or InPost point drop-off (`pop`).
 
 Each connection selects its API base URL: `https://api-shipx-pl.easypack24.net/v1`
 for production and `https://sandbox-api-shipx-pl.easypack24.net/v1` for the
@@ -582,9 +586,10 @@ tenant secrets (`shipx.production.organizationId`, `shipx.production.token`,
 Studio and the CLI, which only show a masked preview. They never appear in the
 public payment configuration or in tenant settings, and the server decrypts
 them only for the ShipX call. The sender block is stored on the workspace
-(`tenants.shipx_sender`). Both are read through `GET /api/integrations/shipx`,
+(`tenants.shipx_sender`), as is the sending method (`tenants.shipx_sending_method`).
+These settings are read through `GET /api/integrations/shipx`,
 never through the tenant settings that members can read: the answer carries the
-sender and, per connection, the masked organization id, the masked token and
+sender, `sendingMethod` and, per connection, the masked organization id, the masked token and
 `configured` (both stored). Reading needs `tenant:secret:read` (owners and
 admins); saving with `POST /api/integrations/shipx/configure` needs
 `tenant:secret:write` (owners). The body is strict:
@@ -592,13 +597,15 @@ admins); saving with `POST /api/integrations/shipx/configure` needs
 ```json
 {
   "sender": { "name": "Anna Sender", "email": "shop@example.com", "phone": "500600700", "street": "Example Street", "buildingNumber": "7", "city": "Warsaw", "postCode": "00-001" },
+  "sendingMethod": "parcel_locker",
   "production": { "organizationId": "1234", "token": "<ShipX token>" },
   "sandbox": { "clearCredentials": true }
 }
 ```
 
 Every part is optional and a part left out changes nothing: `sender: null`
-removes the sender, `production` and `sandbox` each take `organizationId`,
+removes the sender, `sendingMethod` sets the workspace default, and
+`production` and `sandbox` each take `organizationId`,
 `token` or `clearCredentials: true` (not together with new credentials).
 Saving or clearing one connection never reads, writes or deletes the other
 connection's secrets. The single-connection fields of the earlier body
@@ -733,6 +740,17 @@ delivery option has the carrier `inpost`, when the staff role has `order:write`
 and the workspace is ready. The service follows the option: a parcel locker
 option sends `inpost_locker_standard` with the locker code as `target_point`,
 an address option sends `inpost_courier_standard` with the delivery address.
+The order page displays the sending method before staff create a new shipment.
+Every create request supplies `custom_attributes.sending_method` alongside
+`target_point` when a recipient locker is selected. InPost accepts all three
+methods for `inpost_locker_standard`, but only `dispatch_order` and `pop`
+of these three for `inpost_courier_standard`. For a new courier shipment,
+Together rejects `parcel_locker` before contacting ShipX; change the setting
+or fulfil that order manually. Existing shipments and unconfirmed attempts
+are not changed by the setting.
+([InPost sending methods](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/18153491)
+and [shipment creation](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/11731061),
+accessed 2026-11-25.)
 The confirmation names the service, the parcel size and the buyer e-mail, and
 offers **Parcel size for this shipment**: **Automatic** (the largest product
 size, the default) or one of the three sizes. The chosen size is sent as the
@@ -956,9 +974,6 @@ connection and a test-mode order:
 - the simplified creation buys the offer within the 20-second deadline; when
   it does not, the order page shows the pending status and a second click
   finishes;
-- ShipX accepts the shipment without `custom_attributes.sending_method` (the
-  documentation requires it only for Allegro services) and uses the
-  organization's default;
 - the receiver phone as 9 digits without `+48` is accepted;
 - courier shipments are priced with the template dimensions and the fixed
   weight of 5 kg;
@@ -1440,8 +1455,10 @@ that `--organization-id`, `--token-env`, `--token-stdin` and
 stays as it is. The token is read from the named environment variable or from
 stdin, never from a flag, so it does not reach the shell history.
 `--sender` needs no slot, and `--sender null` removes the sender so InPost uses
-the organization data. `tenant shipx` prints both connections with masked
-credentials and the sender.
+the organization data. `--sending-method <parcel_locker|dispatch_order|pop>`
+also needs no slot. Both `tenant shipx-set` and `shop integrations shipx configure`
+accept it; the latter requires `shop:integrations:write`. `tenant shipx` prints
+both connections with masked credentials, the sender and the sending method.
 
 ## Stock
 

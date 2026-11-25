@@ -417,7 +417,7 @@ const redirectFixture = {
 };
 
 const shipxOrderView: ShipxOrderView = {
-  available: true, reason: null, environment: 'sandbox', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null,
+  available: true, reason: null, environment: 'sandbox', service: 'inpost_locker_standard', sendingMethod: 'parcel_locker', parcelTemplate: 'medium', shipment: null,
 };
 
 const originalArgv = process.argv;
@@ -475,9 +475,10 @@ beforeEach(() => {
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
   const unconnected = { organizationId: null, token: null, configured: false };
-  h.shipxSettings.mockReset().mockResolvedValue(ok({ sender: null, sandbox: unconnected, production: unconnected }));
+  h.shipxSettings.mockReset().mockResolvedValue(ok({ sender: null, sendingMethod: 'parcel_locker', sandbox: unconnected, production: unconnected }));
   h.shipxConfigure.mockReset().mockResolvedValue(ok({
     sender: null,
+    sendingMethod: 'parcel_locker',
     sandbox: unconnected,
     production: { organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' }, token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' }, configured: true },
   }));
@@ -2724,7 +2725,15 @@ describe('InPost ShipX CLI', () => {
     expect(h.shipxConfigure).toHaveBeenCalledTimes(2);
   });
 
+  it('sets the workspace ShipX sending method without naming a credential slot', async () => {
+    await run('--json', 'tenant', 'shipx-set', '--sending-method', 'pop');
+    expect(h.shipxConfigure).toHaveBeenCalledExactlyOnceWith({ sendingMethod: 'pop' });
+    await run('tenant', 'shipx');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('sending method: parcel_locker'));
+  });
+
   it.each([
+    [['--sending-method', 'unsupported']],
     [['--organization-id', '1234']],
     [['--clear-credentials']],
     [['--slot', 'production']],

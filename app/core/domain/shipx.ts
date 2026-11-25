@@ -46,6 +46,17 @@ const shipxServiceSchema = z.enum(SHIPX_SERVICES);
 
 export type ShipxService = z.infer<typeof shipxServiceSchema>;
 
+export const SHIPX_SENDING_METHODS = ['parcel_locker', 'dispatch_order', 'pop'] as const;
+
+export const shipxSendingMethodSchema = z.enum(SHIPX_SENDING_METHODS);
+
+export type ShipxSendingMethod = z.infer<typeof shipxSendingMethodSchema>;
+
+export const DEFAULT_SHIPX_SENDING_METHOD: ShipxSendingMethod = 'parcel_locker';
+
+export const shipxSendingMethodAllowed = (service: ShipxService, sendingMethod: ShipxSendingMethod): boolean =>
+  service !== 'inpost_courier_standard' || sendingMethod !== 'parcel_locker';
+
 export const shipxServiceFor = (shipping: Pick<OrderShipping, 'carrier' | 'pickupPoint'>): ShipxService | null => {
   if (shipping.carrier !== 'inpost') return null;
   return shipping.pickupPoint === null ? 'inpost_courier_standard' : 'inpost_locker_standard';
@@ -101,6 +112,7 @@ const shipxSlotInputSchema = z.object({
 
 export const configureShipxInputSchema = z.object({
   sender: shipxSenderSchema.nullable().optional(),
+  sendingMethod: shipxSendingMethodSchema.optional(),
   sandbox: shipxSlotInputSchema.optional(),
   production: shipxSlotInputSchema.optional(),
 }).strict();
@@ -117,8 +129,14 @@ const shipxSlotViewSchema = z.object({
 
 export type ShipxSlotView = z.infer<typeof shipxSlotViewSchema>;
 
-export const shipxSettingsViewSchema = z.object({
+const shipxWorkspaceSettingsSchema = z.object({
   sender: shipxSenderSchema.nullable(),
+  sendingMethod: shipxSendingMethodSchema,
+});
+
+export type ShipxWorkspaceSettings = z.infer<typeof shipxWorkspaceSettingsSchema>;
+
+export const shipxSettingsViewSchema = shipxWorkspaceSettingsSchema.extend({
   sandbox: shipxSlotViewSchema,
   production: shipxSlotViewSchema,
 });
@@ -166,13 +184,14 @@ export const shipxAttemptUnconfirmed = (shipment: Pick<ShipxShipment, 'shipxShip
 
 export const SHIPX_SETUP_GAPS = ['credentials_missing'] as const;
 
-const SHIPX_UNAVAILABLE_REASONS = ['not_inpost', 'not_to_pack', ...SHIPX_SETUP_GAPS] as const;
+const SHIPX_UNAVAILABLE_REASONS = ['not_inpost', 'not_to_pack', 'sending_method_incompatible', ...SHIPX_SETUP_GAPS] as const;
 
 export const shipxOrderViewSchema = z.object({
   available: z.boolean(),
   reason: z.enum(SHIPX_UNAVAILABLE_REASONS).nullable(),
   environment: shipxEnvironmentSchema,
   service: shipxServiceSchema.nullable(),
+  sendingMethod: shipxSendingMethodSchema.nullable(),
   parcelTemplate: parcelTemplateSchema,
   shipment: shipxShipmentSchema.nullable(),
 });
@@ -252,6 +271,7 @@ interface ShipxReceiver {
 export interface ShipxShipmentRequest {
   reference: string;
   service: ShipxService;
+  sendingMethod: ShipxSendingMethod;
   parcelTemplate: ParcelTemplate;
   targetPoint: string | null;
   receiver: ShipxReceiver;
@@ -355,10 +375,14 @@ export const buildShipxShipmentRequest = (input: {
   memberEmail: string;
   shipping: OrderShipping;
   sender: ShipxSender | null;
+  sendingMethod: ShipxSendingMethod;
   parcelTemplate: ParcelTemplate;
 }): Result<ShipxShipmentRequest, AppError> => {
   const service = shipxServiceFor(input.shipping);
   if (service === null) return err(validation('The order does not use an InPost delivery option'));
+  if (!shipxSendingMethodAllowed(service, input.sendingMethod)) {
+    return err(validation('InPost courier shipments cannot be sent from a parcel locker. Choose courier pickup or an InPost point in Shipping settings.'));
+  }
   const phone = input.shipping.phone === null ? null : normalizeShipxPhone(input.shipping.phone);
   if (phone === null) return err(receiverInvalid('phone', 'The delivery phone number is not a Polish 9-digit number'));
   const name = splitPersonName(input.shipping.address.name);
@@ -379,6 +403,7 @@ export const buildShipxShipmentRequest = (input: {
   return ok({
     reference: shipxReference(input.orderId),
     service,
+    sendingMethod: input.sendingMethod,
     parcelTemplate: input.parcelTemplate,
     targetPoint,
     receiver: { ...name, email: input.memberEmail, phone, address },

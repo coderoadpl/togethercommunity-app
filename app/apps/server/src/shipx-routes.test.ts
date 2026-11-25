@@ -161,6 +161,7 @@ describe('InPost ShipX HTTP routes', () => {
     const view = await h.app.request('/api/integrations/shipx');
     expect(envelope(shipxSettingsViewSchema).parse(await view.json()).data).toEqual({
       sender: null,
+      sendingMethod: 'parcel_locker',
       sandbox: { organizationId: null, token: null, configured: false },
       production: { organizationId: null, token: null, configured: false },
     });

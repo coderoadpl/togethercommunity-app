@@ -115,7 +115,10 @@ export const toWireShipmentRequest = (request: ShipxShipmentRequest) => ({
     }),
   },
   parcels: parcelsFor(request),
-  ...(request.targetPoint === null ? {} : { custom_attributes: { target_point: request.targetPoint } }),
+  custom_attributes: {
+    sending_method: request.sendingMethod,
+    ...(request.targetPoint === null ? {} : { target_point: request.targetPoint }),
+  },
   service: request.service,
   additional_services: [],
   reference: request.reference,

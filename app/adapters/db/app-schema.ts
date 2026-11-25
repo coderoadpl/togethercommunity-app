@@ -3,7 +3,7 @@ import type { MarketingOutboxPayload } from '#core/domain/marketing-outbox.js';
 import { sql } from 'drizzle-orm';
 import { bigint, bigserial, boolean, check, doublePrecision, foreignKey, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 
-import { DEFAULT_LANGUAGE } from '#core/domain/index.js';
+import { DEFAULT_LANGUAGE, DEFAULT_SHIPX_SENDING_METHOD, SHIPX_SENDING_METHODS } from '#core/domain/index.js';
 
 import { user } from './auth-schema.js';
 import { organizations } from './organization-schema.js';
@@ -87,6 +87,7 @@ export const tenants = pgTable(
     checkoutReturnOrigins: jsonb('checkout_return_origins').$type<string[]>().notNull().default([]),
     shipxEnvironment: text('shipx_environment', { enum: ['sandbox', 'production'] }).notNull().default('sandbox'),
     shipxSender: jsonb('shipx_sender').$type<ShipxSender>(),
+    shipxSendingMethod: text('shipx_sending_method', { enum: SHIPX_SENDING_METHODS }).notNull().default(DEFAULT_SHIPX_SENDING_METHOD),
     signInNotice: jsonb('sign_in_notice').$type<{ enabled: boolean; text: string }>().notNull().default({ enabled: false, text: '' }),
     accentColor: text('accent_color'),
     accentLight: text('accent_light'),
@@ -127,6 +128,7 @@ export const tenants = pgTable(
     check('tenants_default_language_check', sql`${table.defaultLanguage} IN ('pl', 'en')`),
     check('tenants_invoice_vat_mode_check', sql`${table.invoiceVatMode} IN ('rate', 'exempt')`),
     check('tenants_shipx_environment_check', sql`${table.shipxEnvironment} IN ('sandbox', 'production')`),
+    check('tenants_shipx_sending_method_check', sql`${table.shipxSendingMethod} IN ('parcel_locker', 'dispatch_order', 'pop')`),
   ],
 );
 

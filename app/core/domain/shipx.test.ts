@@ -110,35 +110,39 @@ describe('ShipX domain', () => {
   });
 
   it('builds a locker request without an address and a courier request with one', () => {
-    const locker = buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping(), sender, parcelTemplate: 'small' });
+    const locker = buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping(), sender, sendingMethod: 'parcel_locker', parcelTemplate: 'small' });
     expect(locker).toEqual({
       ok: true,
       value: {
-        reference: 'order-1', service: 'inpost_locker_standard', parcelTemplate: 'small', targetPoint: 'WAW01M', sender,
+        reference: 'order-1', service: 'inpost_locker_standard', sendingMethod: 'parcel_locker', parcelTemplate: 'small', targetPoint: 'WAW01M', sender,
         receiver: { firstName: 'Jane Maria', lastName: 'Buyer', email: 'buyer@example.org', phone: '500000000', address: null },
       },
     });
-    const courier = buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping({ pickupPoint: null }), sender, parcelTemplate: 'medium' });
+    const courier = buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping({ pickupPoint: null }), sender, sendingMethod: 'pop', parcelTemplate: 'medium' });
     expect(courier).toMatchObject({
       ok: true,
       value: {
-        service: 'inpost_courier_standard', targetPoint: null,
+        service: 'inpost_courier_standard', sendingMethod: 'pop', targetPoint: null,
         receiver: { address: { street: 'ul. Dluga', buildingNumber: '12/4', city: 'Warsaw', postCode: '00-950', countryCode: 'PL' } },
       },
     });
   });
 
   it('builds a request without a sender when the workspace saved none', () => {
-    expect(buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping(), sender: null, parcelTemplate: 'small' }))
+    expect(buildShipxShipmentRequest({ orderId: 'order-1', memberEmail: 'buyer@example.org', shipping: shipping(), sender: null, sendingMethod: 'parcel_locker', parcelTemplate: 'small' }))
       .toMatchObject({ ok: true, value: { sender: null, receiver: { phone: '500000000' } } });
   });
 
   it('refuses requests ShipX cannot accept', () => {
-    const input = { orderId: 'order-1', memberEmail: 'buyer@example.org', sender, parcelTemplate: 'small' as const };
+    const input = { orderId: 'order-1', memberEmail: 'buyer@example.org', sender, sendingMethod: 'parcel_locker', parcelTemplate: 'small' } as const;
+    expect(buildShipxShipmentRequest({ ...input, shipping: shipping({ pickupPoint: null }) })).toMatchObject({
+      ok: false, error: { code: 'validation', message: expect.stringContaining('cannot be sent from a parcel locker') },
+    });
     expect(buildShipxShipmentRequest({ ...input, shipping: shipping({ phone: null }) })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(buildShipxShipmentRequest({ ...input, shipping: shipping({ carrier: 'other' }) })).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(buildShipxShipmentRequest({
       ...input,
+      sendingMethod: 'dispatch_order',
       shipping: shipping({ pickupPoint: null, address: { ...shipping().address, line1: 'Rynek' } }),
     })).toMatchObject({ ok: false, error: { code: 'validation', message: 'The building number cannot be read from the delivery address', details: { state: 'receiver_invalid', field: 'building_number' } } });
   });
@@ -231,6 +235,9 @@ describe('ShipX domain', () => {
     expect(shipxSenderSchema.safeParse({ ...sender, postCode: '00001' }).success).toBe(false);
     expect(configureShipxInputSchema.safeParse({ production: { organizationId: '12a' } }).success).toBe(false);
     expect(configureShipxInputSchema.safeParse({ unexpected: true }).success).toBe(false);
+    expect(configureShipxInputSchema.safeParse({ sendingMethod: 'branch' }).success).toBe(false);
+    expect(configureShipxInputSchema.parse({ sendingMethod: 'pop' })).toEqual({ sendingMethod: 'pop' });
+    expect(configureShipxInputSchema.parse({})).toEqual({});
     expect(configureShipxInputSchema.safeParse({ sandbox: { environment: 'production' } }).success).toBe(false);
     expect(configureShipxInputSchema.parse({ sandbox: { organizationId: ' 1234 ', token: ' abc ' } })).toEqual({ sandbox: { organizationId: '1234', token: 'abc' } });
     expect(configureShipxInputSchema.parse({ sender: null, production: { clearCredentials: true } })).toEqual({ sender: null, production: { clearCredentials: true } });

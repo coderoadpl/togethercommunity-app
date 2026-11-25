@@ -40,7 +40,12 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const size = t.shipx.parcelTemplates[chosenTemplate ?? view.parcelTemplate];
   const showCreate = canCreate && view.available;
   const reason = canCreate ? hintReason(view.reason) : null;
-  const hint = reason === null ? null : t.shipx.unavailableReasons[reason][view.environment];
+  const hint = canCreate && view.reason === 'sending_method_incompatible'
+    ? t.shipx.sendingMethodIncompatible
+    : reason === null ? null : t.shipx.unavailableReasons[reason][view.environment];
+  const sendingMethod = createsShipment && view.sendingMethod !== null
+    ? t.shipx.sendingMethodSummary({ method: t.shipx.sendingMethods[view.sendingMethod] })
+    : null;
   const busy = pending || discarding;
   if (!labelReady && !showCreate && hint === null && shipment === null) return null;
   const parcelTemplateField = (
@@ -65,6 +70,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
       )}
       {unconfirmed ? <Alert severity="warning" data-testid="order-shipx-unconfirmed">{t.shipx.attemptUnconfirmed}</Alert> : null}
       {awaitingPayment ? <Typography color="text.secondary" data-testid="order-shipx-pending">{t.shipx.paymentPending}</Typography> : null}
+      {showCreate && sendingMethod !== null ? <Typography color="text.secondary">{sendingMethod}</Typography> : null}
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem">
         {showCreate ? (
           <Button variant="contained" disabled={busy} onClick={() => setConfirming('create')} data-testid="order-shipx-create">
@@ -95,6 +101,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
         body={(
           <>
             {createsShipment ? parcelTemplateField : null}
+            {sendingMethod === null ? null : <Typography>{sendingMethod}</Typography>}
             <Typography>{order.mode === 'test'
               ? t.shipx.createConfirmBodyTest({ service, size })
               : t.shipx.createConfirmBody({ service, size, email: order.memberEmail })}</Typography>

@@ -89,6 +89,7 @@ import type {
   OrganizationUpdate,
   OrganizationWorkspace,
   ConfigGroup,
+  ConfigSource,
   TenantConfigSource,
   Tenant,
   TenantApiKey,
@@ -2836,6 +2837,20 @@ type InheritedConfig<Value> = { source: 'workspace' } | { source: 'organization'
 export interface EffectiveTenantConfigReader {
   findInheritedSecret(tenantId: string, key: OrganizationSecretKey): Promise<InheritedConfig<OrganizationSecret>>;
   findInheritedSettings(tenantId: string, group: ConfigGroup): Promise<InheritedConfig<OrganizationSettings>>;
+}
+
+export interface EffectivePaymentConfig {
+  source: ConfigSource;
+  /** The key the payment provider adapter would use for this mode is stored. */
+  keyPresent: boolean;
+  /** Events for this mode can be verified: the workspace's own signing secret, or an organization endpoint. */
+  webhookReady: boolean;
+  /** Mode recognised from the key's prefix; null when absent, unreadable or unrecognised. */
+  keyMode: StripeMode | null;
+}
+
+export interface EffectivePaymentConfigReader {
+  read(tenantId: string, mode: StripeMode): Promise<EffectivePaymentConfig>;
 }
 
 type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;

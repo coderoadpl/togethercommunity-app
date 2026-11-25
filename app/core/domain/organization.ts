@@ -292,7 +292,9 @@ export type UpdateOrganizationInput = z.input<typeof updateOrganizationInputSche
 
 export type OrganizationUpdate = z.output<typeof updateOrganizationInputSchema>;
 
-const configSourceSchema = z.enum(['workspace', 'organization']);
+export const configSourceSchema = z.enum(['workspace', 'organization']);
+
+export type ConfigSource = z.infer<typeof configSourceSchema>;
 
 export const tenantConfigSourceSchema = z.object({
   tenantId: z.string().min(1),

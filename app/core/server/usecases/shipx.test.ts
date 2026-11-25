@@ -1178,6 +1178,16 @@ describe('InPost shipment view and label', () => {
     expect(await h.shipments.repository.listEvents('other-workspace', 'order-1')).toEqual([]);
   });
 
+  it('refuses to download a canceled label without calling ShipX', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'canceled', trackingNumber: TRACKING, boughtAt: NOW });
+    expect(await inpostShipmentLabel(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false, error: { code: 'validation', message: 'The InPost label was canceled in Manager Paczek' },
+    });
+    expect(h.real.calls.label).toEqual([]);
+    expect(h.row()?.labelFetchedAt).toBeNull();
+  });
+
   it('maps a label requested before payment to the ShipX invalid_action error', async () => {
     const real = createScriptedShipxClient({
       label: err(shipxRejected({ status: 400, error: 'invalid_action', description: 'Shipment not paid', fields: {} })),
@@ -1458,6 +1468,31 @@ describe('label creation without dispatch', () => {
     expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
     expect(h.row()?.operationToken).toBeNull();
     expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'bought' } });
+  });
+
+  describe.each([false, true])('canceled labels with markShipped %s', (markShipped) => {
+    it.each(['stored', 'polled'])('refuses the %s canceled shipment and records a failed operation', async (source) => {
+      const real = createScriptedShipxClient({
+        polls: [(id) => ok(remoteShipment(id, { status: 'canceled', trackingNumber: TRACKING }))],
+      });
+      const h = harness({ real });
+      h.seed(source === 'stored'
+        ? { shipxShipmentId: '1001', status: 'canceled', trackingNumber: TRACKING, boughtAt: NOW }
+        : { shipxShipmentId: '1001', status: 'offer_selected' });
+      expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toEqual({
+        ok: false,
+        error: {
+          code: 'conflict',
+          message: `The InPost label ${TRACKING} was canceled in Manager Paczek; create a new label there and mark the order as shipped by hand`,
+          details: { state: 'label_canceled', trackingNumber: TRACKING, shipxShipmentId: '1001' },
+        },
+      });
+      expect(real.calls.get).toEqual(source === 'polled' ? ['1001'] : []);
+      expect(h.row()).toMatchObject({ status: 'canceled', trackingNumber: TRACKING, operationToken: null });
+      expect(h.ship).not.toHaveBeenCalled();
+      expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
+      expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'failed' } });
+    });
   });
 
   it('defaults to no fulfilment write and no buyer email', async () => {

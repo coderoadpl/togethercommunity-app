@@ -11,6 +11,7 @@ import {
   SHIPX_SLOT_SECRET_KEYS,
   shipxCreateInputSchema,
   shipxEnvironmentForMode,
+  shipxLabelUsable,
   shipxOfferToBuy,
   shipxPurchaseFailure,
   shipxReference,
@@ -149,6 +150,14 @@ describe('ShipX domain', () => {
     expect(shipxShipmentBought(remote({ status: 'confirmed', trackingNumber: '6001' }))).toBe(true);
     expect(shipxShipmentBought(remote({ status: 'offer_selected', trackingNumber: '6001' }))).toBe(false);
     expect(shipxShipmentBought(remote({ status: 'confirmed' }))).toBe(false);
+  });
+
+  it('keeps a canceled label bought but not usable', () => {
+    const canceled = remote({ status: 'canceled', trackingNumber: '6001' });
+    expect(shipxShipmentBought(canceled)).toBe(true);
+    expect(shipxLabelUsable(canceled)).toBe(false);
+    expect(shipxLabelUsable({ ...canceled, status: 'confirmed' })).toBe(true);
+    expect(shipxLabelUsable({ ...canceled, status: 'offer_selected' })).toBe(false);
   });
 
   it('chooses an offer to buy only when no purchase is running', () => {

@@ -126,6 +126,7 @@ export const shipxSettingsViewSchema = z.object({
 export type ShipxSettingsView = z.infer<typeof shipxSettingsViewSchema>;
 
 export const SHIPX_STATUS_CREATING = 'creating';
+export const SHIPX_STATUS_CANCELED = 'canceled';
 export const SHIPX_STATUS_UNCONFIRMED = 'unknown';
 
 export const SHIPX_SHIPMENT_EVENT_TYPES = [
@@ -189,6 +190,7 @@ export const shipxErrorStateSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('lost_lock') }),
   z.object({ state: z.literal('lease_held') }),
   z.object({ state: z.literal('manual_shipped'), ...shipxBoughtLabelDetailsSchema.shape }),
+  z.object({ state: z.literal('label_canceled'), ...shipxBoughtLabelDetailsSchema.shape }),
   z.object({ state: z.literal('environment_mismatch'), environment: shipxEnvironmentSchema, settingsEnvironment: shipxEnvironmentSchema }),
   z.object({ state: z.literal('organization_mismatch') }),
   z.object({ state: z.literal('setup_missing'), reason: z.enum(SHIPX_SETUP_GAPS), environment: shipxEnvironmentSchema }),
@@ -229,6 +231,9 @@ const PRE_PURCHASE_STATUSES: ReadonlySet<string> = new Set(['created', 'offers_p
 
 export const shipxShipmentBought = (shipment: Pick<ShipxRemoteShipment, 'status' | 'trackingNumber'>): boolean =>
   shipment.trackingNumber !== null && !PRE_PURCHASE_STATUSES.has(shipment.status);
+
+export const shipxLabelUsable = (shipment: Pick<ShipxRemoteShipment, 'status' | 'trackingNumber'>): boolean =>
+  shipxShipmentBought(shipment) && shipment.status !== SHIPX_STATUS_CANCELED;
 
 const paymentRunning = (shipment: ShipxRemoteShipment): boolean =>
   shipment.transactions.some((transaction) => transaction.status === 'initiated' || transaction.status === 'success');

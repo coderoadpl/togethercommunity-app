@@ -75,6 +75,35 @@ describe('OrderShipx', () => {
     expect(screen.getByText('InPost shipment status: confirmed')).toBeVisible();
   });
 
+  it.each([false, true])('warns about a canceled label without offering print or create (with conflict: %s)', (hasConflict) => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, label: { carrier: 'inpost', trackingNumber: '520000011395200025754311' } }}
+      view={{ ...ready, shipment: shipment({ status: 'canceled' }) }}
+      error={hasConflict ? new ApiError({ code: 'conflict', message: 'Label canceled', details: { state: 'label_canceled', trackingNumber: '520000011395200025754311', shipxShipmentId: '1001' } }) : null}
+    />);
+    expect(screen.getByRole('alert')).toHaveTextContent('This InPost label was canceled in Manager Paczek. Create a new label there and mark the order as shipped by hand.');
+    expect(screen.queryByRole('button', { name: 'Print label' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
+    expect(screen.queryByTestId('order-shipx-pending')).toBeNull();
+  });
+
+  it.each([
+    ['matching InPost dispatch', { carrier: 'inpost', trackingNumber: ' 520000011395200025754311 ' }, true],
+    ['different InPost tracking', { carrier: 'inpost', trackingNumber: 'LABEL1234' }, false],
+    ['different carrier', { carrier: 'other', trackingNumber: '520000011395200025754311' }, false],
+    ['missing dispatch', null, false],
+  ] as const)('shows print only for the matching ShipX parcel: %s', (_name, dispatch, canPrint) => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, fulfilmentStatus: 'shipped', shipment: dispatch === null ? null : { ...dispatch, shippedAt: '2026-11-08T10:00:00.000Z', shippedBy: 'staff' } }}
+      view={{ ...ready, available: false, reason: 'not_to_pack', shipment: shipment({ trackingNumber: '520000011395200025754311  ' }) }}
+    />);
+    const print = screen.queryByRole('button', { name: 'Print label' });
+    if (canPrint) expect(print).toBeVisible();
+    else expect(print).toBeNull();
+  });
+
   it('warns about an unconfirmed attempt and discards it only after a confirmation', async () => {
     const onDiscard = vi.fn();
     renderWithProviders(<OrderShipx
@@ -167,6 +196,7 @@ describe('OrderShipx', () => {
       ['lost lock', failed('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' }), pl.shipx.failures.lostLock],
       ['lease held', failed('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }), pl.shipx.failures.leaseHeld],
       ['manual ship', failed('fulfilment_conflict', 'The order was marked as shipped meanwhile; the InPost shipment 520000011395200025754311 exists as well, reconcile it in Manager Paczek', { state: 'manual_shipped', trackingNumber: '520000011395200025754311', shipxShipmentId: '1001' }), pl.shipx.failures.manualShipped({ trackingNumber: '520000011395200025754311' })],
+      ['canceled label', failed('conflict', 'The InPost label LABEL1234 was canceled in Manager Paczek; create a new label there and mark the order as shipped by hand', { state: 'label_canceled', trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }), pl.shipx.labelCanceled],
       ['off packing list', failed('conflict', 'The order left the packing list meanwhile; cancel the InPost label LABEL1234 in Manager Paczek', { trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }), pl.shipx.failures.orderLeftPackingList({ trackingNumber: 'LABEL1234' })],
       ['environment mismatch', failed('conflict', 'The InPost shipment was created in the ShipX sandbox environment, but this order uses the production connection; finish the shipment in Manager Paczek', { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' }), pl.shipx.failures.environmentMismatch({ environment: pl.shipx.environments.sandbox, settingsEnvironment: pl.shipx.environments.production })],
       ['organization mismatch', failed('conflict', 'The InPost shipment belongs to a different ShipX organization than the one in the settings; restore it or finish the shipment in Manager Paczek', { state: 'organization_mismatch' }), pl.shipx.failures.organizationMismatch],

@@ -802,12 +802,17 @@ order id (cut to 100 characters).
    instead left the packing list while the shipment was bought, create returns
    `conflict` with `details: { trackingNumber, shipxShipmentId }` and tells staff
    to cancel the label in Manager Paczek. Both conflicts preserve the bought
-   shipment and record the operation outcome as `bought`.
+   shipment and record the operation outcome as `bought`. If the stored or
+   newly read status of the label is `canceled`, both create modes return
+   `conflict` with `details.state: 'label_canceled'`, `trackingNumber` and
+   `shipxShipmentId`. The operation ends as `failed`, with no dispatch or
+   e-mail. Staff must create a new label in Manager Paczek and mark the order
+   as shipped by hand.
 
 **Label ready** is a display state, never a stored fulfilment status. It means
 `to_pack` with a stored ShipX id, valid tracking number and status past
-`offer_selected`. Order list and detail responses add an
-optional `label` object (`{ carrier: 'inpost', trackingNumber }`), or `null`;
+`offer_selected`, excluding a known `canceled` status. Order list and detail
+responses add an optional `label` object (`{ carrier: 'inpost', trackingNumber }`), or `null`;
 older clients can keep parsing the response. These orders stay in the `to_pack` filter and
 packing list. Studio shows an info-coloured chip, carrier status, tracking
 number, **Print label** and one primary **Mark as shipped** action. The
@@ -815,15 +820,20 @@ shipping form prefills the carrier and tracking number. Staff can replace both
 if they canceled a label in Manager Paczek. The confirmation says that the
 buyer e-mail will be sent now (never for test orders). Studio shows no shipped
 date or staff name until dispatch, and no second **Create InPost shipment**
-button. A stale ShipX view cannot hide a label already stored on the order.
+button. A stale ShipX view cannot hide a label already stored on the order
+unless it reports `canceled`, in which case Studio warns staff and clears the
+tracking prefill. Cancellation is only known here if a ShipX read recorded it
+before purchase completed in Together; status changes after purchase are not
+tracked yet.
 When the ShipX view discovers a label that the order detail did not have,
 Studio invalidates the sales order lists without calling the ShipX refresh
 again.
 
 A create request for an already bought label still takes and finishes its
-claim but makes no ShipX call or purchase. By default it returns the current
-order and shipment without writing fulfilment or sending e-mail; with
-`markShipped: true` it runs the same one-time dispatch transition.
+claim but makes no ShipX call or purchase. Unless the label is known to be
+canceled, the request returns the current order and shipment without writing
+fulfilment or sending e-mail by default; with `markShipped: true` it runs the
+same one-time dispatch transition.
 
 The request has one deadline, 20 seconds from its start, checked before the
 create, before each read and before the purchase, and once before the
@@ -954,7 +964,11 @@ ShipX webhooks.
 
 ### Label
 
-**Print label** appears once the shipment has a tracking number. Studio calls
+**Print label** appears for a bought label with a tracking number unless its
+stored status is `canceled`. For an already shipped order, Studio shows it
+only if the actual dispatch is InPost with the same tracking number (ignoring
+surrounding whitespace). The download refuses a known canceled label with a
+`validation` error without calling ShipX. Otherwise Studio calls
 `POST /api/orders/<orderId>/shipx/label` (`order:write`) with the API client,
 checks that the answer is `application/pdf` and saves it as a file; an error
 answer is shown under the button instead of being saved. The route asks ShipX

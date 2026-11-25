@@ -17,6 +17,7 @@ import {
   SHIPX_POLL_ATTEMPTS,
   SHIPX_POLL_INTERVAL_MS,
   SHIPX_SLOT_SECRET_KEYS,
+  SHIPX_STATUS_CANCELED,
   SHIPX_STATUS_UNCONFIRMED,
   shipxAttemptUnconfirmed,
   shipxBoughtLabelDetailsSchema,
@@ -551,15 +552,23 @@ const runShipment = async (
     shipmentId = remote.id;
   }
 
-  let trackingNumber = run.shipment.trackingNumber;
+  let labelShipment: Pick<ShipxShipment, 'status' | 'trackingNumber'> = run.shipment;
   if (remote !== null || !shipxShipmentBought(run.shipment)) {
     const bought = remote !== null && shipxShipmentBought(remote)
       ? ok(remote)
       : await pollUntilBought(scoped, client, shipmentId, !createdNow, deps);
     if (!bought.ok) return bought;
-    trackingNumber = bought.value.trackingNumber;
+    labelShipment = bought.value;
   }
+  const { trackingNumber } = labelShipment;
   if (trackingNumber === null) return err(pendingPayment(shipmentId, null));
+  if (run.shipment.status === SHIPX_STATUS_CANCELED || labelShipment.status === SHIPX_STATUS_CANCELED) {
+    return err(shipxStateError(
+      'conflict',
+      `The InPost label ${trackingNumber} was canceled in Manager Paczek; create a new label there and mark the order as shipped by hand`,
+      { state: 'label_canceled', trackingNumber, shipxShipmentId: shipmentId },
+    ));
+  }
 
   const dispatch = markShipped ? await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship) : null;
   const order = dispatch?.ok === true
@@ -576,6 +585,7 @@ const OUTCOME_BY_STATE: Record<ShipxErrorState['state'], ShipxOperationOutcome> 
   unconfirmed: 'unconfirmed',
   lost_lock: 'lost_lock',
   manual_shipped: 'bought',
+  label_canceled: 'failed',
   lease_held: 'failed',
   environment_mismatch: 'failed',
   organization_mismatch: 'failed',
@@ -586,9 +596,10 @@ const OUTCOME_BY_STATE: Record<ShipxErrorState['state'], ShipxOperationOutcome> 
 const operationOutcome = (result: Result<unknown, AppError>, released: boolean): ShipxOperationOutcome => {
   if (released) return 'released';
   if (result.ok) return 'bought';
-  if (result.error.code === 'conflict' && shipxBoughtLabelDetailsSchema.safeParse(result.error.details).success) return 'bought';
   const state = shipxErrorStateSchema.safeParse(result.error.details);
-  return state.success ? OUTCOME_BY_STATE[state.data.state] : 'failed';
+  if (state.success) return OUTCOME_BY_STATE[state.data.state];
+  if (result.error.code === 'conflict' && shipxBoughtLabelDetailsSchema.safeParse(result.error.details).success) return 'bought';
+  return 'failed';
 };
 
 export const createInpostShipment = async (
@@ -695,6 +706,7 @@ export const inpostShipmentLabel = async (
   if (!order.ok) return order;
   const shipment = await deps.shipxShipments.findByOrder(tenant.value, order.value.id);
   if (shipment?.shipxShipmentId == null) return err(notFound('The order has no InPost shipment'));
+  if (shipment.status === SHIPX_STATUS_CANCELED) return err(validation('The InPost label was canceled in Manager Paczek'));
   const current = await resolveCredentials(tenant.value, orderEnvironment(order.value), deps);
   if (!current.ok) return current;
   const credentials = storedCredentials(shipment, current.value);

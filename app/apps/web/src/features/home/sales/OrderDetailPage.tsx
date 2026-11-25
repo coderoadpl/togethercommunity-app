@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   SALES_LINK_TIME_ZONE,
+  SHIPX_STATUS_CANCELED,
   capabilitiesForPrincipal,
   isActiveStaffRefundStatus,
   orderFulfilmentDisplay,
@@ -90,7 +91,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   });
   const inpostOrder = detail.data?.order.shipping?.carrier === 'inpost';
   const shipx = useQuery({ ...actions[canShip ? 'shipxRefreshedShipment' : 'shipxShipment'](orderId), enabled: inpostOrder });
-  const queriedLabel = orderLabel(shipx.data?.shipment);
+  const shipxShipment = shipx.data?.shipment;
+  const queriedLabel = orderLabel(shipxShipment);
   const detailLabel = detail.data?.order.label;
   const discoveredTracking = detail.data !== undefined && detailLabel == null ? queriedLabel?.trackingNumber : undefined;
   const lastInvalidatedLabel = useRef<string | null>(null);
@@ -150,7 +152,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     );
   }
 
-  const order = { ...detail.data.order, label: queriedLabel ?? detailLabel };
+  const order = { ...detail.data.order, label: shipxShipment?.status === SHIPX_STATUS_CANCELED ? null : queriedLabel ?? detailLabel };
   const fulfilmentDisplay = orderFulfilmentDisplay(order);
   const attributionRows = [
     [t.sales.utmSource, order.attribution?.utmSource],

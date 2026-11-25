@@ -171,8 +171,9 @@ describe('order detail shipment', () => {
     };
     let labelAnswer: 'error' | 'pdf' = 'error';
     const views: string[] = [];
+    const shipped = { ...order('o1', 'shipped'), shipment: { carrier: 'inpost', trackingNumber: shipment.trackingNumber, shippedAt: shipment.boughtAt, shippedBy: 'staff-1' } };
     server.use(
-      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: order('o1', 'shipped'), invoice: null } })),
+      http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: shipped, invoice: null } })),
       http.get('/api/orders/o1/shipx', () => {
         views.push('stored');
         return HttpResponse.json({ ok: true, data: { available: false, reason: 'not_to_pack', environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment } });
@@ -389,6 +390,26 @@ it('keeps the stored label when the ShipX query returns stale data', async () =>
   expect(screen.queryByTestId('order-shipx-create')).toBeNull();
   expect(screen.getByLabelText(en.shipping.shipTracking)).toHaveValue(label.trackingNumber);
   expect(screen.getByLabelText(en.shipping.shipTracking)).toBeEnabled();
+});
+
+it('clears the ready chip and tracking prefill when the refreshed shipment is canceled', async () => {
+  const label = { carrier: 'inpost', trackingNumber: 'LABEL1234' };
+  server.use(
+    http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: { ...order('o1', 'to_pack'), label }, invoice: null } })),
+    http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({ ok: true, data: {
+      available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium',
+      shipment: {
+        shipxShipmentId: '1001', status: 'canceled', trackingNumber: label.trackingNumber, environment: 'production', createAttemptedAt: null,
+        boughtAt: '2026-11-08T10:00:00.000Z', labelFetchedAt: null, createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+      },
+    } })),
+  );
+  await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+  expect(await screen.findByText(en.shipx.labelCanceled)).toBeVisible();
+  expect(screen.queryByTestId('order-label-ready')).toBeNull();
+  expect(screen.getByTestId('order-to-pack')).toBeVisible();
+  expect(screen.getByLabelText(en.shipping.shipTracking)).toHaveValue('');
+  expect(screen.getByTestId('order-ship')).toBeDisabled();
 });
 
 it('shows a refreshed ready label on the Delivery card and dispatches with its stored number', async () => {

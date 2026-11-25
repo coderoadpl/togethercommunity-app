@@ -134,7 +134,11 @@ returned order:
 
 - `shipped: <orderId> (<dispatch carrier> <dispatch tracking>)`
 - `label ready; order still to pack: <orderId> (inpost <label tracking>)`
-- `label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: <orderId> (inpost <shipment tracking>)`
+- `label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: <orderId> (inpost <shipment tracking>)` when the order explicitly returns `label: null`.
+
+If an older server omits `label`, the CLI derives it from the returned ShipX
+shipment. If no usable label can be derived, it reports
+`label bought; order still to pack: <orderId> (inpost <shipment tracking>)`.
 
 If another request dispatched the order with the same InPost label, the
 command reports `shipped` and does not send another e-mail. If the order was

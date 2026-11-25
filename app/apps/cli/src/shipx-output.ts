@@ -1,4 +1,4 @@
-import type { OrderListItem, ShipxShipment } from '#core/domain/index.js';
+import { orderLabel, type OrderListItem, type ShipxShipment } from '#core/domain/index.js';
 
 export const shipxCreateLine = ({ order, shipment }: { order: OrderListItem; shipment: ShipxShipment }): string => {
   const labelTracking = shipment.trackingNumber?.trim() ?? null;
@@ -11,8 +11,10 @@ export const shipxCreateLine = ({ order, shipment }: { order: OrderListItem; shi
       : '';
     return `shipped: ${order.id} (${tracking})${reconcile}`;
   }
-  if (order.fulfilmentStatus === 'to_pack' && order.label == null) {
+  if (order.fulfilmentStatus === 'to_pack' && order.label === null) {
     return `label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: ${order.id} (inpost ${labelTracking ?? ''})`;
   }
-  return `label ready; order still to pack: ${order.id} (inpost ${labelTracking ?? ''})`;
+  const label = order.label === undefined ? orderLabel(shipment) : order.label;
+  const labelStatus = label === null ? 'label bought' : 'label ready';
+  return `${labelStatus}; order still to pack: ${order.id} (inpost ${label?.trackingNumber ?? labelTracking ?? ''})`;
 };

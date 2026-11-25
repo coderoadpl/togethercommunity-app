@@ -362,6 +362,8 @@ describe('shop orders CLI', () => {
 
   it.each([
     ['to_pack', null, { carrier: 'inpost', trackingNumber: 'LABEL1234' }, 'LABEL1234', 'label ready; order still to pack: order-1 (inpost LABEL1234)'],
+    ['to_pack', null, undefined, ' LABEL1234 ', 'label ready; order still to pack: order-1 (inpost LABEL1234)'],
+    ['to_pack', null, undefined, 'T1', 'label bought; order still to pack: order-1 (inpost T1)'],
     ['to_pack', null, null, 'T1', 'label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: order-1 (inpost T1)'],
     ['shipped', { ...order.shipment, carrier: 'inpost', trackingNumber: 'LABEL1234 ' }, null, ' LABEL1234', 'shipped: order-1 (inpost LABEL1234)'],
   ])('describes a bought label for fulfilment status %s', async (fulfilmentStatus, dispatchedShipment, label, trackingNumber, expected) => {

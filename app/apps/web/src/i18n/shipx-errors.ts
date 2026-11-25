@@ -22,6 +22,8 @@ const stateMessage = (state: ShipxErrorState, code: ErrorCode | null, t: Message
       return failures.lostLock;
     case 'lease_held':
       return failures.leaseHeld;
+    case 'label_canceled':
+      return t.shipx.labelCanceled;
     case 'manual_shipped':
       return failures.manualShipped({ trackingNumber: state.trackingNumber });
     case 'environment_mismatch':

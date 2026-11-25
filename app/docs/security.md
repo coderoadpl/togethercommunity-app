@@ -462,21 +462,32 @@ operator reseed only when `SMOKE_PURCHASE_PASSWORD` is set (see
 [the smoke tenant](observability.md#the-smoke-tenant)). It is an `admin`, never
 an `owner`, so CI holds no owner credential.
 
-In `tenant-acme` the account can create staff test-mode checkouts, read and
-refund orders, read members, edit products and courses and read masked
-secrets, together with the rest of the `admin` role. It cannot write any
-payment secret (live or test), workspace settings, API keys or shop management
-keys, and it reaches no other workspace. The Stripe test slot it buys through
-is written by the operator reseed from `SMOKE_PURCHASE_STRIPE_TEST_KEY`, which
-accepts only a `rk_test_` key and never touches the live slot.
+The account holds the full `admin` role of `tenant-acme`, listed in
+[the permission table](permission-table.md). It cannot write any payment
+secret (live or test), workspace settings, API keys or shop management keys.
+The Stripe test slot it buys through is written by the operator reseed from
+`SMOKE_PURCHASE_STRIPE_TEST_KEY`, which accepts only a `rk_test_` key and never
+touches the live slot. It reaches no other existing workspace; as a verified
+user it can create workspaces of its own when `TENANT_CREATION` is `open`
+(production reads `open` as `bootstrap`).
 
-Worst case for a holder of `SMOKE_PURCHASE_PASSWORD` on production: it stays
-inside `tenant-acme` — test purchases and refunds, product and course edits,
-reading the synthetic members. No live money moves: the live slot stays empty
-and an admin cannot write it. Whatever the holder changes in `tenant-acme` is
-undone by the next deploy's reseed. Access is revoked only by rotating
-`SMOKE_PURCHASE_PASSWORD` in the deployment and in CI, because every reseed
-resets the account with the configured password.
+Worst case for a holder of `SMOKE_PURCHASE_PASSWORD` on production, within
+`tenant-acme`: edit what acme's public pages show; read, export, ban and remove
+the synthetic members and impersonate them read-only; make test purchases and
+staff refunds. No live money moves: the reseed wipes the payment secrets and an
+admin cannot write them. No outgoing e-mail leaves production for acme.
+Whatever the holder changes in `tenant-acme` is undone by the next deploy's
+reseed.
+
+The account has the fixed user id `user-acme-purchase`, and a reseed refuses
+when another identity holds its e-mail, so it never adopts a foreign account.
+Every reseed, and so every production deploy, ends all sessions, passkeys and
+two-factor enrolments of the account and every sign-in method other than the
+password, in a transaction that commits before the reseed guard runs, so a
+guard refusal still revokes it. Rotating `SMOKE_PURCHASE_PASSWORD` and
+deploying therefore takes every access back. Before rolling back to a release
+without the account, follow
+[the rollback steps](observability.md#rolling-back-past-the-purchase-account).
 
 ## Accepted dependency advisories
 

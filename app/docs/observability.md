@@ -483,12 +483,19 @@ fixture are absent, so local development, the e2e suites, fixture recordings
 and visual baselines see the same acme rows as before. On production the
 reseed refuses a `SMOKE_PURCHASE_PASSWORD` equal to the demo password.
 
-What the purchase account can do, and only in `tenant-acme`: create staff
-test-mode checkouts, read and refund orders, read members, edit products and
-courses, read masked secrets, and the rest of the `admin` role (see
-[the permission table](permission-table.md)). What it cannot do: write any
-payment secret (live or test), workspace settings, API keys or shop management
-keys, and it reaches no other workspace.
+The purchase account holds the full `admin` role of `tenant-acme`, listed in
+[the permission table](permission-table.md). The worst case within
+`tenant-acme`: it can edit what acme's public pages show; read, export, ban and
+remove the synthetic members and impersonate them read-only; make test
+purchases and staff refunds. It cannot write any payment secret (live or test),
+workspace settings, API keys or shop management keys, so no live money moves:
+the reseed wipes the payment secrets and an admin cannot write them. On
+production acme sends no outgoing e-mail (see [What is hidden](#what-is-hidden)).
+
+It reaches no other existing workspace. It is a verified user, though, so like
+any verified user it can create workspaces of its own when `TENANT_CREATION` is
+`open` (production reads `open` as `bootstrap`, which allows only the first
+workspace of an empty installation).
 
 ### What is hidden
 
@@ -571,10 +578,40 @@ or `failed`. A failure there never fails the reseed — the route still answers
 error code (`test payments failed: <code>`); the provider's error text is
 neither returned nor logged, because it may echo the webhook URL.
 
-Every reseed resets the purchase account with the current
-`SMOKE_PURCHASE_PASSWORD`, so the password stays valid until it is rotated.
-Revoking the account means rotating `SMOKE_PURCHASE_PASSWORD` in the deployment
-and in CI; the next reseed writes the new password.
+The purchase account always has the fixed user id `user-acme-purchase`. When a
+`user` row holds `kontakt+smoke-purchase@togethercommunity.app` under any other
+id, a reseed with `SMOKE_PURCHASE_PASSWORD` set refuses with `the purchase
+account email belongs to another identity` before it writes anything, so it
+never adopts an identity someone else registered.
+
+Every reseed, and so every production deploy, first ends the purchase account's
+access in a transaction of its own: it deletes all its sessions, passkeys,
+two-factor enrolments and every sign-in method other than the password, turns
+two-factor off and removes its `admin` row. That step commits before the guard
+runs, so a guard refusal still revokes the account, and it also runs when
+`SMOKE_PURCHASE_PASSWORD` is unset. The re-seed then writes the account back
+with the current `SMOKE_PURCHASE_PASSWORD`. Rotating `SMOKE_PURCHASE_PASSWORD`
+in the deployment and in CI and deploying therefore takes every access back.
+No other user's rows are touched.
+
+Staging and production must use separate Stripe sandboxes for
+`SMOKE_PURCHASE_STRIPE_TEST_KEY`: replacing an earlier test endpoint matches
+the workspace and the slot, not the host, so a shared sandbox lets one
+environment's reseed remove the other's endpoint. Two reseeds that overlap can
+likewise leave the test slot pointing at an endpoint the other run replaced;
+the next reseed repairs it.
+
+#### Rolling back past the purchase account
+
+A release without the purchase account does not allow-list its e-mail, so its
+reseed guard refuses on the account's member row. Before rolling back to such
+a release:
+
+1. Unset `SMOKE_PURCHASE_PASSWORD` and `SMOKE_PURCHASE_STRIPE_TEST_KEY` in the
+   deployment.
+2. Run one reseed on the current release. It wipes the purchase member rows and
+   revokes the account.
+3. Roll back.
 
 Manually, against any database:
 

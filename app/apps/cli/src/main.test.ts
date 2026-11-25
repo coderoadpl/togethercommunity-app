@@ -471,7 +471,7 @@ beforeEach(() => {
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
-  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
+  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack', label: { carrier: 'inpost', trackingNumber: '520000011395200025754311' } }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
   const unconnected = { organizationId: null, token: null, configured: false };
@@ -2665,14 +2665,30 @@ describe('InPost ShipX CLI', () => {
     expect(process.exitCode).toBe(29);
   });
 
-  it.each([
-    ['shipped', { carrier: 'other', trackingNumber: 'MANUAL0001' }, 'shipped: order-number (other MANUAL0001); InPost label LABEL1234 was bought as well, reconcile it in Manager Paczek'],
-    ['shipped', { carrier: 'inpost', trackingNumber: 'LABEL1234' }, 'shipped: order-number (inpost LABEL1234)'],
-    [null, null, 'label bought; order is off the packing list: order-number (inpost LABEL1234)'],
-  ])('describes a bought label for fulfilment status %s', async (fulfilmentStatus, dispatchedShipment, expected) => {
-    h.shipxCreate.mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus, shipment: dispatchedShipment }, shipment: { trackingNumber: 'LABEL1234' } }));
+  it('treats whitespace around the bought and dispatched tracking numbers as immaterial', async () => {
+    h.shipxCreate.mockResolvedValue(ok({
+      order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: ' LABEL1234' } },
+      shipment: { trackingNumber: 'LABEL1234 ' },
+    }));
     await run('order', 'shipx', 'create', 'order-number');
-    expect(logSpy).toHaveBeenCalledWith(expected);
+    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost LABEL1234)');
+  });
+
+  it('warns when the bought label has no usable dispatch tracking number', async () => {
+    h.shipxCreate.mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack', label: null }, shipment: { trackingNumber: 'T1' } }));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(logSpy).toHaveBeenCalledWith('label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: order-number (inpost T1)');
+  });
+
+  it.each([
+    ['fulfilment_conflict', 'The order was marked as shipped meanwhile', { state: 'manual_shipped', trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }, 27],
+    ['conflict', 'The order left the packing list meanwhile', { trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }, 6],
+  ] as const)('reports the bought-label %s on stderr with a non-zero exit', async (code, message, details, exitCode) => {
+    h.shipxCreate.mockResolvedValue(err(appError(code, message, details)));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(errorSpy).toHaveBeenCalledWith(`error(${code}): ${message}`);
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(exitCode);
   });
 
   it('passes a chosen parcel template and rejects an unknown one before calling the server', async () => {

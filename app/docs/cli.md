@@ -129,16 +129,25 @@ creation no longer marks an order as shipped or e-mails the buyer.
 The shop management key command has the same opt-in:
 `shop orders shipx create <orderId> --mark-shipped`.
 
-Both create commands print one line on success, based on the returned order:
+In plain mode both create commands print one line on success, based on the
+returned order:
 
-- `label ready; order still to pack: <orderId> (inpost <label tracking>)`
 - `shipped: <orderId> (<dispatch carrier> <dispatch tracking>)`
-- `label bought; order is off the packing list: <orderId> (inpost <label tracking>)`
+- `label ready; order still to pack: <orderId> (inpost <label tracking>)`
+- `label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: <orderId> (inpost <shipment tracking>)`
 
-If the shipped order has a different dispatch tracking number, the line also
-says `; InPost label <label tracking> was bought as well, reconcile it in Manager Paczek`.
-The plain `orders list` and `shop orders list` output shows `label_ready` in the
-fulfilment column for a to-pack order with a bought label. Use
+If another request dispatched the order with the same InPost label, the
+command reports `shipped` and does not send another e-mail. If the order was
+shipped meanwhile with a different carrier or tracking number, the command
+fails with `fulfilment_conflict` (`details.state: 'manual_shipped'`, exit 27).
+If the order left the packing list while the label was being bought, the
+command fails with `conflict` (exit 6). In plain mode both errors go to stderr;
+with `--json` they are returned in the error envelope on stdout.
+
+The plain session `orders list` output now has a fulfilment column immediately
+after the status column. Scripts that read columns by position must adjust.
+Plain `shop orders list` keeps its existing fulfilment column. Both show
+`label_ready` in that column for a to-pack order with a bought label. Use
 `--fulfilment to_pack` to include these orders; the stored status is still
 `to_pack`.
 

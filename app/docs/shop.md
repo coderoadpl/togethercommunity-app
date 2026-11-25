@@ -793,28 +793,32 @@ order id (cut to 100 characters).
    or `--mark-shipped` on `order shipx create` (also `shop orders shipx create`)
    restores the one-step flow: the existing **Mark as shipped** use-case runs
    with `inpost` and the stored tracking number. Its conditional transaction
-   writes the fulfilment event and queues the buyer e-mail. If another request
-   shipped meanwhile, either create mode returns `fulfilment_conflict` with
-   `details.state: 'manual_shipped'`, `trackingNumber` and `shipxShipmentId` for
-   reconciliation in Manager Paczek. If the order instead left the packing
-   list while a label-only request was buying the shipment, the request returns
+   writes the fulfilment event and queues the buyer e-mail. In either create
+   mode, if another request dispatched the same InPost label meanwhile, the
+   request returns the shipped order without queuing another e-mail. If the
+   other request used a different carrier or tracking number, create returns
+   `fulfilment_conflict` with `details.state: 'manual_shipped'`, `trackingNumber`
+   and `shipxShipmentId` for reconciliation in Manager Paczek. If the order
+   instead left the packing list while the shipment was bought, create returns
    `conflict` with `details: { trackingNumber, shipxShipmentId }` and tells staff
    to cancel the label in Manager Paczek. Both conflicts preserve the bought
    shipment and record the operation outcome as `bought`.
 
 **Label ready** is a display state, never a stored fulfilment status. It means
 `to_pack` with a stored ShipX id, valid tracking number and status past
-`offer_selected`. Order list and detail responses add an optional `label`
-object (`{ carrier: 'inpost', trackingNumber }`), or `null`; older clients can
-keep parsing the response. These orders stay in the `to_pack` filter and
+`offer_selected`, excluding `canceled`. Order list and detail responses add an
+optional `label` object (`{ carrier: 'inpost', trackingNumber }`), or `null`;
+older clients can keep parsing the response. These orders stay in the `to_pack` filter and
 packing list. Studio shows an info-coloured chip, carrier status, tracking
 number, **Print label** and one primary **Mark as shipped** action. The
-existing shipping confirmation is prefilled and says that the buyer e-mail
-will be sent now (never for test orders). It shows no shipped date or staff
-name until dispatch, and no second **Create InPost shipment** button. A stale
-ShipX view cannot hide a label already stored on the order. When the ShipX
-view discovers a label that the order detail did not have, Studio invalidates
-the sales order lists without calling the ShipX refresh again.
+shipping form prefills the carrier and tracking number. Staff can replace both
+if they canceled a label in Manager Paczek. The confirmation says that the
+buyer e-mail will be sent now (never for test orders). Studio shows no shipped
+date or staff name until dispatch, and no second **Create InPost shipment**
+button. A stale ShipX view cannot hide a label already stored on the order.
+When the ShipX view discovers a label that the order detail did not have,
+Studio invalidates the sales order lists without calling the ShipX refresh
+again.
 
 A create request for an already bought label still takes and finishes its
 claim but makes no ShipX call or purchase. By default it returns the current
@@ -969,8 +973,8 @@ paid yet.
 | order not to pack, or already shipped | `validation` or `fulfilment_conflict` |
 | delivery option not InPost, phone not a Polish number, building number missing | `validation` |
 | another request holds the order's claim, or took it over during the request | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
-| another request marked the order as shipped while the shipment was bought | `fulfilment_conflict` with `details.state: 'manual_shipped'`, `trackingNumber` and `shipxShipmentId` |
-| with `markShipped: false`, the order left the packing list while the shipment was bought | `conflict` with `trackingNumber` and `shipxShipmentId`; cancel the label in Manager Paczek |
+| another request marked the order as shipped with a different carrier or tracking number while the shipment was bought | `fulfilment_conflict` with `details.state: 'manual_shipped'`, `trackingNumber` and `shipxShipmentId` |
+| the order left the packing list while the shipment was bought | `conflict` with `trackingNumber` and `shipxShipmentId`; cancel the label in Manager Paczek |
 | the stored shipment belongs to another connection than the order's mode uses, or to another organization | `conflict` (HTTP 409, CLI exit 6) |
 | an earlier attempt is unconfirmed and ShipX lists no shipment for the order | `conflict` |
 | ShipX refuses the request (4xx), the payment fails or the offer is unavailable or expired | `shipx_rejected` (HTTP 422, CLI exit 29) with the ShipX `error` key, a description of at most 300 characters and the field keys of `details`; the raw body is never stored or logged |

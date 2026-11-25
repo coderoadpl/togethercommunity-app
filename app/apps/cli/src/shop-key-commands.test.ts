@@ -361,12 +361,11 @@ describe('shop orders CLI', () => {
   });
 
   it.each([
-    ['to_pack', null, 'label ready; order still to pack: order-1 (inpost LABEL1234)'],
-    ['shipped', order.shipment, 'shipped: order-1 (other MANUAL0001); InPost label LABEL1234 was bought as well, reconcile it in Manager Paczek'],
-    ['shipped', { ...order.shipment, carrier: 'inpost', trackingNumber: 'LABEL1234' }, 'shipped: order-1 (inpost LABEL1234)'],
-    [null, null, 'label bought; order is off the packing list: order-1 (inpost LABEL1234)'],
-  ])('describes a bought label for fulfilment status %s', async (fulfilmentStatus, dispatchedShipment, expected) => {
-    h.fetchImpl = async () => Response.json({ ok: true, data: { order: { ...order, fulfilmentStatus, shipment: dispatchedShipment }, shipment: { ...shipment, trackingNumber: 'LABEL1234' } } });
+    ['to_pack', null, { carrier: 'inpost', trackingNumber: 'LABEL1234' }, 'LABEL1234', 'label ready; order still to pack: order-1 (inpost LABEL1234)'],
+    ['to_pack', null, null, 'T1', 'label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: order-1 (inpost T1)'],
+    ['shipped', { ...order.shipment, carrier: 'inpost', trackingNumber: 'LABEL1234 ' }, null, ' LABEL1234', 'shipped: order-1 (inpost LABEL1234)'],
+  ])('describes a bought label for fulfilment status %s', async (fulfilmentStatus, dispatchedShipment, label, trackingNumber, expected) => {
+    h.fetchImpl = async () => Response.json({ ok: true, data: { order: { ...order, fulfilmentStatus, shipment: dispatchedShipment, label }, shipment: { ...shipment, trackingNumber } } });
     await runPlain('shop', 'orders', 'shipx', 'create', 'order-1');
     expect(logSpy).toHaveBeenCalledWith(expected);
   });

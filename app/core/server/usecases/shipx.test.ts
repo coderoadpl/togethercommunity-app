@@ -626,7 +626,12 @@ describe('create InPost shipment', () => {
   });
 
   it('stores the shipment and reports the tracking number when staff shipped the order manually meanwhile', async () => {
-    const h = harness({ ship: async () => err(appError('fulfilment_conflict', 'Order has already been shipped')) });
+    let current = baseOrder;
+    const h = harness({ ship: async () => {
+      current = { ...baseOrder, fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: 'MANUAL0001', shippedAt: NOW, shippedBy: 'staff' } };
+      return err(appError('fulfilment_conflict', 'Order has already been shipped'));
+    } });
+    h.deps.orderDetails = { findById: async () => current };
     expect(await createInpostShipment(write, { orderId: 'order-1', markShipped: true }, h.deps)).toMatchObject({
       ok: false,
       error: {
@@ -1481,28 +1486,64 @@ it.each([false, true])('never emails a test order with markShipped %s', async (m
   expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
 });
 
-it.each([
-  ['shipped', {
-    code: 'fulfilment_conflict',
-    message: `The order was marked as shipped meanwhile; the InPost shipment ${TRACKING} exists as well, reconcile it in Manager Paczek`,
-    details: { state: 'manual_shipped', trackingNumber: TRACKING, shipxShipmentId: '1001' },
-  }],
-  [null, {
-    code: 'conflict',
-    message: `The order left the packing list meanwhile; cancel the InPost label ${TRACKING} in Manager Paczek`,
-    details: { trackingNumber: TRACKING, shipxShipmentId: '1001' },
-  }],
-] as const)('reports the bought label when fulfilment changes to %s during label creation', async (fulfilmentStatus, error) => {
-  const h = harness();
-  let current = baseOrder;
-  h.deps.orderDetails = { findById: async () => current };
-  h.deps.shipx.real = createScriptedShipxClient({ polls: [(id) => {
-    current = { ...baseOrder, fulfilmentStatus };
-    return ok(remoteShipment(id, { status: 'confirmed', trackingNumber: TRACKING }));
-  }] }).client;
-  expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toEqual({ ok: false, error });
-  expect(h.ship).not.toHaveBeenCalled();
+describe.each([false, true])('label purchase races with markShipped %s', (markShipped) => {
+  it.each([
+    ['shipped', {
+      code: 'fulfilment_conflict',
+      message: `The order was marked as shipped meanwhile; the InPost shipment ${TRACKING} exists as well, reconcile it in Manager Paczek`,
+      details: { state: 'manual_shipped', trackingNumber: TRACKING, shipxShipmentId: '1001' },
+    }],
+    [null, {
+      code: 'conflict',
+      message: `The order left the packing list meanwhile; cancel the InPost label ${TRACKING} in Manager Paczek`,
+      details: { trackingNumber: TRACKING, shipxShipmentId: '1001' },
+    }],
+  ] as const)('reports the bought label when fulfilment changes to %s during label creation', async (fulfilmentStatus, error) => {
+    const h = harness();
+    let current = baseOrder;
+    h.deps.ship.orderDetails = h.deps.orderDetails = { findById: async () => current };
+    h.deps.shipx.real = createScriptedShipxClient({ polls: [(id) => {
+      current = { ...baseOrder, fulfilmentStatus, shipment: fulfilmentStatus === 'shipped'
+        ? { carrier: 'other', trackingNumber: TRACKING, shippedAt: NOW, shippedBy: 'staff' }
+        : null };
+      return ok(remoteShipment(id, { status: 'confirmed', trackingNumber: TRACKING }));
+    }] }).client;
+    expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toEqual({ ok: false, error });
+    expect(h.ship).not.toHaveBeenCalled();
+    expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
+    expect(h.row()).toMatchObject({ trackingNumber: TRACKING, operationToken: null });
+    expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'bought' } });
+  });
+
+  it('succeeds when the order was dispatched with the same InPost label meanwhile', async () => {
+    let current = baseOrder;
+    const dispatched: OrderListItem = {
+      ...baseOrder, fulfilmentStatus: 'shipped',
+      shipment: { carrier: 'inpost', trackingNumber: ` ${TRACKING}`, shippedAt: NOW, shippedBy: 'staff' },
+    };
+    const h = harness({ ship: async () => {
+      current = dispatched;
+      return err(appError('fulfilment_conflict', 'Order has already been shipped'));
+    } });
+    h.deps.ship.orderDetails = h.deps.orderDetails = { findById: async () => current };
+    h.deps.shipx.real = createScriptedShipxClient({ polls: [(id) => {
+      if (!markShipped) current = dispatched;
+      return ok(remoteShipment(id, { status: 'confirmed', trackingNumber: `${TRACKING} ` }));
+    }] }).client;
+    expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toMatchObject({
+      ok: true,
+      value: { order: { ...dispatched, label: { carrier: 'inpost', trackingNumber: TRACKING } }, shipment: { shipxShipmentId: '1001' } },
+    });
+    expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
+    expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
+    expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'bought' } });
+  });
+});
+
+it('preserves a failed dispatch error while the bought label order remains to pack', async () => {
+  const failure = appError('validation', 'Dispatch failed', { field: 'trackingNumber' });
+  const h = harness({ ship: async () => err(failure) });
+  expect(await createInpostShipment(write, { orderId: 'order-1', markShipped: true }, h.deps)).toEqual({ ok: false, error: failure });
   expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
-  expect(h.row()).toMatchObject({ trackingNumber: TRACKING, operationToken: null });
-  expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'bought' } });
+  expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'failed' } });
 });

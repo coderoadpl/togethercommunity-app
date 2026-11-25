@@ -510,11 +510,19 @@ const orderAfterLabelPurchase = async (
   run: ShipmentRun,
   label: { trackingNumber: string; shipxShipmentId: string },
   orderDetails: CreateInpostShipmentDeps['orderDetails'],
+  dispatchError?: AppError,
 ): Promise<Result<{ order: OrderListItem }, AppError>> => {
   const order = await orderDetails.findById(run.tenantId, run.order.id);
-  if (order === null) return err(notFound('Order was not found'));
-  if (order.fulfilmentStatus === 'to_pack') return ok({ order });
-  if (order.fulfilmentStatus === 'shipped') return err(appError('fulfilment_conflict', 'Order has already been shipped'));
+  if (order === null) return err(dispatchError ?? notFound('Order was not found'));
+  if (order.fulfilmentStatus === 'to_pack') return dispatchError === undefined ? ok({ order }) : err(dispatchError);
+  if (order.fulfilmentStatus === 'shipped') {
+    if (order.shipment?.carrier === 'inpost' && order.shipment.trackingNumber.trim() === label.trackingNumber.trim()) return ok({ order });
+    return err(shipxStateError(
+      'fulfilment_conflict',
+      `The order was marked as shipped meanwhile; the InPost shipment ${label.trackingNumber} exists as well, reconcile it in Manager Paczek`,
+      { ...label, state: 'manual_shipped' },
+    ));
+  }
   return err(appError('conflict', `The order left the packing list meanwhile; cancel the InPost label ${label.trackingNumber} in Manager Paczek`, label));
 };
 
@@ -553,17 +561,11 @@ const runShipment = async (
   }
   if (trackingNumber === null) return err(pendingPayment(shipmentId, null));
 
-  const order = markShipped
-    ? await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship)
-    : await orderAfterLabelPurchase(run, { trackingNumber, shipxShipmentId: shipmentId }, deps.orderDetails);
-  if (!order.ok) {
-    if (order.error.code !== 'fulfilment_conflict') return order;
-    return err(shipxStateError(
-      'fulfilment_conflict',
-      `The order was marked as shipped meanwhile; the InPost shipment ${trackingNumber} exists as well, reconcile it in Manager Paczek`,
-      { state: 'manual_shipped', trackingNumber, shipxShipmentId: shipmentId },
-    ));
-  }
+  const dispatch = markShipped ? await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship) : null;
+  const order = dispatch?.ok === true
+    ? dispatch
+    : await orderAfterLabelPurchase(run, { trackingNumber, shipxShipmentId: shipmentId }, deps.orderDetails, dispatch?.error);
+  if (!order.ok) return order;
   const shipment = await deps.shipxShipments.findByOrder(run.tenantId, run.order.id);
   if (shipment === null) return err(notFound('The InPost shipment was not found'));
   return ok({ order: { ...order.value.order, label: orderLabel(shipment) }, shipment: publicShipment(shipment) });

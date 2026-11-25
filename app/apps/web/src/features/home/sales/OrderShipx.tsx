@@ -28,9 +28,11 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const [markShipped, setMarkShipped] = useState(false);
   const [confirming, setConfirming] = useState<'create' | 'discard' | null>(null);
   const [parcelTemplate, setParcelTemplate] = useState<ParcelTemplate | undefined>(undefined);
-  if (view === undefined || view.service === null) return null;
-  const shipment = view.shipment;
+  const shipment = view?.shipment ?? null;
   const labelReady = order.label != null || (shipment?.shipxShipmentId != null && shipxShipmentBought(shipment));
+  const showCreate = canCreate && view?.available === true && view.service !== null && !labelReady;
+  if (!showCreate && confirming !== null) setConfirming(null);
+  if (view === undefined || view.service === null) return null;
   const unconfirmed = shipment !== null && shipxAttemptUnconfirmed(shipment);
   const discardable = shipment !== null && shipment.shipxShipmentId === null;
   const awaitingPayment = shipment?.shipxShipmentId != null && !labelReady && view.reason === null;
@@ -44,7 +46,6 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
     : markShipped
       ? t.shipx.createConfirmBodyShipped({ service, size, email: order.memberEmail })
       : t.shipx.createConfirmBody({ service, size });
-  const showCreate = canCreate && view.available && !labelReady;
   const reason = canCreate ? hintReason(view.reason) : null;
   const hint = reason === null ? null : t.shipx.unavailableReasons[reason][view.environment];
   const busy = pending || discarding;

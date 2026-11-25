@@ -388,7 +388,7 @@ it('keeps the stored label when the ShipX query returns stale data', async () =>
   expect(screen.getByTestId('order-label-ready')).toHaveTextContent('Label ready');
   expect(screen.queryByTestId('order-shipx-create')).toBeNull();
   expect(screen.getByLabelText(en.shipping.shipTracking)).toHaveValue(label.trackingNumber);
-  expect(screen.getByLabelText(en.shipping.shipTracking)).toBeDisabled();
+  expect(screen.getByLabelText(en.shipping.shipTracking)).toBeEnabled();
 });
 
 it('shows a refreshed ready label on the Delivery card and dispatches with its stored number', async () => {

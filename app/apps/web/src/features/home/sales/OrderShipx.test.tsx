@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#core/client/index.js';
@@ -223,4 +223,17 @@ it('honours a bought label on the order even when the ShipX view offers create',
   renderWithProviders(<OrderShipx {...props} order={{ ...toPack, label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }} />);
   expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
+});
+
+it.each(['Create InPost shipment', 'Discard the attempt and create again'])('does not reopen the confirmation for %s when create becomes available again', async (action) => {
+  const view = { ...ready, shipment: shipment({ shipxShipmentId: null, status: 'creating', trackingNumber: null, boughtAt: null }) };
+  const renderOrder = (availableView: ShipxOrderView | undefined) => <OrderShipx {...props} view={availableView} />;
+  const { rerender } = render(renderOrder(view));
+  await userEvent.click(screen.getByRole('button', { name: action }));
+  expect(await screen.findByRole('dialog')).toBeVisible();
+  rerender(renderOrder(action === 'Create InPost shipment' ? { ...view, available: false } : undefined));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  rerender(renderOrder(view));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: action })).toBeVisible();
 });

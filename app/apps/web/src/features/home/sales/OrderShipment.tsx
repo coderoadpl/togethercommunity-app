@@ -31,13 +31,7 @@ const Row = ({ label, children }: { label: string; children: ReactNode }) => (
 export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderShipmentProps) => {
   const t = useTranslations();
   const { language } = useLanguage();
-  const [carrier, setCarrier] = useState<ShippingCarrier>(order.label?.carrier ?? order.shipping?.carrier ?? 'inpost');
-  const [trackingNumber, setTrackingNumber] = useState('');
-  const [confirming, setConfirming] = useState(false);
   const label = order.label;
-  const shipmentCarrier = label?.carrier ?? carrier;
-  const shipmentTracking = label?.trackingNumber ?? trackingNumber;
-  const tracking = trackingNumberSchema.safeParse(shipmentTracking);
 
   if (order.fulfilmentStatus === 'shipped' && order.shipment != null) {
     const shipment = order.shipment;
@@ -57,6 +51,16 @@ export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderS
   }
   if (order.fulfilmentStatus !== 'to_pack') return null;
   if (!canShip) return label == null ? null : <Row label={t.shipping.trackingNumber}>{label.trackingNumber}</Row>;
+  return <OrderShipmentForm key={`${order.id}:${label?.trackingNumber ?? ''}`} order={order} pending={pending} error={error} onShip={onShip} />;
+};
+
+const OrderShipmentForm = ({ order, pending, error, onShip }: Omit<OrderShipmentProps, 'canShip'>) => {
+  const t = useTranslations();
+  const label = order.label;
+  const [carrier, setCarrier] = useState<ShippingCarrier>(label?.carrier ?? order.shipping?.carrier ?? 'inpost');
+  const [trackingNumber, setTrackingNumber] = useState(label?.trackingNumber ?? '');
+  const [confirming, setConfirming] = useState(false);
+  const tracking = trackingNumberSchema.safeParse(trackingNumber);
   return (
     <Stack useFlexGap spacing="0.75rem" data-testid="order-ship-form">
       <Stack useFlexGap spacing="0.75rem">
@@ -64,8 +68,7 @@ export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderS
           select
           size="small"
           label={t.shipping.shipCarrier}
-          value={shipmentCarrier}
-          disabled={label != null}
+          value={carrier}
           onChange={(event) => setCarrier(shippingCarrierSchema.parse(event.target.value))}
           sx={{ minWidth: '10rem' }}
         >
@@ -75,10 +78,9 @@ export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderS
         <TextField
           size="small"
           label={t.shipping.shipTracking}
-          value={shipmentTracking}
-          disabled={label != null}
+          value={trackingNumber}
           onChange={(event) => setTrackingNumber(event.target.value)}
-          helperText={label == null ? t.shipping.shipTrackingHint : undefined}
+          helperText={trackingNumber === label?.trackingNumber ? undefined : t.shipping.shipTrackingHint}
           error={trackingNumber.length > 0 && !tracking.success}
           sx={{ flex: 1 }}
           slotProps={{ htmlInput: { maxLength: 80, 'data-testid': 'order-ship-tracking' } }}
@@ -104,7 +106,7 @@ export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderS
         onConfirm={() => {
           if (!tracking.success) return;
           setConfirming(false);
-          onShip({ carrier: shipmentCarrier, trackingNumber: tracking.data });
+          onShip({ carrier, trackingNumber: tracking.data });
         }}
         onClose={() => setConfirming(false)}
         confirmTestId="order-ship-confirm"

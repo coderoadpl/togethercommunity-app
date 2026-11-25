@@ -120,6 +120,24 @@ With a [shop management key](shop-management-keys.md#product-covers-gallery-imag
 the same steps are `shop images upload <file>` and
 `shop products create|update --images-file <path>`.
 
+## InPost labels and dispatch
+
+`order shipx create <orderId>` creates and pays for the label, stores the
+tracking number and leaves the order **to pack**. This default changed: label
+creation no longer marks an order as shipped or e-mails the buyer.
+`order shipx create <orderId> --mark-shipped` restores the one-step flow.
+The shop management key command has the same opt-in:
+`shop orders shipx create <orderId> --mark-shipped`.
+
+Without that flag, dispatch the parcel later with
+`order ship <orderId> --carrier inpost --tracking <storedTrackingNumber>`
+(or `shop orders ship` with a key). Only dispatch writes the fulfilment event
+and queues the buyer's shipment e-mail; test orders never send it. Repeating
+label creation on an already bought label makes no second carrier call or
+purchase, and `--mark-shipped` can dispatch that label once. Both actions
+require `order:write`, or `shop:fulfilment:write` for a shop key. See
+[Creating the shipment](shop.md#creating-the-shipment) for retries and leases.
+
 ## Staff refunds
 
 `order refund-preview <orderId>` prints the paid amount, the amount refunded

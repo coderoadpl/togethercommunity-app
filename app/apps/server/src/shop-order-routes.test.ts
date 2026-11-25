@@ -5,6 +5,7 @@ import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#ad
 import { createOrderRepository } from '#adapters/db/repositories.js';
 import {
   members,
+  emailOutbox,
   orderFulfilmentEvents,
   orderIssueEvents,
   orderShipmentEvents,
@@ -425,6 +426,8 @@ describe('shop order routes with a shop management key', () => {
     const created = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path), undefined, akademiaHost);
     expect(created.status).toBe(200);
     const tracking = fakeShipxTrackingNumber(fakeShipxShipmentId('akademia-live-locker'));
+    expect((await database.db.select().from(orderFulfilmentEvents)).filter((event) => event.orderId === 'akademia-live-locker')).toEqual([]);
+    expect((await database.db.select().from(emailOutbox)).filter((email) => email.tenantId === 'akademia' && email.kind === 'order-shipped')).toEqual([]);
     expect(envelope(shopOrderContracts.shipxCreate.output).parse(await created.json()).data).toMatchObject({
       order: { fulfilmentStatus: 'to_pack', shipment: null, label: { carrier: 'inpost', trackingNumber: tracking } },
       shipment: { trackingNumber: tracking, environment: 'production' },

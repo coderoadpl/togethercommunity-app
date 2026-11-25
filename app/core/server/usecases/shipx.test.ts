@@ -610,10 +610,10 @@ describe('create InPost shipment', () => {
     expect(real.calls.buy).toEqual([{ shipmentId: '2002', offerId: '9' }]);
   });
 
-  it('refuses a concurrent click while another request holds the operation, without calling ShipX', async () => {
+  it.each([false, true])('refuses a concurrent click with markShipped %s while another request holds the operation', async (markShipped) => {
     const h = harness();
     h.seed({ shipxShipmentId: '1001', status: 'offers_prepared', operationStartedAt: '2026-11-08T09:59:50.000Z' });
-    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict', details: { state: 'lease_held' } } });
+    expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toMatchObject({ ok: false, error: { code: 'fulfilment_conflict', details: { state: 'lease_held' } } });
     expect(h.real.calls).toEqual(noCalls);
     expect(h.row()?.operationStartedAt).toBe('2026-11-08T09:59:50.000Z');
   });
@@ -1478,4 +1478,19 @@ it.each([false, true])('never emails a test order with markShipped %s', async (m
   expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
   if (markShipped) expect(h.ship.mock.calls[0]?.[1].email).toBeNull();
   expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
+});
+
+
+it('returns the current shipped order if manual dispatch wins during label creation', async () => {
+  const h = harness();
+  let current = baseOrder;
+  h.deps.orderDetails = { findById: async () => current };
+  h.deps.shipx.real = createScriptedShipxClient({ polls: [(id) => {
+    current = { ...baseOrder, fulfilmentStatus: 'shipped' };
+    return ok(remoteShipment(id, { status: 'confirmed', trackingNumber: TRACKING }));
+  }] }).client;
+  expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true, value: { order: { fulfilmentStatus: 'shipped' } } });
+  expect(h.ship).not.toHaveBeenCalled();
+  expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
+  expect(h.row()?.operationToken).toBeNull();
 });

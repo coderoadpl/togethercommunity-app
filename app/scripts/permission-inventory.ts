@@ -8,6 +8,7 @@ import {
   PRINCIPALS,
   ROLE_CAPABILITIES,
   SHOP_CATALOG_ROUTES,
+  PURCHASE_SMOKE_ROUTES,
   SHOP_DOWNLOAD_ROUTES,
 } from '#core/contract/index.js';
 import {
@@ -31,7 +32,9 @@ export const SHOP_MANAGEMENT_KEY_PRINCIPAL = 'shop-management-key (scope interse
 
 export const SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL = 'shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)';
 
-type InventoryPrincipal = Principal | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL | typeof SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL;
+const PURCHASE_SMOKE_PRINCIPAL = 'purchase-smoke key (exclusive fixture purpose)';
+
+type InventoryPrincipal = Principal | typeof PURCHASE_SMOKE_PRINCIPAL | typeof SHOP_MANAGEMENT_KEY_PRINCIPAL | typeof SHOP_MANAGEMENT_PROPOSE_KEY_PRINCIPAL;
 
 export interface PermissionModeRow {
   principal: InventoryPrincipal;
@@ -45,7 +48,7 @@ export interface PermissionModeRow {
 
 export interface PermissionRow {
   subject: string;
-  capability: Capability | null;
+  capability: Capability | 'purpose:purchase-smoke' | null;
   before: readonly InventoryPrincipal[];
   after: readonly InventoryPrincipal[];
   derivable: boolean;
@@ -538,6 +541,13 @@ const keyModeRow = (
 const routeRows = (): PermissionRow[] =>
   collectRuntimeRoutes()
     .map((route): PermissionRow => {
+      if (Object.values(PURCHASE_SMOKE_ROUTES).some((allowed) => allowed.method === route.method && allowed.path === route.path)) {
+        return {
+          subject: `${route.method} ${route.path}`, capability: 'purpose:purchase-smoke',
+          before: [PURCHASE_SMOKE_PRINCIPAL], after: [PURCHASE_SMOKE_PRINCIPAL], derivable: false,
+          evidence: 'Exclusive purpose + exact registrar allow-list + fixed test fixture + own-key checkout binding',
+        };
+      }
       const keyModes = KEY_MODE_ROUTES[`${route.method} ${route.path}`];
       if (keyModes !== undefined) {
         return keyModeRow(`${route.method} ${route.path}`, keyModes, 'Shop management key');

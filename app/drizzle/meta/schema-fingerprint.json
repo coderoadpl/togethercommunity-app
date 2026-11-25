@@ -1,6 +1,6 @@
 {
-  "hash": "9e2afabee961fed23c7fcd10c496065791034c18cba4952f4637258b0d0fcff2",
-  "shortId": "9e2afabee961",
+  "hash": "cacb405899adda6dd63ae56bf63a3fc164ecdf3a1da7bde1ed04a2e2fed24c85",
+  "shortId": "cacb405899ad",
   "schema": {
     "constraints": [
       {
@@ -27,6 +27,11 @@
         "definition": "CHECK ((((kind = 'upload'::text) = (copied_from_asset_id IS NULL)) AND ((copied_from_product_id IS NULL) = (copied_from_asset_id IS NULL)) AND ((copied_from_asset_id IS NULL) = (copied_from_version IS NULL))))",
         "name": "change_proposal_download_uploads_shape_check",
         "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CHECK ((((purpose IS NULL) AND (purpose_expires_at IS NULL)) OR ((purpose = 'purchase-smoke'::text) AND (purpose_expires_at IS NOT NULL) AND (tenant_id = 'tenant-acme'::text) AND (mode = 'direct'::text) AND (scopes = '[\"shop:catalog:read\"]'::jsonb) AND (expires_at = '1970-01-01T00:00:00.000Z'::text))))",
+        "name": "shop_management_keys_purchase_smoke_check",
+        "table": "shop_management_keys"
       },
       {
         "definition": "CHECK ((((status = 'failed'::text) AND (failure_code IS NOT NULL)) OR ((status <> 'failed'::text) AND (failure_code IS NULL) AND (failure_message IS NULL))))",
@@ -1059,6 +1064,11 @@
         "table": "coupon_redemption_events"
       },
       {
+        "definition": "FOREIGN KEY (reference) REFERENCES purchase_smoke_checkouts(reference) ON DELETE CASCADE",
+        "name": "purchase_smoke_receipts_reference_fkey",
+        "table": "purchase_smoke_receipts"
+      },
+      {
         "definition": "FOREIGN KEY (report_id) REFERENCES post_reports(id) ON DELETE RESTRICT",
         "name": "post_report_events_report_id_post_reports_id_fk",
         "table": "post_report_events"
@@ -1567,6 +1577,16 @@
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "provider_customer_owners_tenant_id_fkey",
         "table": "provider_customer_owners"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "purchase_smoke_checkouts_tenant_id_fkey",
+        "table": "purchase_smoke_checkouts"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "purchase_smoke_receipts_tenant_id_fkey",
+        "table": "purchase_smoke_receipts"
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
@@ -2534,6 +2554,11 @@
         "table": "provider_customer_owners"
       },
       {
+        "definition": "PRIMARY KEY (reference)",
+        "name": "purchase_smoke_checkouts_pkey",
+        "table": "purchase_smoke_checkouts"
+      },
+      {
         "definition": "PRIMARY KEY (scope, key)",
         "name": "rate_limit_buckets_scope_key_pk",
         "table": "rate_limit_buckets"
@@ -2712,6 +2737,11 @@
         "definition": "PRIMARY KEY (tenant_id, product_id)",
         "name": "product_stock_tenant_id_product_id_pk",
         "table": "product_stock"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, reference, event_id)",
+        "name": "purchase_smoke_receipts_pkey",
+        "table": "purchase_smoke_receipts"
       },
       {
         "definition": "PRIMARY KEY (tenant_id, sales_link_id, revision)",
@@ -3523,6 +3553,11 @@
         "table": "provider_customer_owners"
       },
       {
+        "definition": "CREATE INDEX purchase_smoke_checkouts_created_idx ON purchase_smoke_checkouts USING btree (tenant_id, created_at)",
+        "name": "purchase_smoke_checkouts_created_idx",
+        "table": "purchase_smoke_checkouts"
+      },
+      {
         "definition": "CREATE INDEX rate_limit_buckets_expiry_idx ON rate_limit_buckets USING btree (expires_at)",
         "name": "rate_limit_buckets_expiry_idx",
         "table": "rate_limit_buckets"
@@ -4041,6 +4076,16 @@
         "definition": "CREATE UNIQUE INDEX products_tenant_slug_uidx ON products USING btree (tenant_id, slug)",
         "name": "products_tenant_slug_uidx",
         "table": "products"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX purchase_smoke_checkouts_run_uidx ON purchase_smoke_checkouts USING btree (tenant_id, api_key_id, run_id, scenario)",
+        "name": "purchase_smoke_checkouts_run_uidx",
+        "table": "purchase_smoke_checkouts"
+      },
+      {
+        "definition": "CREATE UNIQUE INDEX purchase_smoke_checkouts_session_uidx ON purchase_smoke_checkouts USING btree (tenant_id, session_id)",
+        "name": "purchase_smoke_checkouts_session_uidx",
+        "table": "purchase_smoke_checkouts"
       },
       {
         "definition": "CREATE UNIQUE INDEX sales_links_tenant_slug_uidx ON sales_links USING btree (tenant_id, slug) WHERE (deleted_at IS NULL)",
@@ -6612,6 +6657,22 @@
             "identity": "",
             "name": "name",
             "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "purpose",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "purpose_expires_at",
+            "notNull": false,
             "type": "text"
           },
           {
@@ -12800,6 +12861,75 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "api_key_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reference",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "run_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "scenario",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "session_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "url",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "purchase_smoke_checkouts"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "applied_resource_id",
             "notNull": false,
             "type": "text"
@@ -17528,6 +17658,43 @@
           }
         ],
         "name": "sns_webhook_deliveries"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "receipt",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reference",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "purchase_smoke_receipts"
       },
       {
         "columns": [

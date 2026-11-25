@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import { createAuth } from '#adapters/auth/create-auth.js';
 import type { Clock } from '#core/server/index.js';
@@ -9,7 +9,6 @@ import { account, user } from './schema.js';
 
 export interface SeedUsers {
   ensurePassworded(email: string, name: string, password: string): Promise<string>;
-  ensurePasswordedWithId(id: string, email: string, name: string, password: string): Promise<string>;
   ensurePasswordless(id: string, email: string, name: string): Promise<string>;
 }
 
@@ -72,37 +71,6 @@ export const createSeedUsers = (db: Db, clock: Clock): SeedUsers => {
         .set({ createdAt: seededAt, updatedAt: seededAt })
         .where(eq(account.userId, row.id));
       return row.id;
-    },
-
-    ensurePasswordedWithId: async (id, email, name, password) => {
-      const context = await auth.$context;
-      const hashed = await context.password.hash(password);
-      const seededAt = new Date(clock.nowIso());
-      const identity = { name, email, emailVerified: true, createdAt: seededAt, updatedAt: seededAt };
-      const claimed = await db
-        .insert(user)
-        .values({ id, ...identity })
-        .onConflictDoUpdate({ target: user.id, set: identity, setWhere: sql`lower(${user.email}) = lower(${email})` })
-        .returning({ id: user.id });
-      if (claimed.length === 0) throw new Error(`Seeded user id ${id} belongs to another e-mail`);
-      const credentials = await db
-        .update(account)
-        .set({ password: hashed, createdAt: seededAt, updatedAt: seededAt })
-        .where(and(eq(account.userId, id), eq(account.providerId, 'credential')))
-        .returning({ id: account.id });
-      if (credentials.length === 0) {
-        // Better Auth refuses to create any account for the password-only identity this seeds.
-        await db.insert(account).values({
-          id: crypto.randomUUID(),
-          userId: id,
-          accountId: id,
-          providerId: 'credential',
-          password: hashed,
-          createdAt: seededAt,
-          updatedAt: seededAt,
-        });
-      }
-      return id;
     },
 
     ensurePasswordless: async (id, email, name) => {

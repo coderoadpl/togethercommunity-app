@@ -19,7 +19,6 @@ import {
   normalizeEmail,
   PASSWORD_MIN_LENGTH,
   resetPassword as renderResetPassword,
-  SMOKE_TENANT_PURCHASE_USER_ID,
   verifyEmail as renderVerifyEmail,
   type AppError,
   type EmailBranding,
@@ -435,53 +434,27 @@ const magicLinkMailboxProof = (db: Db, settings: AuthSettings) => ({
   },
 });
 
-const PASSWORD_SIGN_IN_PATH = '/sign-in/email';
-
-const isPasswordOnlyIdentity = (userId: string): boolean => userId === SMOKE_TENANT_PURCHASE_USER_ID;
-
-const passwordSignInSchema = z.object({ password: z.string() });
-
-const matchesAnyHash = async (
-  hashes: Array<string | null>,
-  password: string,
-  verify: (input: { hash: string; password: string }) => Promise<boolean>,
-): Promise<boolean> => {
-  for (const hash of hashes) {
-    if (hash !== null && await verify({ hash, password })) return true;
-  }
-  return false;
-};
-
 const passwordSessionGuard = (db: Db) => ({
   id: 'password-session-guard',
   hooks: {
     after: [{
       matcher: (ctx: { path?: string }) =>
-        ctx.path === PASSWORD_SIGN_IN_PATH || ctx.path === '/sign-up/email',
+        ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email',
       handler: createAuthMiddleware(async (ctx) => {
         const signedIn = ctx.context.newSession;
         if (signedIn === null) return;
-        const submitted = passwordSignInSchema.safeParse(ctx.body);
         // Password sign-in or sign-up can create a session after mailbox proof removes its credential.
-        const credentialHolds = await db.transaction(async (tx) => {
+        const credentialExists = await db.transaction(async (tx) => {
           await tx.select({ id: user.id }).from(user)
             .where(eq(user.id, signedIn.user.id)).for('update');
-          const credentials = await tx.select({ password: account.password }).from(account).where(and(
+          const credentials = await tx.select({ id: account.id }).from(account).where(and(
             eq(account.userId, signedIn.user.id), eq(account.providerId, 'credential'),
           ));
-          // A rotation can replace the hash between Better Auth's check and this session write.
-          const holds = isPasswordOnlyIdentity(signedIn.user.id)
-            ? submitted.success && await matchesAnyHash(
-              credentials.map((credential) => credential.password),
-              submitted.data.password,
-              ctx.context.password.verify,
-            )
-            : credentials.length > 0;
-          if (holds) return true;
+          if (credentials.length > 0) return true;
           await tx.delete(session).where(eq(session.id, signedIn.session.id));
           return false;
         });
-        if (credentialHolds) return;
+        if (credentialExists) return;
         ctx.context.newSession = null;
         deleteSessionCookie(ctx);
         throw APIError.from('UNAUTHORIZED', BASE_ERROR_CODES.INVALID_EMAIL_OR_PASSWORD);
@@ -786,21 +759,6 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       },
     },
     databaseHooks: {
-      session: {
-        create: {
-          before: async (createdSession, context) => {
-            if (isPasswordOnlyIdentity(createdSession.userId) && context?.path !== PASSWORD_SIGN_IN_PATH) return false;
-          },
-        },
-      },
-      verification: {
-        create: {
-          before: async (createdVerification) => {
-            if (createdVerification.identifier.startsWith('reset-password:')
-              && isPasswordOnlyIdentity(createdVerification.value)) return false;
-          },
-        },
-      },
       user: {
         create: {
           before: async (createdUser) => {
@@ -812,9 +770,6 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       },
       account: {
         create: {
-          before: async (createdAccount) => {
-            if (isPasswordOnlyIdentity(createdAccount.userId)) return false;
-          },
           after: async (createdAccount) => {
             if (createdAccount.providerId !== 'google' || settings.importGoogleAvatar === undefined) return;
             const sourceUrl = googlePictureFromIdToken(createdAccount.idToken);
@@ -889,7 +844,6 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       resetPasswordTokenExpiresIn: PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
-        if (isPasswordOnlyIdentity(user.id)) return;
         const normalizedEmail = normalizeEmail(user.email);
         const context = resetPasswordContexts.get(normalizedEmail) ?? { language: DEFAULT_LANGUAGE };
         resetPasswordContexts.delete(normalizedEmail);
@@ -1116,16 +1070,6 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
   getAuthenticatedUser: async (requestHeaders) => {
     const session = await auth.api.getSession({ headers: requestHeaders });
     if (!session) return null;
-    if (isPasswordOnlyIdentity(session.user.id)) {
-      const { internalAdapter } = await auth.$context;
-      const credential = (await internalAdapter.findAccounts(session.user.id))
-        .find((candidate) => candidate.providerId === 'credential' && typeof candidate.password === 'string' && candidate.password !== '');
-      // A session issued before the current password was set must not outlive a rotation that never reached the reseed.
-      if (credential === undefined || new Date(session.session.createdAt).getTime() < new Date(credential.updatedAt).getTime()) {
-        await internalAdapter.deleteSession(session.session.token);
-        return null;
-      }
-    }
     return {
       sessionId: session.session.id,
       userId: session.user.id,

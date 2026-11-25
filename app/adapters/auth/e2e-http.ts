@@ -100,7 +100,6 @@ export interface AuthE2eClient {
   enableTwoFactor(token: string, password: string): Promise<AuthHttpResult>;
   verifyTotp(token: string, code: string): Promise<AuthHttpResult>;
   getSession(token: string): Promise<AuthHttpResult>;
-  resetPassword(input: { token: string; newPassword: string }): Promise<AuthHttpResult>;
 }
 
 export const createAuthE2eClient = (transport: AuthE2eTransport): AuthE2eClient => ({
@@ -115,5 +114,4 @@ export const createAuthE2eClient = (transport: AuthE2eTransport): AuthE2eClient 
   verifyTotp: (token, code) =>
     requestJson(transport, '/api/auth/two-factor/verify-totp', { method: 'POST', token, body: { code } }),
   getSession: (token) => requestJson(transport, '/api/auth/get-session', { method: 'GET', token }),
-  resetPassword: (input) => requestJson(transport, '/api/auth/reset-password', { method: 'POST', body: input }),
 });

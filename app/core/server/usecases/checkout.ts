@@ -221,6 +221,7 @@ export const startCheckoutSession = async (
   stripeTerms?: StripeTermsCollection,
 ): Promise<Result<{
   url: string;
+  sessionId?: string;
   coupon?: CouponCheckoutBreakdown;
   couponCheckoutSessionId?: string;
   checkoutSnapshotId?: string;
@@ -409,6 +410,7 @@ export const startCheckoutSession = async (
   }
   return ok({
     url: created.value.url,
+    ...(testSession === undefined ? {} : { sessionId: created.value.sessionId }),
     ...(applied === undefined ? {} : { coupon: applied.breakdown }),
     ...(applied === undefined ? {} : { couponCheckoutSessionId: applied.checkoutSessionId }),
     free: false,

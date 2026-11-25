@@ -1212,6 +1212,13 @@
       "when": 1795564617529,
       "tag": "0172_payment_event_rejections",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "7",
+      "when": 1795564617530,
+      "tag": "0176_purchase_smoke",
+      "breakpoints": true
     }
   ]
 }

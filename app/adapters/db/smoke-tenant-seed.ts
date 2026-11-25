@@ -11,8 +11,6 @@ import {
   SMOKE_TENANT_CREATOR_EMAIL,
   SMOKE_TENANT_ID,
   SMOKE_TENANT_MEMBER_EMAIL,
-  SMOKE_TENANT_PURCHASE_EMAIL,
-  SMOKE_TENANT_PURCHASE_USER_ID,
   SMOKE_TENANT_SLUG,
   salesLinkSchema,
   type AccessItem,
@@ -34,7 +32,6 @@ import {
   productStock,
   salesLinkEvents,
   salesLinks,
-  session,
   stockEvents,
   tenantAdmins,
   tenantDomains,
@@ -72,18 +69,16 @@ const CHAPTERS: Chapter[] = [
 
 const ACCESS_ITEMS: AccessItem[] = [{ level: 'course', courseId: COURSE_ID }];
 
-export const SMOKE_TENANT_PURCHASE_ADMIN_ID = `admin-${SMOKE_TENANT_SLUG}-purchase`;
-
 export interface SmokeTenantSeedSummary {
   tenantId: string;
   creator: { email: string; tenantSlug: string };
   members: Array<{ email: string; tenantId: string }>;
-  purchase?: { email: string; tenantSlug: string; role: 'admin' };
 }
 
 export interface SmokeTenantSeedOptions {
   users: SeedUsers;
   passwords: SmokeTenantPasswords;
+  purchaseFixtures?: boolean;
   nextIso: () => string;
   relativeIso: (days: number) => string;
 }
@@ -91,26 +86,7 @@ export interface SmokeTenantSeedOptions {
 const seedPurchaseFixtures = async (
   db: Db,
   options: SmokeTenantSeedOptions,
-  password: string,
-): Promise<NonNullable<SmokeTenantSeedSummary['purchase']>> => {
-  await db.delete(session).where(eq(session.userId, SMOKE_TENANT_PURCHASE_USER_ID));
-  const purchaseUserId = await options.users.ensurePasswordedWithId(
-    SMOKE_TENANT_PURCHASE_USER_ID,
-    SMOKE_TENANT_PURCHASE_EMAIL,
-    'Purchase Test Staff',
-    password,
-  );
-
-  await db
-    .insert(tenantAdmins)
-    .values({
-      id: SMOKE_TENANT_PURCHASE_ADMIN_ID,
-      tenantId: SMOKE_TENANT_ID,
-      userId: purchaseUserId,
-      role: 'admin',
-    })
-    .onConflictDoNothing();
-
+): Promise<void> => {
   await db
     .update(tenants)
     .set({
@@ -206,7 +182,6 @@ const seedPurchaseFixtures = async (
     });
   }
 
-  return { email: SMOKE_TENANT_PURCHASE_EMAIL, tenantSlug: SMOKE_TENANT_SLUG, role: 'admin' };
 };
 
 export const applySmokeTenantSeed = async (
@@ -388,6 +363,6 @@ export const applySmokeTenantSeed = async (
     creator: { email: SMOKE_TENANT_CREATOR_EMAIL, tenantSlug: SMOKE_TENANT_SLUG },
     members: memberRows.map((member) => ({ email: member.email, tenantId: SMOKE_TENANT_ID })),
   };
-  if (options.passwords.purchase === null) return summary;
-  return { ...summary, purchase: await seedPurchaseFixtures(db, options, options.passwords.purchase) };
+  if (options.purchaseFixtures === true) await seedPurchaseFixtures(db, options);
+  return summary;
 };

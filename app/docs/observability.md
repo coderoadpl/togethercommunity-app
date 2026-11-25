@@ -467,37 +467,12 @@ get — so smoke assertions can name known content:
 | Passwordless member | `student2@together.dev` |
 | Published product | `product-acme-course` — `Acme Course` |
 | Course | `course-acme` — `Acme Course`, one module, one lesson with a Bunny Stream video |
-| Purchase account (optional) | `kontakt+smoke-purchase@togethercommunity.app`, role `admin` (never `owner`), only when `SMOKE_PURCHASE_PASSWORD` is set |
-| Purchase fixtures (optional, with the purchase account) | shipping rates `purchase-e2e-locker` (parcel locker, 12.99 PLN) and `purchase-e2e-courier` (courier, 15.99 PLN); terms and privacy URLs on `togethercommunity.app`; physical product `product-acme-purchase-parcel` (`purchase-e2e-parcel`, 25.00 PLN, VAT 23, shipped, 1000 in stock); unlisted sales link `purchase-e2e-bundle` with the parcel and `product-acme-course`; `product-acme-course` gets VAT 23 |
 
 Only the password source differs by environment. Locally and in e2e both
 accounts are seeded with the shared demo password; on production the seed reads
 `SMOKE_MEMBER_PASSWORD` and `SMOKE_CREATOR_PASSWORD` and refuses to run when
 either is unset or equal to the demo password, so the demo password can never
 reach a production database.
-
-The purchase account exists so a production purchase smoke can run without an
-owner credential. It is seeded only by the smoke-tenant reseed and only when
-`SMOKE_PURCHASE_PASSWORD` is set; without it the account and every purchase
-fixture are absent, so local development, the e2e suites, fixture recordings
-and visual baselines see the same acme rows as before. On production the
-reseed refuses a `SMOKE_PURCHASE_PASSWORD` equal to the demo password.
-
-The purchase account holds the full `admin` role of `tenant-acme`, listed in
-[the permission table](permission-table.md). The worst case within
-`tenant-acme`: it can edit what acme's public pages show; read, export, ban and
-remove the synthetic members and impersonate them read-only; make test
-purchases and staff refunds. It cannot write any payment secret (live or test),
-workspace settings, API keys or shop management keys. An admin cannot write
-payment keys and the reseed wipes them, so no live charge or refund is possible
-while the live slot is empty; `order:refund` itself is not limited to test
-mode. On production acme sends no outgoing e-mail (see
-[What is hidden](#what-is-hidden)).
-
-It reaches no other existing workspace. It is a verified user, though, so like
-any verified user it can create workspaces of its own when `TENANT_CREATION` is
-`open` (production reads `open` as `bootstrap`, which allows only the first
-workspace of an empty installation).
 
 ### What is hidden
 
@@ -522,6 +497,58 @@ travels with the fixture:
   the message. Sends are recorded with the `platform` transport, because no
   tenant integration ran.
 
+### Purchase smoke fixtures and machine key
+
+Set `SMOKE_PURCHASE_STRIPE_TEST_KEY` to an `rk_test_` restricted key from a
+sandbox dedicated to the synthetic workspace. The operator reseed seeds two
+shipping rates (courier: 15.99 PLN; parcel locker: 12.99 PLN), terms and privacy
+URLs, the 25.00 PLN physical product with its active price and 1000 units of
+stock, the course VAT rate (23%), and the unlisted parcel-and-course bundle
+sales link. It configures only the TEST payment slot through the shared Stripe
+configuration path, including provider-managed webhook registration. Without
+this variable, the normal smoke seed is unchanged. A malformed key is ignored
+with a warning. The reseed response includes `testPayments`: `configured`,
+`not-configured`, or `failed`; check this field before running purchases.
+
+A verified owner of `tenant-acme` issues a shop management key with
+`purpose: "purchase-smoke"`, `scopes: []`, `mode: "direct"`, a name and
+an absolute expiry no more than 30 days away. The existing owner key-revocation
+and purge controls apply. The secret is returned once. Neither issuance nor
+renewal is available to machine keys.
+
+The key grants only two routes:
+
+- `POST /api/m2m/shop/purchase-smoke/checkouts`: JSON `{runId, scenario}`;
+  scenario is `digital-course`, `parcel-courier`, `parcel-locker`, or
+  `bundle-locker`. Returns `{runId, scenario, reference, sessionId, url}`.
+- `GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result`: returns
+  that key's checkout identity, paid state, refund state, observed cumulative
+  refunded amount, and applied-event receipts (received event id, type and API
+  version, application time and observed refund amount). A missing version
+  remains null, not an inferred provider version.
+
+All checkouts use the existing synthetic smoke member, TEST mode and fixed
+fixtures. Locker scenarios use `WAW01A`. No caller-selected buyer, product,
+price, amount, workspace, return URL or payment mode is accepted. A missing test
+slot or any configured live slot refuses checkout. The workspace cap is 40
+checkouts per UTC day, including pending checkouts; a repeated key/run/scenario
+returns the existing checkout rather than creating another.
+
+Reseeding preserves existing purchase-purpose keys, revocation state, original
+absolute expiry, request and lifecycle audit, rate-limit buckets and checkout
+bindings inside the same transaction. It does not mint, extend or un-revoke a
+key. Other shop keys are removed. Key mutations and checkout creation serialize
+with reseeding. The reseed still removes orders: an old binding is not a fresh
+purchase, and its result is unavailable after that order is removed. Use a new
+run id after reseeding; retained bindings keep the daily cap from resetting.
+
+Receipts are written in the same transaction as successful payment/refund
+application, never on signature acceptance alone. A provider refund tests
+inbound refund reconciliation, not staff refund authorization or dispatch.
+The runner needs a separate restricted provider key from this same exclusive
+sandbox, without webhook-configuration permissions. It does not receive the
+operator secret or server configuration credential.
+
 ### Reseeding the smoke tenant
 
 `POST /api/internal/reseed-acme`, authenticated by the
@@ -545,7 +572,7 @@ and refuse the run with a `conflict` error carrying the reason:
 
 - `tenant-acme` exists under a slug other than `acme`;
 - `tenant-acme` has any member whose e-mail is neither on `@together.dev` nor
-  one of the smoke accounts (member, creator and purchase);
+  one of the two smoke accounts;
 - `tenant-acme` holds a marketing consent from an address outside that same set
   — a public surface the fixture never uses, so the row belongs to a real person
   and its consent evidence must not be wiped.
@@ -553,127 +580,17 @@ and refuse the run with a `conflict` error carrying the reason:
 Alongside those refusals, note what the run rewrites beyond the tenant: the wipe
 is tenant-scoped, but the re-seed is not entirely. `user` and `account` carry no
 tenant column, so re-creating the fixture resets the password and timestamps of
-the global rows of the smoke accounts,
-`kontakt+smoke-creator@togethercommunity.app`,
-`kontakt+smoke-member@togethercommunity.app` and, when it is seeded,
-`kontakt+smoke-purchase@togethercommunity.app`. All are platform-owned addresses
+the global rows of both smoke accounts,
+`kontakt+smoke-creator@togethercommunity.app` and
+`kontakt+smoke-member@togethercommunity.app`. Both are platform-owned addresses
 the guard allow-lists, so no real person's credential is in reach — but the run
 is "only `tenant-acme`" in the tenant-scoped tables, not in the auth tables.
-
-The same reseed carries the optional purchase account. Two deployment
-variables control it:
-
-| Variable | Effect |
-| --- | --- |
-| `SMOKE_PURCHASE_PASSWORD` | Seeds the purchase account (`admin`) and the purchase fixtures. Absent → neither exists. |
-| `SMOKE_PURCHASE_STRIPE_TEST_KEY` | A Stripe test restricted key (`rk_test_…`). Used only together with `SMOKE_PURCHASE_PASSWORD`; a value with another prefix is ignored with a logged warning that leaves the value out. |
-
-With both set, after a successful wipe and re-seed the route configures the
-Stripe **test** slot of `tenant-acme` exactly as a workspace owner's test-mode
-configuration does: it registers the `?mode=test` webhook endpoint pinned to the
-library's API version, stores the test restricted key, the webhook signing
-secret and the endpoint id together. When storing them fails it attempts to
-remove the new endpoint again and logs a failed removal; the removal is not
-guaranteed. The live slot is never written. The response carries
-`testPayments`: `configured`, `not-configured` (no key or no purchase account)
-or `failed`. A failure there never fails the reseed — the route still answers
-200 with the wipe summary — and the `reseed-acme` audit row records only the
-error code (`test payments failed: <code>`); the provider's error text is
-neither returned nor logged, because it may echo the webhook URL.
-
-The purchase account always has the fixed user id `user-acme-purchase`. When a
-`user` row holds `kontakt+smoke-purchase@togethercommunity.app` under any other
-id, a reseed with `SMOKE_PURCHASE_PASSWORD` set refuses with `the purchase
-account email belongs to another identity` before it writes anything. When the
-`user` row `user-acme-purchase` carries another e-mail, every reseed refuses
-with `the purchase account id belongs to another identity` and changes nothing.
-The reseed never adopts an identity someone else registered.
-
-The purchase account accepts only a password sign-in with the current
-password. The auth layer creates no session for `user-acme-purchase` on any
-other path (magic link, e-mail verification, passkey, Google or One Tap,
-password reset), issues it no password-reset token and links no provider login
-to it. A password sign-in re-checks the submitted password against the stored
-hash under a lock on the user row before its session stands, so a sign-in that
-verified a password rotated in the meantime ends without a session.
-
-Every reseed, and so every production deploy, runs in this order:
-
-1. **Revocation**, committed in a transaction of its own: it deletes the
-   purchase account's sessions, passkeys, two-factor enrolments, provider
-   sign-ins, password login, pending password-reset tokens and pending magic
-   links for its e-mail, turns two-factor off and removes its `admin` row in
-   `tenant-acme`. No other user's rows are touched.
-2. **Guard**: the reseed guard described above.
-3. **Wipe and re-seed**: it deletes the account's sessions once more, then
-   writes the password login with the current `SMOKE_PURCHASE_PASSWORD` and the
-   `admin` row back.
-
-A guard refusal therefore leaves the account without a role and without a
-working password, but leaves the workspace content and the account's member
-row in place until a reseed succeeds. With `SMOKE_PURCHASE_PASSWORD` unset the
-account gets no grant and no working password; its `user` row stays. Rotating
-`SMOKE_PURCHASE_PASSWORD` in the deployment and in CI and deploying therefore
-takes every access back, but only through a reseed that starts. When the
-reseed route is unavailable (for example because another smoke password is
-misconfigured, logged as `Smoke tenant reseed is unavailable because …`),
-nothing is revoked, and prod-smoke reports the failing `reseed` check.
-
-Each phase takes the reseed lock on its own, so two overlapping reseed calls
-are not serialised as a pair: the later run's configuration wins only for the
-account rows it writes. Run reseeds one at a time; prod-smoke's `prod-smoke`
-concurrency group does.
-
-A purchase run as this account writes no setting, key or slot itself. The
-provider's verified test webhooks update the `stripe.testLastEventAt`
-timestamp row of `tenant-acme`. A staff refund wakes the shared refund
-dispatcher, which may also process other workspaces' already approved refund
-jobs earlier than the next minute tick; it creates none. A check that the live
-slot is empty reads the workspace's own secrets only, while a workspace inside
-an organization can inherit an organization payment key, so `tenant-acme` must
-stay outside any organization. It is today, and a successful reseed re-creates
-it without one.
-
-Staging and production must use separate Stripe sandboxes for
-`SMOKE_PURCHASE_STRIPE_TEST_KEY`: replacing an earlier test endpoint matches
-the workspace and the slot, not the host, so a shared sandbox lets one
-environment's reseed remove the other's endpoint. Two reseeds that overlap can
-likewise leave the test slot pointing at an endpoint the other run replaced;
-the next reseed repairs it.
-
-#### Rolling back past the purchase account
-
-A release without the purchase account does not allow-list its e-mail, so its
-reseed guard refuses on the account's member row. Before rolling back to such
-a release:
-
-1. Unset `SMOKE_PURCHASE_PASSWORD` and `SMOKE_PURCHASE_STRIPE_TEST_KEY` in the
-   deployment.
-2. Run one reseed on the current release. It wipes the purchase member rows and
-   revokes the account.
-3. Roll back, only after the reseed of step 2 succeeded and this check returns
-   `0` for both counts:
-
-   ```sql
-   SELECT
-     (SELECT count(*) FROM members
-       WHERE tenant_id = 'tenant-acme'
-         AND lower(email) = 'kontakt+smoke-purchase@togethercommunity.app') AS purchase_members,
-     (SELECT count(*) FROM tenant_admins
-       WHERE user_id = 'user-acme-purchase') AS purchase_grants;
-   ```
-
-When the reseed of step 2 refuses, stop and resolve the refusal first; do not
-roll back.
 
 Manually, against any database:
 
 ```bash
 DATABASE_URL=… SMOKE_MEMBER_PASSWORD=… SMOKE_CREATOR_PASSWORD=… pnpm run reseed:acme
 ```
-
-The script also reads `SMOKE_PURCHASE_PASSWORD`; it never configures test
-payments, which only the route does.
 
 The script decides whether it is writing to production from the process
 environment **and** from the fingerprint of `DATABASE_URL` against

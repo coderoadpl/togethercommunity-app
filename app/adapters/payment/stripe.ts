@@ -847,6 +847,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
       const tenantCheck = validateStripeWebhookTenant(input.tenantId, { tenantIds, checkoutSession: null });
       const customerId = typeof objectOwnership.customer === 'string' ? objectOwnership.customer : objectOwnership.customer?.id;
       const tenantMetadata = {
+        apiVersion: event.api_version ?? null,
         ...(tenantIds.length === 0 ? {} : { tenantIds }),
         ...(customerId === undefined ? {} : { customerId }),
       };

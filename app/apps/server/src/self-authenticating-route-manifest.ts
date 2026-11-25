@@ -1,6 +1,6 @@
 import type { RouterRoute } from 'hono/types';
 
-import { API_PATHS, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_DOWNLOAD_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { API_PATHS, PURCHASE_SMOKE_ROUTES, SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_DOWNLOAD_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_PROPOSAL_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 import type { Capability } from '#core/domain/index.js';
 
 type SelfAuthenticatingRouteManifestEntry = {
@@ -84,6 +84,8 @@ export const SELF_AUTHENTICATING_ROUTE_MANIFEST: readonly SelfAuthenticatingRout
   { path: '/api/m2m/marketing/consent-definitions', methods: ['GET'], mechanism: 'Tenant API key' },
   { path: '/api/m2m/marketing/templates', methods: ['GET'], mechanism: 'Tenant API key' },
   { path: '/api/internal/marketing/tick', methods: ['GET', 'POST'], mechanism: 'Scheduler operator secret' },
+  { path: PURCHASE_SMOKE_ROUTES.start.path, methods: ['POST'], mechanism: 'Shop management key' },
+  { path: PURCHASE_SMOKE_ROUTES.result.path, methods: ['GET'], mechanism: 'Shop management key' },
   { path: SHOP_CATALOG_ROUTES.listProducts.path, methods: ['GET'], mechanism: 'Shop management key', capability: 'product:read' },
   { path: SHOP_CATALOG_ROUTES.createProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },
   { path: SHOP_CATALOG_ROUTES.updateProduct.path, methods: ['POST'], mechanism: 'Shop management key', capability: 'product:write' },

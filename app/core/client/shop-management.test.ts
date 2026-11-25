@@ -561,3 +561,30 @@ describe('shop management client integration calls', () => {
     }
   });
 });
+
+it('uses only machine authentication for fixed purchase start and own-result reads', async () => {
+  const reference = '00000000-0000-4000-8000-000000000001';
+  const checkout = { runId: 'run-1', scenario: 'digital-course', reference, sessionId: 'cs_test_1' };
+  const seen: Array<{ path: string; headers: Headers; body: unknown }> = [];
+  const client = createShopManagementClient({
+    baseUrl: 'https://platform.example.test', apiKey: 'purchase-key', tenant: 'acme',
+    fetchImpl: async (input, init) => {
+      const path = String(input);
+      seen.push({ path, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : null });
+      const data = path.endsWith('/result') ? { ...checkout, paid: false, refundState: 'none', refundedAmountCents: 0, receipts: [] }
+        : { ...checkout, url: 'https://checkout.stripe.com/test' };
+      return new Response(JSON.stringify({ ok: true, data }));
+    },
+  });
+  expect((await client.startPurchaseSmokeCheckout({ runId: 'run-1', scenario: 'digital-course' })).ok).toBe(true);
+  expect((await client.getPurchaseSmokeResult(reference)).ok).toBe(true);
+  expect(seen.map(({ path }) => new URL(path).pathname)).toEqual([
+    '/api/m2m/shop/purchase-smoke/checkouts', `/api/m2m/shop/purchase-smoke/checkouts/${reference}/result`,
+  ]);
+  expect(seen[0]?.body).toEqual({ runId: 'run-1', scenario: 'digital-course' });
+  for (const { headers } of seen) {
+    expect(headers.get('x-api-key')).toBe('purchase-key');
+    expect(headers.has('authorization')).toBe(false);
+    expect(headers.has('cookie')).toBe(false);
+  }
+});

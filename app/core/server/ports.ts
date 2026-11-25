@@ -1,4 +1,5 @@
 import type {
+  PurchaseSmokeReceipt,
   StorageListInput,
   StorageListPage,
   StorageReferenceInventory,
@@ -1154,6 +1155,7 @@ export interface TenantSecretResolver {
 }
 
 export interface PaymentWebhookEvent {
+  apiVersion?: string | null;
   foreignTenant?: true;
   tenantIds?: string[];
   customerId?: string | null;
@@ -2146,6 +2148,10 @@ export interface PaymentTransactionPort {
       marketingConsents: MarketingConsentRepository;
       confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;
+      purchaseSmoke?: {
+        hasCheckout(tenantId: string, sessionId: string): Promise<boolean>;
+        recordAppliedEvent(tenantId: string, sessionId: string, receipt: PurchaseSmokeReceipt): Promise<void>;
+      };
       enrollmentTransaction: EnrollmentTransactionPort;
       stock?: StockRepository;
     }) => Promise<Result<T, AppError>>,

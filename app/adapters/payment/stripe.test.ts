@@ -635,6 +635,7 @@ describe('verifyWebhookEvent', () => {
   it('accepts a valid signature and rejects payload or secret tampering', async () => {
     const payload = JSON.stringify({
       id: 'evt_checkout',
+      api_version: '2025-09-30.clover',
       type: 'checkout.session.completed',
       data: {
         object: {
@@ -654,6 +655,7 @@ describe('verifyWebhookEvent', () => {
       ok: true,
       value: {
         id: 'evt_checkout',
+        apiVersion: '2025-09-30.clover',
         type: 'checkout.session.completed',
         objectId: 'cs_1',
         checkoutSession: {
@@ -822,7 +824,7 @@ describe('verifyWebhookEvent', () => {
         payments: { data: [{ status: type === 'invoice.paid' ? 'paid' : 'open', payment }] },
       }));
       expect(await api.verify(invoiceWebhook(type, payments))).toEqual(ok({
-        id: 'evt_clover_renewal', type, objectId: 'in_renewal', livemode: true, checkoutSession: null,
+        id: 'evt_clover_renewal', apiVersion: '2025-09-30.clover', type, objectId: 'in_renewal', livemode: true, checkoutSession: null,
         invoice: {
           subscriptionId: 'sub_1', chargeId: null, paymentIntentId: 'pi_renewal',
           amountCents: type === 'invoice.paid' ? 4900 : 5900,
@@ -932,7 +934,7 @@ describe('verifyWebhookEvent', () => {
     const preflight = vi.fn(async () => ok('foreign' as const));
     const api = invoiceProviderOverHttp(() => { throw new Error('Unexpected invoice lookup'); }, preflight);
     expect(await api.verify(invoiceWebhook(type))).toEqual(ok({
-      id: 'evt_clover_renewal', type, livemode: true, objectId: 'in_renewal', checkoutSession: null, foreignTenant: true,
+      id: 'evt_clover_renewal', apiVersion: '2025-09-30.clover', type, livemode: true, objectId: 'in_renewal', checkoutSession: null, foreignTenant: true,
     }));
     expect(preflight).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
       invoice: expect.objectContaining({ subscriptionId: 'sub_1' }),
@@ -1092,6 +1094,8 @@ describe('verifyWebhookEvent', () => {
       ok: true,
       value: {
         id: 'evt_unknown',
+        apiVersion: null,
+        livemode: undefined,
         type: 'payment_intent.created',
         objectId: 'pi_unknown',
         checkoutSession: null,

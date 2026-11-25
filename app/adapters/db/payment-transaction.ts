@@ -21,6 +21,7 @@ import {
 } from './repositories.js';
 import { createMarketingConsentRepository, createConsentConfirmationTokenRepository } from './marketing-repositories.js';
 import type { Db } from './client.js';
+import { createPurchaseSmokeRepository } from './purchase-smoke.js';
 
 export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => ({
   run: async (operation) => {
@@ -73,6 +74,7 @@ export const createPaymentTransactionPort = (db: Db): PaymentTransactionPort => 
           marketingConsents: createMarketingConsentRepository(tx),
           confirmations: createConsentConfirmationTokenRepository(tx),
           processedPaymentEvents: createProcessedPaymentEventRepository(tx),
+          purchaseSmoke: createPurchaseSmokeRepository(tx),
           enrollmentTransaction,
           stock: createStockRepository(tx),
         });

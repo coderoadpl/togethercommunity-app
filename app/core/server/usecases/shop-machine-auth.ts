@@ -5,6 +5,7 @@ import {
   forbidden,
   ok,
   shopManagementCapabilities,
+  SMOKE_TENANT_ID,
   unauthorized,
   type AppError,
   type Capability,
@@ -65,15 +66,15 @@ interface ShopMachineAuthOutcome {
 }
 
 const PROPOSE_MODE_HASH_DOMAIN = 'together:shop-management-key:propose:';
+const PURCHASE_SMOKE_HASH_DOMAIN = 'together:shop-management-key:purchase-smoke:';
 
-// A release that predates propose mode hashes the presented secret plainly, so it never finds a propose-mode row and refuses the key instead of granting live writes.
 export const shopManagementKeyHash = (
   apiKeyCrypto: Pick<ApiKeyCrypto, 'hash'>,
   secret: string,
-  mode: ShopManagementKeyMode,
-): string => apiKeyCrypto.hash(mode === 'propose' ? `${PROPOSE_MODE_HASH_DOMAIN}${secret}` : secret);
+  mode: ShopManagementKeyMode | 'purchase-smoke',
+): string => apiKeyCrypto.hash(mode === 'purchase-smoke' ? `${PURCHASE_SMOKE_HASH_DOMAIN}${secret}` : mode === 'propose' ? `${PROPOSE_MODE_HASH_DOMAIN}${secret}` : secret);
 
-const KEY_HASH_DOMAINS = ['direct', 'propose'] as const satisfies readonly ShopManagementKeyMode[];
+const KEY_HASH_DOMAINS = ['direct', 'propose', 'purchase-smoke'] as const;
 
 interface StoredKeyLookup {
   found: ShopManagementKey | null;
@@ -91,7 +92,7 @@ const findStoredKey = async (
   })))).flatMap(({ domain, key }) => (key?.tenantId === tenantId ? [{ domain, key }] : []));
   const [hit] = hits;
   if (hit === undefined) return { found: null, foundInItsOwnDomain: false };
-  return { found: hit.key, foundInItsOwnDomain: hits.length === 1 && hit.key.mode === hit.domain };
+  return { found: hit.key, foundInItsOwnDomain: hits.length === 1 && (hit.key.purpose ?? hit.key.mode) === hit.domain };
 };
 
 const attributionOf = (found: ShopManagementKey | null): ShopKeyAttribution =>
@@ -105,6 +106,8 @@ const usableShopKey = (
 ): Result<ShopManagementKey, AppError> =>
   found === null
   || !foundInItsOwnDomain
+  || (found.purpose === 'purchase-smoke' && (found.tenantId !== SMOKE_TENANT_ID || found.scopes.length !== 0 || found.mode !== 'direct'))
+  || (found.purpose === undefined && found.scopes.length === 0)
   || found.revokedAt !== null
   || Date.parse(found.expiresAt) <= Date.parse(deps.clock.nowIso())
     ? err(invalidKey())
@@ -169,7 +172,8 @@ const claimShopKeyRateLimit = async (
   return err(rateLimited(day, dayStartedAt, now));
 };
 
-export const shopManagementKeyCapabilities = (apiKey: Pick<ShopManagementKey, 'scopes' | 'mode'>): Capability[] => {
+export const shopManagementKeyCapabilities = (apiKey: Pick<ShopManagementKey, 'scopes' | 'mode' | 'purpose'>): Capability[] => {
+  if (apiKey.purpose === 'purchase-smoke') return [];
   const ownerCapabilities = capabilitiesForPrincipal('owner');
   return shopManagementCapabilities(apiKey.scopes, apiKey.mode).filter((capability) => ownerCapabilities.includes(capability));
 };

@@ -221,6 +221,8 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `POST /api/m2m/shop/proposals/groups` | self-authenticating | mutating | api m2m shop proposals groups |
 | `GET /api/m2m/shop/proposals/groups/:id` | self-authenticating | read | api m2m shop proposals groups id |
 | `POST /api/m2m/shop/proposals/groups/:id/withdraw` | self-authenticating | mutating | api m2m shop proposals groups id withdraw |
+| `POST /api/m2m/shop/purchase-smoke/checkouts` | self-authenticating | mutating | api m2m shop purchase-smoke checkouts |
+| `GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result` | self-authenticating | read | api m2m shop purchase-smoke checkouts reference result |
 | `GET /api/marketing/consent-definitions` | authenticated | read | marketing consent definitions |
 | `GET /api/marketing/scheduler-runs` | authenticated | read | tenant scheduler runs |
 | `GET /api/marketing/scheduler-runs/:id` | authenticated | read | tenant scheduler run |

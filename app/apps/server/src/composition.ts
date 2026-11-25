@@ -1,3 +1,6 @@
+import { createPurchaseSmokeRepository } from '#adapters/db/purchase-smoke.js';
+import { createPurchaseSmokeTransaction } from '#adapters/db/purchase-smoke-transaction.js';
+import type { PurchaseSmokeRepository, PurchaseSmokeTransaction } from '#core/server/purchase-smoke-ports.js';
 import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
 import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
@@ -499,6 +502,8 @@ interface SweepTick {
 }
 
 export interface AppDeps {
+  purchaseSmoke: PurchaseSmokeRepository;
+  purchaseSmokeTransaction: PurchaseSmokeTransaction;
   metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
@@ -795,7 +800,6 @@ export const selectSmokeTenantReseed = (
     | 'APP_ENV'
     | 'SMOKE_MEMBER_PASSWORD'
     | 'SMOKE_CREATOR_PASSWORD'
-    | 'SMOKE_PURCHASE_PASSWORD'
     | 'DATABASE_URL'
     | 'PRODUCTION_DATABASE_FINGERPRINT'
   >,
@@ -808,7 +812,6 @@ export const selectSmokeTenantReseed = (
     configured: {
       member: env.SMOKE_MEMBER_PASSWORD,
       creator: env.SMOKE_CREATOR_PASSWORD,
-      purchase: env.SMOKE_PURCHASE_PASSWORD,
     },
   });
   if (!resolved.ok) {
@@ -823,11 +826,10 @@ export const selectSmokeTenantReseed = (
 
 export const selectSmokeTenantTestPaymentsKey = (
   env: Pick<Env, 'SMOKE_PURCHASE_STRIPE_TEST_KEY'>,
-  passwords: Pick<SmokeTenantPasswords, 'purchase'>,
   logger: { warn(message: string): void },
 ): string | undefined => {
   const key = env.SMOKE_PURCHASE_STRIPE_TEST_KEY?.trim();
-  if (key === undefined || key === '' || passwords.purchase === null) return undefined;
+  if (key === undefined || key === '') return undefined;
   if (stripeModeFromKey(key) !== 'test') {
     logger.warn('SMOKE_PURCHASE_STRIPE_TEST_KEY is ignored because it is not a Stripe test restricted key');
     return undefined;
@@ -1203,9 +1205,9 @@ export const createDeps = (
     audit: createPlatformAuditRepository(db),
   }));
   const smokeTenantReseed = selectSmokeTenantReseed(env, (passwords) => {
-    const testPaymentsKey = selectSmokeTenantTestPaymentsKey(env, passwords, logger);
+    const testPaymentsKey = selectSmokeTenantTestPaymentsKey(env, logger);
     return {
-      reseed: { run: () => runSmokeTenantReseed(db, { passwords, nowIso: clock.nowIso }) },
+      reseed: { run: () => runSmokeTenantReseed(db, { passwords, purchaseFixtures: testPaymentsKey !== undefined, nowIso: clock.nowIso }) },
       platformAudit: createPlatformAuditRepository(db),
       ids,
       clock,
@@ -1751,6 +1753,8 @@ export const createDeps = (
     importAuditEvents: createImportAuditEventRepository(db),
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
+    purchaseSmoke: createPurchaseSmokeRepository(db),
+    purchaseSmokeTransaction: createPurchaseSmokeTransaction(db, { payment, secretCrypto, secretResolver, ids, clock }),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),

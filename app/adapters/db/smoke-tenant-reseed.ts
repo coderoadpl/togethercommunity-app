@@ -1,12 +1,8 @@
-import { and, eq, getTableName, inArray, like, sql } from 'drizzle-orm';
+import { and, eq, getTableName, inArray } from 'drizzle-orm';
 
 import {
-  normalizeEmail,
   SMOKE_TENANT_ID,
-  SMOKE_TENANT_PURCHASE_EMAIL,
-  SMOKE_TENANT_PURCHASE_USER_ID,
   SmokeTenantReseedRefused,
-  smokeTenantPurchaseIdRefusal,
   smokeTenantReseedRefusal,
   type SmokeTenantPasswords,
 } from '#core/domain/index.js';
@@ -14,26 +10,9 @@ import {
 import type { Db } from './client.js';
 import { DEMO_TENANT_WIPE_TABLES, type DemoTenantWipeTable } from './reseed-wipe-tables.js';
 import { createSeedUsers } from './seed-users.js';
-import {
-  applySmokeTenantSeed,
-  SMOKE_TENANT_PURCHASE_ADMIN_ID,
-  type SmokeTenantSeedSummary,
-} from './smoke-tenant-seed.js';
-import {
-  account,
-  marketingConsents,
-  members,
-  passkey,
-  session,
-  tenantAdmins,
-  tenants,
-  twoFactor,
-  user,
-  verification,
-} from './schema.js';
-
-/** Serverless instances can overlap, so every smoke-tenant reseed queues behind the same lock. */
-const SMOKE_TENANT_RESEED_LOCK_KEY = 4_820_914;
+import { applySmokeTenantSeed, type SmokeTenantSeedSummary } from './smoke-tenant-seed.js';
+import { marketingConsents, members, tenants, shopManagementKeys, shopManagementKeyEvents, shopManagementKeyRateLimitBuckets, purchaseSmokeCheckouts, purchaseSmokeReceipts } from './schema.js';
+import { lockSmokeFixture } from './smoke-fixture-lock.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -43,77 +22,12 @@ export interface SmokeTenantReseedSummary {
   seed: SmokeTenantSeedSummary;
 }
 
-const magicLinkEmail = (value: string): string | null => {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (typeof parsed !== 'object' || parsed === null || !('email' in parsed)) return null;
-    return typeof parsed.email === 'string' ? normalizeEmail(parsed.email) : null;
-  } catch {
-    return null;
-  }
-};
-
-const refuse = (reason: string): never => {
-  throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${reason}`);
-};
-
-/**
- * Committed on its own so a later guard refusal or an unset purchase password
- * still leaves the account with no role and no way to sign in.
- */
-export const revokePurchaseAccess = async (db: Db): Promise<void> =>
-  db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${SMOKE_TENANT_RESEED_LOCK_KEY})`);
-    const [holder] = await tx
-      .select({ email: user.email })
-      .from(user)
-      .where(eq(user.id, SMOKE_TENANT_PURCHASE_USER_ID))
-      .for('update');
-    const refusal = smokeTenantPurchaseIdRefusal(holder?.email ?? null);
-    if (refusal !== null) refuse(refusal);
-
-    await tx.delete(session).where(eq(session.userId, SMOKE_TENANT_PURCHASE_USER_ID));
-    await tx.delete(passkey).where(eq(passkey.userId, SMOKE_TENANT_PURCHASE_USER_ID));
-    await tx.delete(twoFactor).where(eq(twoFactor.userId, SMOKE_TENANT_PURCHASE_USER_ID));
-    await tx.delete(account).where(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID));
-    await tx
-      .delete(verification)
-      .where(and(
-        like(verification.identifier, 'reset-password:%'),
-        eq(verification.value, SMOKE_TENANT_PURCHASE_USER_ID),
-      ));
-    const pendingMagicLinks = await tx
-      .select({ id: verification.id, value: verification.value })
-      .from(verification)
-      .where(and(
-        like(verification.identifier, 'magic-link:%'),
-        sql`strpos(lower(${verification.value}), ${SMOKE_TENANT_PURCHASE_EMAIL}) > 0`,
-      ));
-    const purchaseMagicLinkIds = pendingMagicLinks
-      .filter(({ value }) => magicLinkEmail(value) === SMOKE_TENANT_PURCHASE_EMAIL)
-      .map(({ id }) => id);
-    if (purchaseMagicLinkIds.length > 0) {
-      await tx.delete(verification).where(inArray(verification.id, purchaseMagicLinkIds));
-    }
-    await tx
-      .update(user)
-      .set({ twoFactorEnabled: false })
-      .where(eq(user.id, SMOKE_TENANT_PURCHASE_USER_ID));
-    await tx
-      .delete(tenantAdmins)
-      .where(and(
-        eq(tenantAdmins.tenantId, SMOKE_TENANT_ID),
-        eq(tenantAdmins.id, SMOKE_TENANT_PURCHASE_ADMIN_ID),
-        eq(tenantAdmins.userId, SMOKE_TENANT_PURCHASE_USER_ID),
-      ));
-  });
-
-export const reseedSmokeTenant = async (
+export const runSmokeTenantReseed = async (
   db: Db,
-  options: { passwords: SmokeTenantPasswords; nowIso: () => string },
+  options: { passwords: SmokeTenantPasswords; purchaseFixtures?: boolean; nowIso: () => string },
 ): Promise<SmokeTenantReseedSummary> =>
   db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(${SMOKE_TENANT_RESEED_LOCK_KEY})`);
+    await lockSmokeFixture(tx, SMOKE_TENANT_ID);
 
     const [tenant] = await tx
       .select({ id: tenants.id, slug: tenants.slug })
@@ -128,20 +42,32 @@ export const reseedSmokeTenant = async (
       .selectDistinct({ email: marketingConsents.email })
       .from(marketingConsents)
       .where(eq(marketingConsents.tenantId, SMOKE_TENANT_ID));
-    const purchaseEmailUsers = options.passwords.purchase === null
-      ? []
-      : await tx
-        .select({ id: user.id })
-        .from(user)
-        .where(sql`lower(${user.email}) = ${SMOKE_TENANT_PURCHASE_EMAIL}`);
 
     const refusal = smokeTenantReseedRefusal({
       tenant: tenant ?? null,
       memberEmails: memberRows.map((row) => row.email),
       consentEmails: consentRows.map((row) => row.email),
-      purchaseEmailUserIds: purchaseEmailUsers.map((row) => row.id),
     });
-    if (refusal !== null) refuse(refusal);
+    if (refusal !== null) {
+      throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${refusal}`);
+    }
+
+    const keptKeys = await tx.select().from(shopManagementKeys).where(and(
+      eq(shopManagementKeys.tenantId, SMOKE_TENANT_ID), eq(shopManagementKeys.purpose, 'purchase-smoke'),
+    ));
+    const keyIds = keptKeys.map((key) => key.id);
+    const keptEvents = keyIds.length === 0 ? [] : await tx.select().from(shopManagementKeyEvents).where(and(
+      eq(shopManagementKeyEvents.tenantId, SMOKE_TENANT_ID), inArray(shopManagementKeyEvents.apiKeyId, keyIds),
+    ));
+    const keptLimits = keyIds.length === 0 ? [] : await tx.select().from(shopManagementKeyRateLimitBuckets)
+      .where(inArray(shopManagementKeyRateLimitBuckets.apiKeyId, keyIds));
+    const keptCheckouts = keyIds.length === 0 ? [] : await tx.select().from(purchaseSmokeCheckouts).where(and(
+      eq(purchaseSmokeCheckouts.tenantId, SMOKE_TENANT_ID), inArray(purchaseSmokeCheckouts.apiKeyId, keyIds),
+    ));
+    const references = keptCheckouts.map((checkout) => checkout.reference);
+    const keptReceipts = references.length === 0 ? [] : await tx.select().from(purchaseSmokeReceipts).where(and(
+      eq(purchaseSmokeReceipts.tenantId, SMOKE_TENANT_ID), inArray(purchaseSmokeReceipts.reference, references),
+    ));
 
     const wiped: Array<{ table: string; rows: number }> = [];
     const wipeTenantTable = async (table: DemoTenantWipeTable): Promise<void> => {
@@ -167,17 +93,15 @@ export const reseedSmokeTenant = async (
     const seed = await applySmokeTenantSeed(tx, {
       users: createSeedUsers(tx, seedClock),
       passwords: options.passwords,
+      purchaseFixtures: options.purchaseFixtures ?? false,
       nextIso: () => new Date(Date.parse(options.nowIso()) + sequence++ * 1000).toISOString(),
       relativeIso: (days) => new Date(Date.parse(options.nowIso()) + days * DAY_MS).toISOString(),
     });
 
+    if (keptKeys.length > 0) await tx.insert(shopManagementKeys).values(keptKeys);
+    if (keptEvents.length > 0) await tx.insert(shopManagementKeyEvents).values(keptEvents);
+    if (keptLimits.length > 0) await tx.insert(shopManagementKeyRateLimitBuckets).values(keptLimits);
+    if (keptCheckouts.length > 0) await tx.insert(purchaseSmokeCheckouts).values(keptCheckouts);
+    if (keptReceipts.length > 0) await tx.insert(purchaseSmokeReceipts).values(keptReceipts);
     return { tenantId: SMOKE_TENANT_ID, wiped, seed };
   });
-
-export const runSmokeTenantReseed = async (
-  db: Db,
-  options: { passwords: SmokeTenantPasswords; nowIso: () => string },
-): Promise<SmokeTenantReseedSummary> => {
-  await revokePurchaseAccess(db);
-  return reseedSmokeTenant(db, options);
-};

@@ -26,6 +26,7 @@ import {
 } from '#adapters/db/schema.js';
 import {
   API_PATHS,
+  PURCHASE_SMOKE_ROUTES,
   API_ROUTES,
   SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
@@ -216,16 +217,16 @@ describe('shop management route registration', () => {
   });
 
   it('exposes no refund route to a shop management key', () => {
-    const shopRoutes = [...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_DOWNLOAD_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES)];
+    const shopRoutes = [...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_DOWNLOAD_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES), ...Object.values(PURCHASE_SMOKE_ROUTES)];
     expect(shopRoutes.filter((route) => route.path.includes('refund') || (route.method === 'POST' && route.path.endsWith('/packing-list')))).toEqual([]);
     expect(realApp.routes.filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX) && route.path.includes('refund'))).toEqual([]);
   });
 
-  it('registers only the catalog, order, settings, asset, download file, integration and proposal routes under the shop management prefix', () => {
+  it('registers only the catalog, order, settings, asset, download file, integration, proposal and purchase smoke routes under the shop management prefix', () => {
     expect(realApp.routes
       .filter((route) => route.path.startsWith(SHOP_MACHINE_PATH_PREFIX))
       .map((route) => `${route.method} ${route.path}`))
-      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_DOWNLOAD_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES)].map((route) => `${route.method} ${route.path}`));
+      .toEqual([...Object.values(SHOP_CATALOG_ROUTES), ...Object.values(SHOP_ORDER_ROUTES), ...Object.values(SHOP_SETTINGS_ROUTES), ...Object.values(SHOP_ASSETS_ROUTES), ...Object.values(SHOP_DOWNLOAD_ROUTES), ...Object.values(SHOP_INTEGRATION_ROUTES), ...Object.values(SHOP_PROPOSAL_ROUTES), ...Object.values(PURCHASE_SMOKE_ROUTES)].map((route) => `${route.method} ${route.path}`));
   });
 });
 

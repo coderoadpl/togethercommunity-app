@@ -140,7 +140,6 @@ export const envSchema = z
     STAGING_OPERATOR_SECRET: z.string().min(16).optional(),
     SMOKE_MEMBER_PASSWORD: optionalNonEmptyString,
     SMOKE_CREATOR_PASSWORD: optionalNonEmptyString,
-    SMOKE_PURCHASE_PASSWORD: optionalNonEmptyString,
     SMOKE_PURCHASE_STRIPE_TEST_KEY: optionalNonEmptyString,
     SNS_TEST_CERT_PEM_BASE64: optionalNonEmptyString,
     EMAIL_DISPATCH_RATE_PER_SECOND: z.coerce.number().positive().default(5),

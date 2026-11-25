@@ -1,7 +1,7 @@
 import type { Context, Hono, MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 
-import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';
+import { API_KEY_HEADER, PURCHASE_SMOKE_ROUTES, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';
 import {
   err,
   forbidden,
@@ -80,10 +80,10 @@ interface ShopMachineRouteFields {
 export type ShopMachineRoute = ShopMachineRouteFields & (
   | { method: 'GET'; scope: ShopManagementScope; proposeMode?: ShopMachineRefusal | undefined }
   | { method: ShopMachineMutationMethod; scope: ShopManagementScope; proposeMode: ShopMachineProposeMode }
-  | { method: 'GET' | ShopMachineMutationMethod; scope: null; proposeMode: { kind: 'proposal-management' } }
+  | { method: 'GET' | ShopMachineMutationMethod; scope: null; proposeMode: { kind: 'proposal-management' } | { kind: 'purchase-smoke' } }
 );
 
-type ShopMachineRouteClass = ShopMachineProposeMode['kind'] | 'proposal-management';
+type ShopMachineRouteClass = ShopMachineProposeMode['kind'] | 'proposal-management' | 'purchase-smoke';
 
 export interface ShopMachineRouteShape {
   method: string;
@@ -228,7 +228,7 @@ const dispatchRead = (
   request: ShopMachineRequest,
 ): Response | Promise<Response> => {
   const { proposeMode } = route;
-  if (proposeMode === undefined) return route.handler(c, request);
+  if (proposeMode === undefined || proposeMode.kind === 'purchase-smoke') return route.handler(c, request);
   if (proposeMode.kind === 'proposal-management') {
     return isDirectModeKey(request) ? respond(err(proposalManagementRefusal())) : route.handler(c, request);
   }
@@ -242,6 +242,7 @@ const dispatchMutation = (
   deps: ShopMachineDeps,
 ): Response | Promise<Response> => {
   const { proposeMode } = route;
+  if (proposeMode.kind === 'purchase-smoke') return route.handler(c, request);
   if (proposeMode.kind === 'proposal-management') {
     return isDirectModeKey(request) ? respond(err(proposalManagementRefusal())) : route.handler(c, request);
   }
@@ -262,10 +263,14 @@ const unclassifiedMutation = (route: ShopMachineRouteShape): boolean =>
 const assertRouteClass = (route: ShopMachineRoute): void => {
   const label = `${route.method} ${route.path}`;
   if (unclassifiedMutation(route)) throw new Error(`Shop management route ${label} needs a proposeMode`);
-  if (route.scope === null && route.proposeMode?.kind !== 'proposal-management') {
-    throw new Error(`Only a proposal-management shop route may omit its scope: ${label}`);
+  if (route.scope === null && route.proposeMode?.kind !== 'proposal-management' && route.proposeMode?.kind !== 'purchase-smoke') {
+    throw new Error(`Only a proposal-management or purchase-smoke shop route may omit its scope: ${label}`);
   }
 };
+
+export const purchaseSmokeRouteAllowed = (route: ShopMachineRouteShape): boolean =>
+  route.proposeMode?.kind === 'purchase-smoke'
+  && Object.values(PURCHASE_SMOKE_ROUTES).some((allowed) => allowed.method === route.method && allowed.path === route.path);
 
 export const registerShopMachineRoute = (
   app: Hono<AppVars>,
@@ -281,6 +286,14 @@ export const registerShopMachineRoute = (
     const { result, attribution } = await authenticateShopMachineRequest(c.req.raw.headers, route.scope, deps);
     c.set('apiKeyAttribution', attribution);
     if (!result.ok) return respond(result, { headers: retryAfterHeaders(result.error) });
+    const smokeKey = result.value.apiKey.purpose === 'purchase-smoke';
+    const requestedTenant = c.req.header(TENANT_HEADER);
+    if (smokeKey && requestedTenant !== undefined && requestedTenant.toLowerCase() !== result.value.tenant.slug) {
+      return respond(err(forbidden('Purchase smoke workspace header does not match')));
+    }
+    if ((smokeKey && !purchaseSmokeRouteAllowed(route)) || (!smokeKey && route.proposeMode?.kind === 'purchase-smoke')) {
+      return respond(err(forbidden('This route is outside the key purpose')));
+    }
     c.set('identity', result.value.ctx.identity);
     if (route.method === 'GET') return dispatchRead(c, route, result.value);
     const recorded = await recordShopManagementKeyRequest(result.value.tenant.id, {

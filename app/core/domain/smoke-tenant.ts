@@ -10,8 +10,6 @@ export const SMOKE_TENANT_ID = 'tenant-acme';
 export const SMOKE_TENANT_SLUG = 'acme';
 export const SMOKE_TENANT_MEMBER_EMAIL = 'kontakt+smoke-member@togethercommunity.app';
 export const SMOKE_TENANT_CREATOR_EMAIL = 'kontakt+smoke-creator@togethercommunity.app';
-export const SMOKE_TENANT_PURCHASE_EMAIL = 'kontakt+smoke-purchase@togethercommunity.app';
-export const SMOKE_TENANT_PURCHASE_USER_ID = 'user-acme-purchase';
 export const SMOKE_TENANT_COURSE_TITLE = 'Acme Course';
 export const SMOKE_TENANT_COURSE_PRODUCT_ID = 'product-acme-course';
 export const DEMO_SEED_PASSWORD = 'demo-password-15';
@@ -71,7 +69,6 @@ const SEED_ACCOUNT_EMAIL_DOMAIN = '@together.dev';
 const SMOKE_ACCOUNT_EMAILS: readonly string[] = [
   SMOKE_TENANT_MEMBER_EMAIL,
   SMOKE_TENANT_CREATOR_EMAIL,
-  SMOKE_TENANT_PURCHASE_EMAIL,
 ];
 
 export const isSmokeTenant = (tenantId: string): boolean => tenantId === SMOKE_TENANT_ID;
@@ -79,7 +76,6 @@ export const isSmokeTenant = (tenantId: string): boolean => tenantId === SMOKE_T
 export interface SmokeTenantPasswords {
   member: string;
   creator: string;
-  purchase: string | null;
 }
 
 export type SmokeTenantPasswordResolution =
@@ -107,26 +103,10 @@ const resolvePassword = (
   return { ok: true, password: configured };
 };
 
-type OptionalPasswordResolution =
-  | { ok: true; password: string | null }
-  | { ok: false; reason: string };
-
-const resolveOptionalPassword = (
-  variable: string,
-  input: { production: boolean; demoPassword: string; configured: string | undefined },
-): OptionalPasswordResolution => {
-  const configured = input.configured?.trim() ?? '';
-  if (configured === '') return { ok: true, password: null };
-  if (input.production && configured === input.demoPassword) {
-    return { ok: false, reason: `${variable} must not be the shared demo password` };
-  }
-  return { ok: true, password: configured };
-};
-
 export const resolveSmokeTenantPasswords = (input: {
   production: boolean;
   demoPassword: string;
-  configured: { member: string | undefined; creator: string | undefined; purchase?: string | undefined };
+  configured: { member: string | undefined; creator: string | undefined };
 }): SmokeTenantPasswordResolution => {
   const member = resolvePassword('SMOKE_MEMBER_PASSWORD', {
     production: input.production,
@@ -140,16 +120,7 @@ export const resolveSmokeTenantPasswords = (input: {
     configured: input.configured.creator,
   });
   if (!creator.ok) return creator;
-  const purchase = resolveOptionalPassword('SMOKE_PURCHASE_PASSWORD', {
-    production: input.production,
-    demoPassword: input.demoPassword,
-    configured: input.configured.purchase,
-  });
-  if (!purchase.ok) return purchase;
-  return {
-    ok: true,
-    passwords: { member: member.password, creator: creator.password, purchase: purchase.password },
-  };
+  return { ok: true, passwords: { member: member.password, creator: creator.password } };
 };
 
 export interface SmokeTenantReseedSubject {
@@ -161,7 +132,6 @@ export interface SmokeTenantReseedSubject {
    * evidence.
    */
   consentEmails: readonly string[];
-  purchaseEmailUserIds?: readonly string[];
 }
 
 const foreignEmail = (emails: readonly string[]): string | undefined =>
@@ -183,16 +153,8 @@ export const smokeTenantReseedRefusal = (subject: SmokeTenantReseedSubject): str
   if (foreignEmail(subject.consentEmails) !== undefined) {
     return `${SMOKE_TENANT_ID} holds a marketing consent ${outsideSeededAccounts}`;
   }
-  if (subject.purchaseEmailUserIds?.some((id) => id !== SMOKE_TENANT_PURCHASE_USER_ID) === true) {
-    return 'the purchase account email belongs to another identity';
-  }
   return null;
 };
-
-export const smokeTenantPurchaseIdRefusal = (holderEmail: string | null): string | null =>
-  holderEmail === null || holderEmail.toLowerCase() === SMOKE_TENANT_PURCHASE_EMAIL
-    ? null
-    : 'the purchase account id belongs to another identity';
 
 /** Separates a safety refusal from an infrastructure failure for the caller. */
 export class SmokeTenantReseedRefused extends Error {}

@@ -41,3 +41,5 @@ export * from './shop-assets.js';
 export * from './shop-downloads.js';
 export * from './change-proposals.js';
 export * from './member-download-navigation.js';
+
+export * from './purchase-smoke.js';

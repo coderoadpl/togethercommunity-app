@@ -454,73 +454,6 @@ with `[provider id]`. Every refund failure message has Stripe API keys and
 webhook secrets replaced with `[credential]` before it is stored on the
 refund, returned in the order detail or copied into a staff alert e-mail.
 
-## Smoke tenant purchase account
-
-The synthetic smoke workspace `tenant-acme` may carry a purchase fixture
-account, `kontakt+smoke-purchase@togethercommunity.app`, seeded by the
-operator reseed only when `SMOKE_PURCHASE_PASSWORD` is set (see
-[the smoke tenant](observability.md#the-smoke-tenant)). It is an `admin`, never
-an `owner`, so CI holds no owner credential.
-
-The account holds the full `admin` role of `tenant-acme`, listed in
-[the permission table](permission-table.md). It cannot write any payment
-secret (live or test), workspace settings, API keys or shop management keys.
-The Stripe test slot it buys through is written by the operator reseed from
-`SMOKE_PURCHASE_STRIPE_TEST_KEY`, which accepts only a `rk_test_` key and never
-touches the live slot. It reaches no other existing workspace; as a verified
-user it can create workspaces of its own when `TENANT_CREATION` is `open`
-(production reads `open` as `bootstrap`).
-
-Worst case for a holder of `SMOKE_PURCHASE_PASSWORD` on production, within
-`tenant-acme`: edit what acme's public pages show; read, export, ban and remove
-the synthetic members and impersonate them read-only; make test purchases and
-staff refunds. An admin cannot write payment keys and the reseed wipes them, so
-no live charge or refund is possible while the live slot is empty;
-`order:refund` itself is not limited to test mode. No outgoing e-mail leaves
-production for acme.
-Whatever the holder changes in `tenant-acme` is undone by the next deploy's
-reseed.
-
-The account has the fixed user id `user-acme-purchase`, and a reseed refuses
-when another identity holds its e-mail or its id, so it never adopts a foreign
-account. It accepts only a password sign-in with the current password: the
-auth layer creates no session for `user-acme-purchase` on any other path
-(magic link, e-mail verification, passkey, Google or One Tap, password reset),
-issues it no password-reset token and links no provider login to it, and a
-password sign-in re-checks the submitted password against the stored hash under
-a lock on the user row, so a sign-in that verified a password rotated meanwhile
-ends without a session.
-
-Every reseed, and so every production deploy, first commits the revocation
-(sessions, passkeys, two-factor, provider logins, password login,
-password-reset and magic-link tokens and the `admin` row), then runs the guard,
-then wipes and re-seeds. A guard refusal leaves the account without a role and
-without a working password, but leaves the workspace content and the account's
-member row until a reseed succeeds. With `SMOKE_PURCHASE_PASSWORD` unset the
-account gets no grant and no working password; its `user` row stays. Rotating
-`SMOKE_PURCHASE_PASSWORD` and deploying therefore takes every access back, but
-only through a reseed that starts: when the reseed route is unavailable (for
-example because another smoke password is misconfigured) nothing is revoked,
-and prod-smoke reports the failing `reseed` check. Two overlapping reseed calls
-are not serialised as a pair; the later run's configuration wins only for the
-account rows it writes, so run reseeds one at a time (prod-smoke's concurrency
-group does).
-
-A purchase run as this account writes no setting, key or slot itself; the
-provider's verified test webhooks update the `stripe.testLastEventAt`
-timestamp row of `tenant-acme`. A staff refund wakes the shared refund
-dispatcher, which may also process other workspaces' already approved refund
-jobs earlier than the next minute tick; it creates none. A check that the live
-slot is empty reads the workspace's own secrets only, and a workspace inside an
-organization can inherit an organization payment key, so `tenant-acme` must
-stay outside any organization (it is today, and a successful reseed
-re-creates it without one).
-
-When storing the test slot fails, the reseed attempts to remove the webhook
-endpoint it just registered and logs a failed removal; the removal is not
-guaranteed. Before rolling back to a release without the account, follow
-[the rollback steps](observability.md#rolling-back-past-the-purchase-account).
-
 ## Accepted dependency advisories
 
 `pnpm audit --prod --audit-level=moderate` blocks merges through `check` only
@@ -1467,3 +1400,43 @@ names sent, Meta's trace id only when it is at most 100 letters, digits, `_` or
 or `invalid_tenant`); dispatch failures log a fixed message without request or
 response data. Consent, retention and
 retry rules are described in [Meta Conversions API](integrations/meta-capi.md).
+
+## Purchase smoke machine purpose
+
+The exclusive `purchase-smoke` purpose belongs only to `tenant-acme`. Verified
+owners issue and revoke it through the existing shop key flow, with no ordinary
+scopes and no propose mode. The maximum lifetime remains 30 days. Authentication
+rechecks the issuer's verified owner grant, expiry and revocation; machine keys
+never become human sessions. The machine registrar denies every route except
+`POST /api/m2m/shop/purchase-smoke/checkouts` and
+`GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result` for this purpose.
+Ordinary shop keys cannot call either route.
+
+Worst case for the platform key alone: create up to 40 fixed-fixture test
+checkouts per UTC day, including pending checkouts, and read only the results
+bound to that key. It cannot select buyers, amounts, products, prices, workspaces
+or modes, configure integrations, read generic orders, request platform refunds
+or create carrier shipments. The test slot must be configured and the live slot
+empty. The fixed buyer is the existing synthetic smoke member; provider events
+with a different buyer are rejected. Test purchases do not reserve live stock
+or grant live access. Applied-event evidence commits with order reconciliation;
+a valid signature or merely claimed event is not an application receipt.
+
+The provider credential is a separate security boundary: it must belong to a
+sandbox/account used exclusively for the fixture workspace. Provider test keys
+are not workspace-scoped by platform metadata. Give the runner only the provider
+permissions needed to complete/read test payments and issue/read test refunds,
+not the server's webhook-configuration credential. Refund checks cover inbound
+provider reconciliation, not the staff refund workflow.
+
+Storage is additive and rollback-safe. The purpose and its absolute expiry have
+new columns; ordinary key rows keep their original representation. A purpose
+row stores a legacy-compatible scope marker and a permanently expired legacy
+expiry. The current adapter exposes an empty scope list and the actual purpose
+expiry. The previous release can list the row without an enum parse failure,
+but cannot authenticate it, even if the caller transforms the secret to match
+its legacy hash lookup. New authentication also separates the hash domain and
+grants no staff capabilities. Reseeds preserve purpose keys and their original
+expiry, revocation, audit, quotas and bindings transactionally; they never
+restore a purged key or clear revocation. Rolling back leaves the additive
+schema in place and leaves these keys inert.

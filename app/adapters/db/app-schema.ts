@@ -1104,6 +1104,8 @@ export const shopManagementKeys = pgTable(
     keyHash: text('key_hash').notNull(),
     scopes: jsonb('scopes').$type<ShopManagementScope[]>().notNull(),
     mode: text('mode', { enum: ['direct', 'propose'] }).notNull().default('direct'),
+    purpose: text('purpose', { enum: ['purchase-smoke'] }),
+    purposeExpiresAt: text('purpose_expires_at'),
     issuedByUserId: text('issued_by_user_id').notNull(),
     createdAt: text('created_at').notNull(),
     expiresAt: text('expires_at').notNull(),
@@ -1116,6 +1118,7 @@ export const shopManagementKeys = pgTable(
       'shop_management_keys_scopes_check',
       sql`jsonb_typeof(${table.scopes}) = 'array' AND ${table.scopes} <> '[]'::jsonb AND ${table.scopes} <@ '["shop:catalog:read", "shop:catalog:write", "shop:orders:read", "shop:fulfilment:write", "shop:settings:read", "shop:settings:write", "shop:integrations:read", "shop:integrations:write"]'::jsonb`,
     ),
+    check('shop_management_keys_purchase_smoke_check', sql`(${table.purpose} IS NULL AND ${table.purposeExpiresAt} IS NULL) OR (${table.purpose} = 'purchase-smoke' AND ${table.purposeExpiresAt} IS NOT NULL AND ${table.tenantId} = 'tenant-acme' AND ${table.mode} = 'direct' AND ${table.scopes} = '["shop:catalog:read"]'::jsonb AND ${table.expiresAt} = '1970-01-01T00:00:00.000Z')`),
     check('shop_management_keys_mode_check', sql`${table.mode} IN ('direct', 'propose')`),
     check(
       'shop_management_keys_propose_scopes_check',

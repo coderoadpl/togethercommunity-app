@@ -41,6 +41,7 @@ const ALLOWED_DIRECT_READERS: Readonly<Record<string, { calls: number; reason: s
   },
   'core/server/telemetry/drain.ts secrets.findByKey': { calls: 1, reason: O15 },
   'core/server/usecases/telemetry-store.ts secrets.findByKey': { calls: 1, reason: O15 },
+  'core/server/usecases/purchase-smoke.ts tenantSecrets.findByKey': { calls: 1, reason: 'requires an empty stored live slot as well as an empty effective live slot; effective credentials use the resolver' },
   'core/server/usecases/checkout.ts tenantSecrets.findByKey': { calls: 2, reason: O09B },
   'core/server/usecases/configure-stripe.ts tenantSecrets.findByKey': { calls: 2, reason: O09B },
   'core/server/usecases/onboarding.ts tenantSecrets.findByKey': { calls: 1, reason: O09B },

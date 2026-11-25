@@ -4,6 +4,7 @@ import { shopManagementKeyEventSchema, type ShopManagementKeyEvent } from '#core
 import type { ShopManagementKeyEventRepository } from '#core/server/index.js';
 
 import type { Db } from './client.js';
+import { lockSmokeFixture } from './smoke-fixture-lock.js';
 import { shopManagementKeyEvents } from './schema.js';
 
 const parseEvent = (event: ShopManagementKeyEvent): ShopManagementKeyEvent => shopManagementKeyEventSchema.parse(event);
@@ -19,7 +20,10 @@ export const insertShopManagementKeyEvent = async (
 };
 
 export const createShopManagementKeyEventRepository = (db: Db): ShopManagementKeyEventRepository => ({
-  record: (tenantId, event) => insertShopManagementKeyEvent(db, tenantId, event),
+  record: (tenantId, event) => db.transaction(async (tx) => {
+    await lockSmokeFixture(tx, tenantId);
+    await insertShopManagementKeyEvent(tx, tenantId, event);
+  }),
   list: async (tenantId, query) => {
     const scope = and(
       eq(shopManagementKeyEvents.tenantId, tenantId),

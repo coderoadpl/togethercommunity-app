@@ -238,6 +238,7 @@
     "studentLessonEditions:[\"lesson-acme-intro\"]": {
       "ok": true,
       "value": {
+        "currentEdition": null,
         "editions": []
       }
     },

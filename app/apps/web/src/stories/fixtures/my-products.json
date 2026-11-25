@@ -498,6 +498,39 @@
         }
       }
     },
+    "studentCourses:[]": {
+      "ok": true,
+      "value": {
+        "courses": [
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:02.000Z",
+            "description": "A complete JavaScript course, from variables, functions, and the DOM to your first project.",
+            "id": "course-js",
+            "imageUrl": "https://picsum.photos/seed/together-course-js/960/540",
+            "legacyId": null,
+            "moduleOrder": [],
+            "name": "JavaScript from Scratch",
+            "publiclyVisible": true,
+            "salesUrl": null,
+            "tenantId": "tenant-studio"
+          },
+          {
+            "archivedAt": null,
+            "createdAt": "2026-07-01T12:00:03.000Z",
+            "description": "Build interfaces in React with components, state, hooks, and advanced patterns.",
+            "id": "course-react",
+            "imageUrl": "https://picsum.photos/seed/together-course-react/960/540",
+            "legacyId": null,
+            "moduleOrder": [],
+            "name": "React in Practice",
+            "publiclyVisible": false,
+            "salesUrl": null,
+            "tenantId": "tenant-studio"
+          }
+        ]
+      }
+    },
     "unreadMessageCount:[]": {
       "ok": true,
       "value": {

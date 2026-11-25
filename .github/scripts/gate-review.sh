@@ -20,10 +20,18 @@ if [ "${PREPARED:-false}" != true ] || [ "${CURRENT:-false}" != true ] || [ "${D
   exit 1
 fi
 
-for outcome in \
-  "${O_1P:-}" "${O_1PR:-}" "${O_1F:-}" "${O_1FR:-}" \
-  "${O_2P:-}" "${O_2PR:-}" "${O_2F:-}" "${O_2FR:-}" \
-  "${O_3P:-}" "${O_3PR:-}" "${O_3F:-}" "${O_3FR:-}"; do
+no_verdict_message="AI review produced no verdict. Merge remains blocked."
+attempt_list_pattern='^try[1-9][0-9]*(p|pr|f|fr)( try[1-9][0-9]*(p|pr|f|fr))*$'
+if ! [[ "${AI_REVIEW_ATTEMPTS:-}" =~ $attempt_list_pattern ]]; then
+  summarize "$no_verdict_message"
+  exit 1
+fi
+read -r -a attempt_ids <<< "$AI_REVIEW_ATTEMPTS"
+
+for attempt_id in "${attempt_ids[@]}"; do
+  key="${attempt_id#try}"
+  outcome_name="O_${key^^}"
+  outcome="${!outcome_name:-}"
   case "$outcome" in
     pass)
       summarize "AI review PASS."
@@ -36,5 +44,5 @@ for outcome in \
   esac
 done
 
-summarize "AI review produced no verdict. Merge remains blocked."
+summarize "$no_verdict_message"
 exit 1

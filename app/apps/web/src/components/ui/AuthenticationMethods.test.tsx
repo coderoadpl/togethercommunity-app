@@ -159,4 +159,101 @@ describe('AuthenticationMethods', () => {
     expect(screen.getByTestId('regenerate-backup-codes').parentElement).toBe(row);
     expect(screen.getByTestId('disable-2fa').parentElement).toBe(row);
   });
+
+  it('offers a password link instead of two-factor enrollment to a passwordless account', async () => {
+    const requestPasswordSetup = vi.fn();
+    renderMethods(propsWith({
+      presentation: 'account',
+      hasPassword: false,
+      requestPasswordSetup: { ...idle, run: requestPasswordSetup },
+    }));
+
+    expect(screen.queryByTestId('enable-2fa-open')).not.toBeInTheDocument();
+    expect(screen.getByText(en.security.twoFactorNeedsPassword)).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: en.security.setOrResetPassword }));
+
+    expect(requestPasswordSetup).toHaveBeenCalledOnce();
+  });
+
+  it('keeps two-factor enrollment for an account with a password', () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: true }));
+
+    expect(screen.getByTestId('enable-2fa-open')).toBeVisible();
+    expect(screen.queryByTestId('two-factor-needs-password')).not.toBeInTheDocument();
+  });
+
+  it('replaces the passkey form with the password link when the account has no password', async () => {
+    const requestPasswordSetup = vi.fn();
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, run: requestPasswordSetup } }));
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+
+    const body = screen.getByTestId('passkey-passwordless');
+    expect(body.closest('details')).toBeNull();
+    expect(body).toHaveTextContent(en.security.passkeyPasswordlessHint);
+    const setup = screen.getByTestId('passkey-set-password');
+    expect(setup).toHaveTextContent(en.security.setOrResetPassword);
+    expect(setup).toHaveFocus();
+    expect(screen.queryByTestId('passkey-name')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-proof-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-help')).not.toBeInTheDocument();
+    await userEvent.click(setup);
+    expect(requestPasswordSetup).toHaveBeenCalledOnce();
+  });
+
+  it('shows a password link error only beside the passwordless button that sent it', async () => {
+    const failure = new Error('password link failed');
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, error: failure, run: vi.fn() } }));
+    expect(screen.queryByTestId('two-factor-set-password-error')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('two-factor-set-password'));
+    expect(screen.getByTestId('two-factor-set-password-error')).toBeVisible();
+
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    expect(screen.queryByTestId('passkey-set-password-error')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('passkey-set-password'));
+    expect(screen.getByTestId('passkey-set-password-error')).toBeVisible();
+    expect(screen.queryByTestId('two-factor-set-password-error')).not.toBeInTheDocument();
+  });
+
+  it('keeps only the passkey intro in the passkey help when the account has a password', async () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: true }));
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+
+    expect(screen.getByTestId('passkey-help').closest('details')).toHaveTextContent(en.security.passkeyIntro);
+    expect(screen.queryByTestId('passkey-passwordless')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('passkey-set-password')).not.toBeInTheDocument();
+    expect(screen.queryByText(en.security.passkeyPasswordlessHint)).not.toBeInTheDocument();
+  });
+
+  it('replaces the passwordless dialog button with the sent sentence after its own request succeeds', async () => {
+    const props = propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, success: true, run: vi.fn() } });
+    renderMethods(props);
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    expect(screen.queryByTestId('passkey-set-password-sent')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('passkey-set-password'));
+
+    expect(screen.getByTestId('passkey-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.getByTestId('passkey-set-password-sent')).toHaveAttribute('role', 'status');
+    expect(screen.queryByTestId('passkey-set-password')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('two-factor-set-password-sent')).not.toBeInTheDocument();
+  });
+
+  it('shows the sent sentence under the two-factor password button that sent the link', async () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, success: true, run: vi.fn() } }));
+    await userEvent.click(screen.getByTestId('two-factor-set-password'));
+
+    expect(screen.getByTestId('two-factor-set-password-sent')).toHaveTextContent(en.security.resetSent);
+    expect(screen.getByTestId('two-factor-set-password')).toBeVisible();
+  });
+
+  it('shows the pending password link label on the passwordless dialog button', async () => {
+    renderMethods(propsWith({ presentation: 'account', hasPassword: false, requestPasswordSetup: { ...idle, pending: true, run: vi.fn() } }));
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+
+    const setup = screen.getByTestId('passkey-set-password');
+    expect(setup).toHaveTextContent(en.security.resetSending);
+    expect(setup).toBeDisabled();
+  });
 });

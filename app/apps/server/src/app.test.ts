@@ -1,15 +1,18 @@
 import { createAvatarImageProcessor } from '#adapters/storage/avatar-images.js';
-import type { SurveyRepository } from '#core/server/index.js';
+import type { EntityVersionRecord, SurveyRepository } from '#core/server/index.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
 import { vercelPersonalisationMaxBytes } from './vercel-downloads.js';
 import { Hono } from 'hono';
 import { registerPublicRoutes } from './public-app.js';
+import { publicMarketingMessagesEn } from './public-marketing-pages.en.js';
+import { publicMarketingMessagesPl } from './public-marketing-pages.pl.js';
 import { registerInternalRoutes } from './internal-app.js';
 import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
+import { createPickupPointDirectoryFake, TEST_PICKUP_POINTS } from '#core/server/testing/pickup-point-fake.js';
 import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
@@ -785,11 +788,23 @@ const deps = (input: {
     progress: {
       findByMemberAndCourse: async () => null,
       listByMember: async () => [],
-      findOrCreate: async (_tenantId, input) => ({
+      addCompletedLesson: async (_tenantId, input) => ({
         id: input.id,
         tenantId: _tenantId,
         memberId: input.memberId,
         courseId: input.courseId,
+        completedLessonIds: [input.lessonId],
+        updatedAt: input.now,
+      }),
+      removeCompletedLesson: async () => null,
+      setLastViewed: async (_tenantId, input) => ({
+        id: input.id,
+        tenantId: _tenantId,
+        memberId: input.memberId,
+        courseId: input.courseId,
+        ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
+        ...(input.moduleId === undefined ? {} : { lastViewedModuleId: input.moduleId }),
+        ...(input.chapterId === undefined ? {} : { lastViewedChapterId: input.chapterId }),
         completedLessonIds: [],
         updatedAt: input.now,
       }),
@@ -2476,9 +2491,32 @@ describe('marketing HTTP surfaces', () => {
     const nonce = /(?:^|; )script-src [^;]*'nonce-([^']+)'/.exec(contentSecurityPolicy ?? '')?.[1];
     const body = await response.text();
     expect(body).toContain('Immutable terms');
+    expect(body).toContain('<p class="document-version"><a href="/legal/terms/v/1">Version 1 · published July 22, 1998</a></p>');
+    expect(body).not.toContain('class="languages"');
     expect(nonce).toBeDefined();
     expect(body).toContain('--bg:#F7F4EF;--surface:#FFFFFF;--muted-surface:#F4F4F2;--pressed:#ECEBE9;--ink:#1B1A18');
     expect(body).not.toContain('together-theme-mode');
+  });
+
+  it('serves a permanent legal version in the workspace language with a link to the newer current one', async () => {
+    const marketing = marketingDeps();
+    const document = { id: 'document-1', tenantId: 't-acme', slug: 'terms', title: 'Terms', status: 'published' as const, createdAt: '1998-07-22T00:00:00.000Z', updatedAt: '1998-07-22T00:00:00.000Z' };
+    const version = (number: number, publishedAt: string) => ({
+      id: `version-${String(number)}`, tenantId: 't-acme', documentId: 'document-1', version: number,
+      content: `Terms version ${String(number)}`, publishedAt, createdAt: publishedAt, createdBy: 'staff',
+    });
+    marketing.documents = {
+      ...marketing.documents,
+      findLatestPublished: async () => ({ document, version: version(2, '1998-08-01T00:00:00.000Z') }),
+      findPublishedVersion: async (_tenantId, _slug, number) => number === 1 ? { document, version: version(1, '1998-07-22T00:00:00.000Z') } : null,
+    };
+    const response = await marketingApp(marketing).request('/legal/terms/v/1?lang=pl', { headers: { host: 'acme.localhost:48730' } });
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('lang="en"');
+    expect(body).toContain('Terms version 1');
+    expect(body).toContain('<p class="notice">Version 1, published July 22, 1998. This version will not change. <a href="/legal/terms">View the current version</a></p>');
+    expect(body).not.toContain('class="languages"');
   });
 
   it('renders member preferences without mutating GET and returns a human confirmation after POST', async () => {
@@ -2541,15 +2579,15 @@ describe('marketing HTTP surfaces', () => {
     const success = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
-    expect(await success.text()).toContain('Email address confirmed');
+    expect(await success.text()).toContain('You are subscribed');
     const repeated = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
-    expect(await repeated.text()).toContain('Email address confirmed');
+    expect(await repeated.text()).toContain('You are subscribed');
     const confirmedGet = await confirmationApp.request('/marketing/confirm/confirmation_token_123456789012345?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });
-    expect(await confirmedGet.text()).toContain('Email address confirmed');
+    expect(await confirmedGet.text()).toContain('You are subscribed');
     const expired = await confirmationApp.request('/marketing/confirm/missing_confirmation_token_123456?lang=en', {
       headers: { host: 'acme.localhost:48730' },
     });
@@ -2558,6 +2596,213 @@ describe('marketing HTTP surfaces', () => {
       method: 'POST', headers: { host: 'acme.localhost:48730' },
     });
     expect(await expiredPost.text()).toContain('This link is no longer active');
+  });
+
+  it('answers an unknown unsubscribe token with a branded page on every human route', async () => {
+    const app = marketingApp(await memberSurfaceMarketing());
+    const headers = { host: 'acme.localhost:48730' };
+    const responses = [
+      await app.request('/u/missing_token_1234567890123456?lang=en', { headers }),
+      await app.request('/u/missing_token_1234567890123456/confirm?lang=en', { method: 'POST', headers }),
+      await app.request('/u/missing_token_1234567890123456/all?lang=en', { method: 'POST', headers }),
+      await app.request('/u/missing_token_1234567890123456/preferences?lang=en', {
+        method: 'POST',
+        headers: { ...headers, 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ 'present-consent': 'definition-news' }),
+      }),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(404);
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const page = await response.text();
+      expect(page).toContain('data-testid="marketing-link-invalid"');
+      expect(page).toContain('This link does not work');
+      expect(page).toContain('Open the link from the newest email, or contact the sender.');
+      expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
+    }
+    const polish = await app.request('/u/missing_token_1234567890123456?lang=pl', { headers });
+    const polishPage = await polish.text();
+    expect(polishPage).toContain('lang="pl"');
+    expect(polishPage).toContain('data-testid="marketing-link-invalid"');
+    expect(polishPage).not.toContain('This link does not work');
+  });
+
+  it('keeps the one-click unsubscribe answer for mail clients unchanged', async () => {
+    const app = marketingApp(await memberSurfaceMarketing());
+    const unknown = await app.request('/u/missing_token_1234567890123456', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(unknown.status).toBe(404);
+    expect(unknown.headers.get('content-type')).toBe('application/json');
+    expect(await unknown.json()).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    const known = await app.request('/u/unsubscribe_token_123456789012345', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(known.status).toBe(200);
+    expect(await known.text()).toBe('');
+  });
+
+  const suppress = async (marketing: MarketingAppDeps, reason: 'manual' | 'hard_bounce' | 'unsubscribe_global') => {
+    await marketing.suppressions.record('t-acme', {
+      id: `suppression-member-${reason}`, tenantId: 't-acme', email: 'member@example.test',
+      emailHmac: marketing.hmac.compute('t-acme', 'member@example.test'), reason,
+      sourceRef: 'unsubscribe-news', meta: null, createdAt: '1998-07-02T00:00:00.000Z', liftedAt: null, liftedBy: null,
+    });
+  };
+  const postPreferences = (app: ReturnType<typeof marketingApp>, fields: Array<[string, string]>) =>
+    app.request('/u/unsubscribe_token_123456789012345/preferences?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(fields),
+    });
+  const preferencePage = async (app: ReturnType<typeof marketingApp>, path = '/u/unsubscribe_token_123456789012345?lang=en') =>
+    (await app.request(path, { headers: { host: 'acme.localhost:48730' } })).text();
+
+  it.each(['manual', 'hard_bounce'] as const)('lets a %s-suppressed address withdraw a consent that is still active', async (reason) => {
+    const marketing = await memberSurfaceMarketing();
+    await suppress(marketing, reason);
+    const app = marketingApp(marketing);
+    const html = await preferencePage(app);
+    expect(html).not.toContain('You are unsubscribed from all marketing emails from Acme.');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/all?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/preferences?lang=en">');
+    expect(html).toContain('name="consent" value="definition-news" checked');
+    expect(html).toContain('You cannot subscribe again from this page; contact the sender.');
+    const kept = await postPreferences(app, [['present-consent', 'definition-news'], ['consent', 'definition-news']]);
+    expect(kept.status).toBe(200);
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).map((row) => row.status)).toEqual(['confirmed']);
+    const withdrawn = await postPreferences(app, [['present-consent', 'definition-news']]);
+    expect(withdrawn.status).toBe(200);
+    expect(await withdrawn.text()).toContain('Preferences saved');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
+    const after = await preferencePage(app);
+    expect(after).toContain('data-state="unsubscribed-all"');
+    expect(after).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
+  });
+
+  it('sends a refused re-subscription back to a page that still offers every withdrawal', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.definitions.create('t-acme', {
+      id: 'definition-events', tenantId: 't-acme', key: 'events', kind: 'optional_marketing',
+      channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+      status: 'active', createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z',
+    }, {
+      id: 'definition-events-v1', tenantId: 't-acme', definitionId: 'definition-events', version: 1,
+      label: 'Event announcements', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+      createdAt: '1998-07-01T00:00:00.000Z', createdBy: 'staff',
+    });
+    await suppress(marketing, 'manual');
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const post = await postPreferences(app, [
+      ['present-consent', 'definition-news'], ['consent', 'definition-news'],
+      ['present-consent', 'definition-events'], ['consent', 'definition-events'],
+    ]);
+    expect(post.status).toBe(303);
+    expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const html = await preferencePage(app, post.headers.get('location') ?? '');
+    expect(html).not.toContain('data-state="unsubscribed-all"');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/all?lang=en">');
+    expect(html).toContain('<form method="post" action="/u/unsubscribe_token_123456789012345/preferences?lang=en">');
+    expect(html).toContain('You cannot subscribe again from this page; contact the sender.');
+  });
+
+  it('withdraws the unticked consent of a suppressed address and tells it the new one was not added', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.definitions.create('t-acme', {
+      id: 'definition-events', tenantId: 't-acme', key: 'events', kind: 'optional_marketing',
+      channel: 'email', doubleOptIn: true, documentRef: { mode: 'url', url: 'https://acme.test/privacy' },
+      status: 'active', createdAt: '1998-07-01T00:00:00.000Z', updatedAt: '1998-07-01T00:00:00.000Z',
+    }, {
+      id: 'definition-events-v1', tenantId: 't-acme', definitionId: 'definition-events', version: 1,
+      label: 'Event announcements', documentVersionRef: { mode: 'url', url: 'https://acme.test/privacy?v=1' },
+      createdAt: '1998-07-01T00:00:00.000Z', createdBy: 'staff',
+    });
+    await suppress(marketing, 'manual');
+    const app = marketingApp(marketing);
+    const before = await preferencePage(app);
+    expect(before).toContain('name="consent" value="definition-news" checked>');
+    expect(before).toContain('name="consent" value="definition-events" disabled>');
+    expect(before).not.toContain('data-state="subscriptions-refused"');
+    const post = await postPreferences(app, [
+      ['present-consent', 'definition-news'],
+      ['present-consent', 'definition-events'], ['consent', 'definition-events'],
+    ]);
+    expect(post.status).toBe(303);
+    const location = post.headers.get('location') ?? '';
+    expect(location).toBe('/u/unsubscribe_token_123456789012345?lang=en&notice=subscriptions-refused');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test'))
+      .map((row) => [row.definitionId, row.status])).toEqual([['definition-news', 'confirmed'], ['definition-news', 'withdrawn']]);
+    const html = await preferencePage(app, location);
+    expect(html).toContain('<p class="notice" role="status" data-state="subscriptions-refused">Your unsubscribe choices are saved. The newly selected consents were not added: you cannot subscribe again from this page; contact the sender.</p>');
+    expect(html).toContain('You are unsubscribed from all marketing emails from Acme.');
+  });
+
+  it('sends a save from an address unsubscribed from everything back to the preference page', async () => {
+    const marketing = await memberSurfaceMarketing();
+    await marketing.marketingConsents.record('t-acme', {
+      id: 'consent-news-withdrawn', tenantId: 't-acme', memberId: null, email: 'member@example.test',
+      definitionId: 'definition-news', definitionVersion: 1, wordingSnapshot: 'Product news',
+      documentRefSnapshot: { mode: 'url', url: 'https://acme.test/privacy?v=1' }, status: 'withdrawn',
+      previousId: 'consent-news', source: 'preference_page', evidence: { collectedAt: '1998-07-02T00:00:00.000Z' },
+      occurredAt: '1998-07-02T00:00:00.000Z',
+    });
+    await suppress(marketing, 'unsubscribe_global');
+    const before = await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test');
+    const app = marketingApp(marketing);
+    const post = await postPreferences(app, [['present-consent', 'definition-news'], ['consent', 'definition-news']]);
+    expect(post.status).toBe(303);
+    expect(post.headers.get('location')).toBe('/u/unsubscribe_token_123456789012345?lang=en');
+    expect(await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test')).toEqual(before);
+    const html = await preferencePage(app, post.headers.get('location') ?? '');
+    expect(html).toContain('You are unsubscribed from all marketing emails from Acme.');
+    expect(html).not.toContain('/u/unsubscribe_token_123456789012345/preferences');
+  });
+
+  it('lets a suppressed address withdraw the linked consent after its definition was archived', async () => {
+    const marketing = await memberSurfaceMarketing();
+    const definition = await marketing.definitions.findById('t-acme', 'definition-news');
+    if (definition === null) throw new Error('Missing consent definition');
+    await marketing.definitions.update('t-acme', { ...definition, status: 'archived', updatedAt: '1998-07-02T00:00:00.000Z' });
+    await suppress(marketing, 'manual');
+    const app = marketingApp(marketing);
+    const html = await preferencePage(app);
+    expect(html).not.toContain('data-state="unsubscribed-all"');
+    expect(html).toContain('data-state="consent-link"');
+    expect(html).toContain('<p class="fine">You will stop receiving messages from this list.</p><form method="post" action="/u/unsubscribe_token_123456789012345/confirm?lang=en">');
+    expect(html).not.toContain('definition-news');
+    const confirm = await app.request('/u/unsubscribe_token_123456789012345/confirm?lang=en', {
+      method: 'POST', headers: { host: 'acme.localhost:48730' },
+    });
+    expect(confirm.status).toBe(200);
+    expect(await confirm.text()).toContain('Unsubscribe confirmed');
+    expect((await marketing.marketingConsents.listByEmail('t-acme', 'member@example.test', 'definition-news'))
+      .map((row) => row.status)).toEqual(['confirmed', 'withdrawn']);
+  });
+
+  it('answers a missing hosted document or version with a branded page in the workspace language', async () => {
+    const app = marketingApp();
+    const headers = { host: 'acme.localhost:48730' };
+    const cases = [
+      { path: '/legal/missing?lang=pl', status: 404 },
+      { path: '/legal/terms/v/7?lang=pl', status: 404 },
+      { path: '/legal/terms/v/latest?lang=pl', status: 400 },
+    ];
+    for (const { path, status } of cases) {
+      const response = await app.request(path, { headers });
+      expect(response.status).toBe(status);
+      expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+      const page = await response.text();
+      expect(page).toContain('lang="en"');
+      expect(page).toContain('data-testid="hosted-legal-not-found"');
+      expect(page).toContain('Document not found');
+      expect(page).toContain('This document does not exist or has been withdrawn.');
+      expect(page).toContain('<a class="button-link" href="/">Go to the home page</a>');
+      expect(page).not.toContain('class="languages"');
+    }
   });
 
   it('acknowledges a verified SNS envelope from another tenant topic without processing it', async () => {
@@ -3205,6 +3450,103 @@ describe('public rate limiting', () => {
     purgeExpired: async () => 0,
   };
 
+  it('answers a per-IP over-limit sign-up form post with a static page that links back to the form and needs no workspace lookup', async () => {
+    const configured = deps({
+      rateLimitBuckets: { claim: async (input) => input.scope !== 'signup:ip', purgeExpired: async () => 0 },
+    });
+    const lookups = [
+      vi.spyOn(configured.tenantDomains, 'findByDomain'),
+      vi.spyOn(configured.tenants, 'findById'),
+      vi.spyOn(configured.tenants, 'findBySlug'),
+      vi.spyOn(configured.tenants, 'findSole'),
+      vi.spyOn(configured.tenants, 'findSettings'),
+    ];
+    const app = buildApp(configured);
+    const submit = (contentType: string, body: string, slug = 'newsletter') => app.request(`/api/public/marketing/forms/${slug}/submit?lang=pl`, {
+      method: 'POST', headers: { host: 'acme.localhost:48730', 'content-type': contentType }, body,
+    });
+    const formBody = new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString();
+    const formPost = await submit('application/x-www-form-urlencoded', formBody);
+    expect(formPost.status).toBe(429);
+    expect(Number(formPost.headers.get('retry-after'))).toBeGreaterThan(0);
+    expect(formPost.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+    expect(formPost.headers.get('cache-control')).toBe('no-store');
+    const html = await formPost.text();
+    expect(html).toContain('<html lang="pl" style=');
+    expect(html).toContain(`<p class="lede" role="alert">${publicMarketingMessagesPl.signupRateLimited}</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=pl">${publicMarketingMessagesPl.signupBackToForm}</a></div>`);
+    expect(html).toContain(`<title>${publicMarketingMessagesPl.errorTitlePrefix}${publicMarketingMessagesPl.signupRateLimitedTitle}</title>`);
+    expect(html).toContain('status-cue--error');
+    expect(html).not.toContain('reader@example.org');
+    expect(html).not.toContain('class="brand"');
+    for (const slug of ['News%20Letter', '%E0%A4%A', 'news%2F..%2Fother']) {
+      const unknownForm = await (await submit('application/x-www-form-urlencoded', formBody, slug)).text();
+      expect(unknownForm).toContain(`<p class="lede" role="alert">${publicMarketingMessagesPl.signupRateLimited}</p></div>`);
+      expect(unknownForm).not.toContain('class="button-link');
+    }
+    for (const lookup of lookups) expect(lookup).not.toHaveBeenCalled();
+    for (const [contentType, body] of [['application/json', JSON.stringify({ email: 'reader@example.org' })], ['text/plain', '{}']] as const) {
+      const rejected = await submit(contentType, body);
+      expect(rejected.status).toBe(429);
+      expect(rejected.headers.get('content-type')).toBe('application/json');
+      expect(await rejected.json()).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
+    }
+  });
+
+  it('adds no workspace lookup to the per-IP over-limit page when the sign-up CORS check read the workspace first', async () => {
+    const configured = deps();
+    const lookups = [
+      vi.spyOn(configured.tenantDomains, 'findByDomain'),
+      vi.spyOn(configured.tenants, 'findById'),
+      vi.spyOn(configured.tenants, 'findBySlug'),
+      vi.spyOn(configured.tenants, 'findSole'),
+      vi.spyOn(configured.tenants, 'findSettings'),
+    ];
+    const lookupCount = () => lookups.reduce((total, lookup) => total + lookup.mock.calls.length, 0);
+    const forms = new InMemoryMarketingSignupFormRepository();
+    forms.forms.push({
+      id: 'form-1', tenantId: acme.id, slug: 'newsletter', name: 'Newsletter', consentDefinitionId: 'newsletter',
+      consentVersion: { id: 'newsletter-v1', tenantId: acme.id, definitionId: 'newsletter', version: 1, label: 'the monthly newsletter', documentVersionRef: { mode: 'url', url: 'https://studio.example.org/privacy' }, createdAt: '2026-07-01T00:00:00.000Z', createdBy: null },
+      listId: null, tags: [], collectName: false, successText: { en: 'Thank you', pl: 'Thank you' },
+      redirectUrl: null, allowedOrigins: ['https://studio.example.org'], token: 'form_token_1234567890123456', status: 'active', revision: 1,
+      createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z',
+    });
+    const formLookup = vi.spyOn(forms, 'findBySlug');
+    configured.marketingSignup = {
+      dispatchEmail: () => undefined,
+      forms,
+      transaction: { run: async () => { throw new Error('An over-limit submission must not open a transaction'); } },
+      clock: { nowIso: () => '2026-07-01T00:00:00.000Z' },
+      ids: { nextId: () => 'id-1' },
+      tokens: { nextToken: () => 'token-1' },
+      hmac: { compute: () => 'hash' },
+    };
+    let lookupsBeforeLimiter: number | null = null;
+    let formLookupsBeforeLimiter: number | null = null;
+    configured.rateLimitBuckets = {
+      claim: async (input) => {
+        lookupsBeforeLimiter ??= lookupCount();
+        formLookupsBeforeLimiter ??= formLookup.mock.calls.length;
+        return input.scope !== 'signup:ip';
+      },
+      purgeExpired: async () => 0,
+    };
+    const app = buildApp(configured);
+    const response = await app.request('/api/public/marketing/forms/newsletter/submit?lang=en', {
+      method: 'POST',
+      headers: { host: 'acme.localhost:48730', origin: 'https://studio.example.org', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ email: 'reader@example.org', token: 'form_token_1234567890123456' }).toString(),
+    });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('content-type')).toBe('text/html; charset=UTF-8');
+    expect(response.headers.get('access-control-allow-origin')).toBe('https://studio.example.org');
+    expect(await response.text()).toContain(`<p class="lede" role="alert">${publicMarketingMessagesEn.signupRateLimited}</p><div class="actions"><a class="button-link" href="/marketing/forms/newsletter?lang=en">${publicMarketingMessagesEn.signupBackToForm}</a></div>`);
+    expect(lookupsBeforeLimiter).toBeGreaterThan(0);
+    expect(lookupCount()).toBe(lookupsBeforeLimiter);
+    expect(formLookupsBeforeLimiter).toBe(1);
+    expect(formLookup).toHaveBeenCalledOnce();
+    expect(formLookup).toHaveBeenCalledWith(acme.id, 'newsletter');
+  });
+
   it('answers a throttled checkout with 429 and Retry-After', async () => {
     const app = buildApp(deps({ rateLimitBuckets: exhausted }));
 
@@ -3369,6 +3711,33 @@ describe('public rate limiting', () => {
     })).status).not.toBe(429);
     expect(scopes).toEqual(['public-write:ip', 'public-write:tenant']);
   });
+
+  it('answers HEAD on a parcel locker lookup with 404 without claiming a rate limit or asking the directory', async () => {
+    const scopes: string[] = [];
+    const configured = deps({
+      rateLimitBuckets: {
+        claim: async (input) => { scopes.push(input.scope); return true; },
+        purgeExpired: async () => 0,
+      },
+    });
+    configured.tenants.findSettings = async () => tenantSettingsSchema.parse({ name: acme.name, billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
+      { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
+    ] });
+    const directory = createPickupPointDirectoryFake();
+    configured.pickupPoints = directory;
+    const app = buildApp(configured);
+    const path = API_PATHS.publicParcelLocker.replace(':code', TEST_PICKUP_POINTS.operating);
+
+    const response = await app.request(path, { method: 'HEAD', headers: { [TENANT_HEADER]: 'acme' } });
+
+    expect(response.status).toBe(404);
+    expect(scopes).toEqual([]);
+    expect(directory.lookups).toEqual([]);
+
+    expect((await app.request(path, { headers: { [TENANT_HEADER]: 'acme' } })).status).toBe(200);
+    expect(scopes).toContain('parcel-locker:ip');
+    expect(directory.lookups).toEqual([TEST_PICKUP_POINTS.operating]);
+  });
 });
 
 describe('email dispatch route', () => {
@@ -3445,7 +3814,7 @@ describe('email dispatch route', () => {
     const manual = await app.request(API_PATHS.emailDispatch, { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } });
     expect([cron.status, manual.status]).toEqual([200, 200]);
     const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 45_000;
-    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1 }], [{ deadlineAt }]]);
+    expect(dispatchOrderRefundJobs.mock.calls).toStrictEqual([[{ deadlineAt, maxJobs: 1, jobBudgetMs: 21_000 }], [{ deadlineAt }]]);
     expect(dispatchEmails.mock.calls).toEqual([['cron'], ['manual']]);
     expect(logger.error).toHaveBeenCalledWith('[order-refund] tick dispatch failed: database unavailable');
   });
@@ -4880,6 +5249,128 @@ describe('purchased product download route', () => {
     expect(response.status).toBe(403);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
   });
+
+  const browserAccept = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8';
+
+  it('sends a failed browser download back to My products with a fixed error code and the product', async () => {
+    const forbidden = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(forbidden.status).toBe(303);
+    expect(forbidden.headers.get('location')).toBe(`/my/products?downloadError=no_access&product=${downloadProduct.id}&asset=${asset.id}`);
+    expect(forbidden.headers.get('cache-control')).toBe('no-store');
+    expect(await forbidden.text()).toBe('');
+
+    const missing = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      downloadAssets: { ...deps().downloadAssets, findById: async () => null },
+    } }).request(path, { headers: { host: 'acme.localhost:48730', accept: browserAccept } });
+    expect(missing.status).toBe(303);
+    expect(missing.headers.get('location')).toBe(`/my/products?downloadError=not_found&product=${downloadProduct.id}&asset=${asset.id}`);
+
+    const unconfigured = await scopedApp('member', { overrides: {
+      ...overrides(true),
+      secretResolver: { resolve: async () => err(notFound('No storage configuration')) },
+    } }).request(path, { headers: { host: 'acme.localhost:48730', accept: browserAccept } });
+    expect(unconfigured.status).toBe(303);
+    expect(unconfigured.headers.get('location')).toBe(`/my/products?downloadError=failed&product=${downloadProduct.id}&asset=${asset.id}`);
+  });
+
+  it('never reflects an unsafe product or asset reference into the failure redirect', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(
+      API_PATHS.memberProductDownload.replace(':productId', 'bad%20id%3Cscript%3E').replace(':assetId', asset.id),
+      { headers: { host: 'acme.localhost:48730', accept: browserAccept } },
+    );
+    expect(response.status).toBe(303);
+    expect(response.headers.get('location')).toBe('/my/products?downloadError=no_access');
+  });
+
+  it('keeps the JSON envelope for clients that ask for JSON', async () => {
+    for (const accept of ['application/json', 'application/json, text/html', '*/*', undefined]) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', ...(accept === undefined ? {} : { accept }) },
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get('content-type')).toBe('application/json');
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    }
+  });
+
+  it('keeps the JSON envelope when text/html is refused with q=0 or only named inside another media type', async () => {
+    for (const accept of ['text/html;q=0, */*', 'text/html; q=0.0, application/xml', 'application/vnd.example+text/html', 'text/html-fragment']) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
+  it('prefers a browser redirect when text/html outranks application/json', async () => {
+    const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: 'application/json;q=0.5, text/html' },
+    });
+    expect(response.status).toBe(303);
+  });
+
+  it('ranks text/html and application/json by their most specific matching range', async () => {
+    const cases = [
+      { accept: 'application/*;q=1, text/html;q=0.5', status: 403 },
+      { accept: 'text/*;q=1, application/json;q=0.5', status: 303 },
+      { accept: '*/*;q=0.1, text/html;q=0', status: 403 },
+    ];
+    for (const { accept, status } of cases) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect({ accept, status: response.status }).toEqual({ accept, status });
+      if (status === 403) expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
+  it('gives a plain representation no quality from a range that requires other media type parameters', async () => {
+    const cases = [
+      { accept: 'text/*;profile=legacy, application/json;q=0.5', status: 403 },
+      { accept: 'text/html;level=1, application/json;q=0.5', status: 403 },
+      { accept: browserAccept, status: 303 },
+      { accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7', status: 303 },
+      { accept: 'text/html;q=0.9;ext=1, application/json;q=0.5', status: 303 },
+      { accept: 'application/json;profile="one,text/html,two", application/json;q=0.5', status: 403 },
+      { accept: 'application/json;profile="a\\",text/html,tail", application/json;q=0.5', status: 403 },
+    ];
+    for (const { accept, status } of cases) {
+      const response = await scopedApp('member', { overrides: overrides(false) }).request(path, {
+        headers: { host: 'acme.localhost:48730', accept },
+      });
+      expect({ accept, status: response.status }).toEqual({ accept, status });
+      if (status === 403) expect(response.headers.get('content-type')).toBe('application/json');
+    }
+  });
+
+  it('sends a signed-out browser download to sign-in with a return to My products', async () => {
+    const anonymous = { authPort: { ...deps().authPort, getAuthenticatedUser: async () => null } };
+    const browser = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(browser.status).toBe(303);
+    expect(browser.headers.get('location')).toBe('/login?returnTo=%2Fmy%2Fproducts');
+    expect(new URL(browser.headers.get('location') ?? '', 'https://acme.test').origin).toBe('https://acme.test');
+
+    const api = await scopedApp('none', { overrides: { ...overrides(true), ...anonymous } }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: 'application/json' },
+    });
+    expect(api.status).toBe(401);
+    expect(await api.json()).toMatchObject({ ok: false, error: { code: 'unauthorized' } });
+  });
+
+  it('still redirects a successful browser download to its signed object URL', async () => {
+    const response = await scopedApp('member', { overrides: overrides(true) }).request(path, {
+      headers: { host: 'acme.localhost:48730', accept: browserAccept },
+    });
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('https://download.example.test/signed-workbook');
+  });
+
   it('accepts legacy bodyless completion and rejects malformed version JSON', async () => {
     const app = scopedApp('owner', { overrides: overrides(true) });
     const completePath = API_PATHS.productDownloadComplete
@@ -7058,10 +7549,10 @@ describe('free lesson preview route', () => {
     const base = deps({ lessons: [preview], getAuthenticatedUser: async () => null });
     const stored = { id: 'edition-version', entityKind: 'course_lesson' as const, entityId: preview.id, schemaVersion: 3, payload: { ...preview, contents: [{ type: 'html', html: '<p>Earlier content</p>' }] }, createdAt: preview.createdAt, createdBy: null };
     const edition = { versionId: stored.id, number: '2', note: 'Updated examples', markedAt: preview.createdAt };
-    const makeApp = (isPreview: boolean) => appWithCourse({
+    const makeApp = (isPreview: boolean, version: EntityVersionRecord = stored) => appWithCourse({
       ...base,
       lessons: { ...base.lessons, findById: async () => ({ ...preview, isPreview }) },
-      lessonEditions: { ...base.lessonEditions, list: async () => [edition], find: async (_tenant, _lesson, number) => number === '2' ? stored : null },
+      lessonEditions: { ...base.lessonEditions, list: async () => [{ ...edition, version }], find: async (_tenant, _lesson, number) => number === '2' ? version : null },
     }, courseFor('edition-course', true), preview.id);
     const headers = { [TENANT_HEADER]: acme.slug };
     const listPath = API_PATHS.studentLessonEditions.replace(':lessonId', preview.id);
@@ -7069,8 +7560,10 @@ describe('free lesson preview route', () => {
     const listed = await makeApp(true).request(listPath, { headers });
     expect(listed.status).toBe(200);
     expect(await listed.json()).toEqual({ ok: true, data: { editions: [{
-      number: edition.number, note: edition.note, markedAt: edition.markedAt,
-    }] } });
+      number: edition.number, note: edition.note, markedAt: edition.markedAt, matchesLive: false,
+    }], currentEdition: null } });
+    const matching = await makeApp(true, { ...stored, payload: preview }).request(listPath, { headers });
+    expect(await matching.json()).toMatchObject({ ok: true, data: { editions: [{ number: '2', matchesLive: true }], currentEdition: '2' } });
     const opened = await makeApp(true).request(editionPath.replace(':number', '2'), { headers });
     expect(opened.status).toBe(200);
     expect(await opened.json()).toMatchObject({ data: { authenticated: false, lesson: { id: preview.id, contents: [{ html: '<p>Earlier content</p>' }] } } });
@@ -10009,7 +10502,7 @@ describe('staff member self-service routes', () => {
       Object.assign(row, patch);
       return row;
     };
-    const saveProgress = vi.fn(base.progress.update);
+    const saveLastViewed = vi.fn(base.progress.setLastViewed);
     const app = buildApp({
       ...base,
       marketing: marketingDeps(),
@@ -10027,7 +10520,7 @@ describe('staff member self-service routes', () => {
       },
       courses: { ...base.courses, list: async () => [course], findById: async () => course },
       modules: { ...base.modules, list: async () => [module] },
-      progress: { ...base.progress, update: saveProgress },
+      progress: { ...base.progress, setLastViewed: saveLastViewed },
     });
     const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
     const profile = await app.request(API_PATHS.meProfile, {
@@ -10056,7 +10549,7 @@ describe('staff member self-service routes', () => {
       expect(response.status, path).toBe(200);
       expect(await response.json()).toMatchObject({ data: { progress: { courseId: course.id } } });
     }
-    expect(saveProgress).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lastViewedLessonId: 'lesson-1' }));
+    expect(saveLastViewed).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lessonId: 'lesson-1' }));
     expect(createMember).toHaveBeenCalledOnce();
   });
 });
@@ -10711,6 +11204,25 @@ it.each([undefined, 'BUNDLE'])('simulates the full sales link through the HTTP r
     expect([...h.couponSessions.values()]).toMatchObject([{ originalCents: 2130, finalCents: 1917 }]);
     expect([...h.snapshots.values()]).toMatchObject([{ salesLinkId: 'bundle-link', lines: [{ productId: 'print' }, { productId: 'digital' }] }]);
   }
+});
+
+it('asks the carrier once for the parcel locker of a simulated purchase through the HTTP route', async () => {
+  const h = simulatedBundleApp();
+  const print = h.products.find((item) => item.id === 'print');
+  if (print === undefined) throw new Error('Expected the printed item');
+  print.deliveryMethod = 'shipping';
+  h.base.tenants.findSettings = async () => tenantSettingsSchema.parse({ name: acme.name, billingPortalUrl: null, bunnyStreamLibraryId: null, shippingRates: [
+    { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true },
+  ] });
+  const directory = createPickupPointDirectoryFake();
+  h.base.pickupPoints = directory;
+  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+    productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
+    shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+  });
+  expect(await response.json()).toMatchObject({ ok: true, data: { orderId: expect.any(String) } });
+  expect(directory.lookups).toHaveLength(1);
+  expect(h.orders[0]).toMatchObject({ shipping: { pickupPoint: { code: 'WAW01M', name: 'Next to the main entrance' } } });
 });
 
 it.each(['consent capture', 'coupon session'] as const)('releases the simulated coupon stock hold when the %s write fails', async (stage) => {

@@ -6,17 +6,20 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   ACCESS_RETAINING_ORDER_STATUSES,
   allocateOrderLineGross,
-  collectedShippingFromStripe,
+  checkoutShippingFromStripe,
   err,
   internal,
+  newOrderStaffRefund,
   ok,
   renderEmailOutboxPayload,
+  stockCheckoutExpiry,
   tenantSettingsSchema,
   validation,
   type Member,
   type TermsConsent,
   type MemberSubscription,
   type Order,
+  type OrderStaffRefund,
   type ProcessedPaymentEvent,
   type Product,
   type ProductGrant,
@@ -205,6 +208,9 @@ const harness = (
   const queued: { to: string; payload: EmailOutboxPayload }[] = [];
   const autoInvoiceJobs: AutoInvoiceJob[] = [];
   const refundJobs = createOrderRefundJobFake();
+  const staffRefundNotes: string[] = [];
+  const waitingStaffRefunds: OrderStaffRefund[] = [];
+  let refundKicks = 0;
   const consents: TermsConsent[] = [];
   const consentJobs: CheckoutConsentJob[] = [];
   const marketingConsents = new InMemoryMarketingConsentRepository();
@@ -493,6 +499,12 @@ const harness = (
             complete: async () => undefined,
           },
           orderRefundJobs: refundJobs.repository,
+          orderStaffRefunds: {
+            noteChargeRefunded: async (tenantId, orderId, at) => {
+              staffRefundNotes.push(`${tenantId}:${orderId}:${at}`);
+              return waitingStaffRefunds.filter((refund) => refund.tenantId === tenantId && refund.orderId === orderId);
+            },
+          },
           consents: {
             record: async (_tenantId, consent) => { consents.push(consent); },
             listByEmail: async (tenantId, email) => consents.filter((row) => row.tenantId === tenantId && row.email === email),
@@ -564,6 +576,7 @@ const harness = (
       markFailed: async () => ok(undefined),
     },
     dispatchEmail: () => undefined,
+    dispatchOrderRefunds: () => { refundKicks += 1; },
     devMagicLinks: { findByEmail: async () => null },
     ids: { nextId: () => `id-${++sequence}` },
     consentTokens: { nextToken: () => `confirmation-${++sequence}` },
@@ -601,6 +614,9 @@ const harness = (
     providerCancellations,
     warnings,
     refundTransitions: () => refundTransitions,
+    staffRefundNotes,
+    waitingStaffRefunds,
+    refundKicks: () => refundKicks,
     setNow: (iso: string) => {
       clockNow = iso;
     },
@@ -2670,6 +2686,39 @@ describe('fulfillStripeWebhook', () => {
   );
 });
 
+describe('staff refunds on charge.refunded', () => {
+  it.each([
+    ['a partial', { full: false, amountRefundedCents: 1000, amountCents: 4900 }, 'partially_refunded'],
+    ['a full', { full: true, amountRefundedCents: 4900, amountCents: 4900 }, 'refunded'],
+  ] as const)('makes the waiting staff refunds of the order due after %s refund and kicks the dispatcher', async (_label, refund, status) => {
+    const h = harness();
+    await fulfillStripeWebhook(tenantA, completedEvent({ paymentIntentId: 'pi-staff' }), h.deps);
+    const order = h.orders[0];
+    if (order === undefined) throw new Error('Order missing');
+    h.waitingStaffRefunds.push(newOrderStaffRefund({
+      id: 'refund-1', tenantId: tenantA.id, orderId: order.id, paymentIntentId: 'pi-staff', currency: 'PLN', kind: 'amount', amountCents: 1000,
+      requestKey: 'req-1', requestedByUserId: 'owner', requestedByEmail: 'owner@example.com', note: null, restocked: false, removedFromPackingList: false, now,
+    }));
+
+    expect(await fulfillStripeWebhook(tenantA, adjustmentEvent({ id: `evt-${status}`, paymentIntentId: 'pi-staff', refund }), h.deps)).toEqual({ ok: true, value: { processed: true } });
+    expect(h.orders[0]?.status).toBe(status);
+    expect(h.staffRefundNotes).toStrictEqual([`${tenantA.id}:${order.id}:${now}`]);
+    expect(h.refundKicks()).toBe(1);
+    expect(h.warnings).toContain(`[order-refund] staff refund due again after charge.refunded tenant=${tenantA.id} order=${order.id} refund=refund-1`);
+    expect(h.warnings.filter((warning) => warning.includes('evt-'))).toStrictEqual([]);
+  });
+
+  it('notes no staff refund for a dispute and does not kick the dispatcher without a waiting refund', async () => {
+    const h = harness();
+    await fulfillStripeWebhook(tenantA, completedEvent({ paymentIntentId: 'pi-staff' }), h.deps);
+    await fulfillStripeWebhook(tenantA, adjustmentEvent({ id: 'evt-dispute', type: 'charge.dispute.created', paymentIntentId: 'pi-staff' }), h.deps);
+    expect(h.staffRefundNotes).toStrictEqual([]);
+    await fulfillStripeWebhook(tenantA, adjustmentEvent({ id: 'evt-partial', paymentIntentId: 'pi-staff', refund: { full: false, amountRefundedCents: 100, amountCents: 4900 } }), h.deps);
+    expect(h.staffRefundNotes).toHaveLength(1);
+    expect(h.refundKicks()).toBe(0);
+  });
+});
+
 describe('simulated subscription lifecycle', () => {
   it('drives invoice.paid through the webhook path on simulate-cycle', async () => {
     const h = await subscribedHarness();
@@ -3770,7 +3819,9 @@ describe('shipped checkout fulfilment', () => {
 
   it.each([
     ['a shipping cost that differs from the shipping line', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = 999; }],
-    ['a missing shipping cost', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = null; }],
+    ['no shipping cost and no total to check it against', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = null; session.amountTotalCents = null; }],
+    ['no shipping cost and a total that leaves out the shipping line', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = null; session.amountTotalCents = 12400; }],
+    ['no shipping cost and a total above the lines', (session: ReturnType<typeof shippedPayment>['session']) => { session.shippingCostCents = null; session.amountTotalCents = 13900; }],
     ['a missing address', (session: ReturnType<typeof shippedPayment>['session']) => { session.shipping = null; }],
     ['an address outside the allowed countries', (session: ReturnType<typeof shippedPayment>['session']) => { session.shipping = { ...collectedShipping, address: { ...collectedShipping.address, country: 'DE' } }; }],
     ['a total that leaves out the shipping line', (session: ReturnType<typeof shippedPayment>['session']) => { session.amountTotalCents = 12400; }],
@@ -3780,6 +3831,24 @@ describe('shipped checkout fulfilment', () => {
     expect((await fulfillStripeWebhook(tenantA, h.event, h.deps)).ok).toBe(false);
     expect(h.orders).toHaveLength(0);
     expect(h.grants.size).toBe(0);
+  });
+
+  it('rejects a shipped payment that reports neither a shipping cost nor a session total', async () => {
+    const h = shippedPayment();
+    h.session.shippingCostCents = null;
+    h.session.amountTotalCents = null;
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(
+      err(validation('Checkout shipping cost is missing and the session total does not confirm its shipping line')),
+    );
+    expect(h.orders).toHaveLength(0);
+  });
+
+  it('accepts a shipped payment whose event carries no shipping amount when the session total matches every line', async () => {
+    const h = shippedPayment();
+    h.session.shippingCostCents = null;
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.orders[0]).toMatchObject({ amountCents: 13899, fulfilmentStatus: 'to_pack', shipping: { rateId: 'locker', amountCents: 1499, phone: '+48600100200' } });
   });
 
   it('accepts a coupon that discounts products while shipping stays at face value', async () => {
@@ -3856,19 +3925,45 @@ describe('shipped checkout fulfilment', () => {
     expect(h.warnings).toHaveLength(1);
   });
 
-  it('records the same delivery data from a pre-basil and a basil checkout session', async () => {
+  it('keeps the coupon on a paid shipped order whose event carries no shipping amount when the coupon limit is consumed after Stripe collected the fee', async () => {
+    const bundle = shippedPayment((lines) => lines.slice(0, 2));
+    const h = couponHarness({ claim: false, session: { originalCents: 10300, discountCents: 10300, finalCents: 0 } });
+    h.deps.products = bundle.deps.products;
+    if (bundle.deps.checkoutSnapshots === undefined) throw new Error('Missing snapshot fixture');
+    h.deps.checkoutSnapshots = bundle.deps.checkoutSnapshots;
+    const event = completedEvent({ id: 'evt-over-redeemed-old-api', objectId: 'cs-coupon', couponCheckoutSessionId: 'coupon-session-1', amountTotalCents: 1499, discountTotalCents: 10300 });
+    if (event.checkoutSession === null) throw new Error('Missing checkout fixture');
+    event.checkoutSession.metadata.checkoutSnapshotId = 'snapshot-1';
+    event.checkoutSession.metadata.salesLinkId = 'link-1';
+    event.checkoutSession.shippingCostCents = null;
+    event.checkoutSession.shipping = collectedShipping;
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toHaveLength(1);
+    const order = h.orders[0];
+    expect(order).toMatchObject({ status: 'paid', couponId: h.coupon.id, amountCents: 1499, discountCents: 10300, fulfilmentStatus: 'to_pack', shipping: { amountCents: 1499 } });
+    expect(h.redemptions).toHaveLength(0);
+    expect(h.warnings).toEqual([
+      `[stripe-webhook] recorded tenant=${tenantA.id} event=evt-over-redeemed-old-api session=cs-coupon order=${order?.id} coupon=${h.coupon.id} reason=coupon_over_redeemed`,
+    ]);
+  });
+
+  it('records the same delivery data from a pre-2022-08-01, a pre-basil and a basil checkout session', async () => {
     const stripeAddress = { name: 'Jane Buyer', address: { line1: 'Garden Street 5', line2: null, postal_code: '00-950', city: 'Warsaw', state: null, country: 'PL' } };
     const recorded = await Promise.all([
-      { collected_information: { shipping_details: stripeAddress } },
-      { shipping_details: stripeAddress },
+      { collected_information: { shipping_details: stripeAddress }, shipping_cost: { amount_total: 1499 } },
+      { shipping_details: stripeAddress, shipping_cost: { amount_total: 1499 } },
+      { shipping: stripeAddress, shipping_rate: 'shr_1', total_details: { amount_discount: 0, amount_shipping: 1499, amount_tax: 0 } },
     ].map(async (session) => {
       const h = shippedPayment();
-      h.session.shipping = collectedShippingFromStripe(session, '+48600100200');
+      const delivery = checkoutShippingFromStripe({ ...session, customer_details: { phone: '+48600100200' } });
+      h.session.shipping = delivery.shipping;
+      h.session.shippingCostCents = delivery.shippingCostCents;
       expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
       return h.orders[0]?.shipping;
     }));
     expect(recorded[0]).toMatchObject({ address: { name: 'Jane Buyer', line1: 'Garden Street 5', postalCode: '00-950', city: 'Warsaw', country: 'PL' }, phone: '+48600100200' });
     expect(recorded[1]).toEqual(recorded[0]);
+    expect(recorded[2]).toEqual(recorded[0]);
   });
 
   it('never revokes a grant for the shipping line after a full refund', async () => {
@@ -3880,6 +3975,118 @@ describe('shipped checkout fulfilment', () => {
       adjustment: { chargeId: 'charge-1', paymentIntentId: 'pi-1', invoiceId: null, refund: { full: true, amountRefundedCents: 13899, amountCents: 13899 } },
     }, h.deps)).ok).toBe(true);
     expect(lookups.mock.calls.map(([, , productId]) => productId).sort()).toEqual(['product-1', 'product-2']);
+  });
+});
+
+describe('an old-API sales-link delivery that arrives after its stock hold', () => {
+  const sessionId = 'cs_test_old_api_locker';
+  const snapshotId = 'snapshot-old-api-locker';
+  const lines: OrderLine[] = [
+    { productId: 'product-course', name: 'Course item', productType: 'course', grossCents: 4900, netCents: 4537, vatRate: 8, vatCents: 363, vatExemptionBasis: null, issuedCount: null },
+    { productId: 'product-book', name: 'Printed book', productType: 'physical', grossCents: 3900, netCents: 3714, vatRate: 5, vatCents: 186, vatExemptionBasis: null, issuedCount: 0 },
+    { productId: 'shipping:locker', name: 'Parcel locker', productType: 'shipping', grossCents: 0, netCents: 0, vatRate: 23, vatCents: 0, vatExemptionBasis: null, vatExemptionBasisKind: null, issuedCount: null },
+  ];
+  const freeLocker = {
+    rateId: 'locker', label: 'Parcel locker', amountCents: 0, vatRatePercent: 23 as const, carrier: 'inpost' as const,
+    pickupPoint: { provider: 'inpost' as const, code: 'WAW01M', name: null, address: null },
+    allowedCountries: ['PL'],
+  };
+  const oldApiEvent = (shippingCostCents: number | null): PaymentWebhookEvent => ({
+    id: 'evt_test_old_api_locker',
+    type: 'checkout.session.completed',
+    objectId: sessionId,
+    checkoutSession: {
+      email: 'test.buyer@example.com', customerName: null, customerCountry: null, billing: null, termsAccepted: true, paymentStatus: 'paid',
+      subscriptionId: null, paymentIntentId: 'pi_test_old_api_locker', invoiceId: null, amountTotalCents: 8800, discountTotalCents: 0,
+      shipping: { name: 'Test Buyer', phone: '+48500100200', address: { line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL', state: null } },
+      shippingCostCents,
+      metadata: {
+        attribution: null, tenantId: tenantA.id, productId: 'product-course', priceId: null, memberEmail: null, language: 'pl',
+        checkoutConsentCaptureId: null, couponCheckoutSessionId: null, directCheckout: true,
+        termsUrl: 'https://acme.togethercommunity.app/terms', privacyUrl: 'https://acme.togethercommunity.app/privacy',
+        checkoutSnapshotId: snapshotId, salesLinkId: 'link-book-bundle',
+      },
+    },
+  });
+  const pendingDelivery = async (hold: 'expired' | 'active') => {
+    const h = harness();
+    h.deps.products.findById = async (tenantId, id) => {
+      const line = lines.find((item) => item.productId === id);
+      return line === undefined || line.productType === 'shipping' ? null : product(tenantId, { id, type: line.productType, title: line.name });
+    };
+    h.deps.checkoutSnapshots = {
+      findByProviderSession: async () => null,
+      create: async () => undefined,
+      attachProviderSession: async () => undefined,
+      findById: async (tenantId, id) => tenantId === tenantA.id && id === snapshotId
+        ? { id, tenantId, salesLinkId: 'link-book-bundle', lines, shipping: freeLocker, currency: 'PLN', createdAt: now, mode: 'live', providerSessionId: sessionId }
+        : null,
+    };
+    const captures = new Map<string, CheckoutConsentCapture>();
+    h.deps.checkoutConsentCaptures = {
+      create: async (_tenantId, input) => { captures.set(input.id, input.capture); },
+      findById: async (_tenantId, id) => captures.get(id) ?? null,
+    };
+    const stock = createStockRepositoryFake();
+    stock.track(tenantA.id, 'product-book', 49);
+    h.deps.stock = stock.repository;
+    const expiry = stockCheckoutExpiry(now);
+    expect(await stock.repository.reserve(tenantA.id, { checkoutSnapshotId: snapshotId, items: [{ productId: 'product-book', quantity: 1 }], expiresAt: expiry.reservationExpiresAt, now })).toMatchObject({ ok: true });
+    expect(stock.levels.get(tenantA.id, 'product-book')).toMatchObject({ onHand: 49, reserved: 1 });
+    if (hold === 'expired') {
+      const swept = new Date(Date.parse(expiry.reservationExpiresAt) + 60_000).toISOString();
+      expect(await stock.repository.releaseExpired(swept, 100)).toBe(1);
+      expect(stock.levels.get(tenantA.id, 'product-book')).toMatchObject({ onHand: 49, reserved: 0 });
+      h.setNow(new Date(Date.parse(now) + 3 * 60 * 60_000).toISOString());
+    } else {
+      h.setNow(expiry.sessionExpiresAt);
+    }
+    return { ...h, stock };
+  };
+
+  it.each([
+    ['expired' as const, 'committed_late', 0],
+    ['active' as const, 'committed', 0],
+    ['expired' as const, 'committed_late', null],
+    ['active' as const, 'committed', null],
+  ])('records the paid order once when its hold is %s, commits it as %s and the event shipping amount is %s', async (hold, committedAs, shippingCostCents) => {
+    const h = await pendingDelivery(hold);
+    const event = oldApiEvent(shippingCostCents);
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+
+    expect(h.orders).toHaveLength(1);
+    const order = h.orders[0];
+    expect(order).toMatchObject({
+      status: 'paid', mode: 'live', amountCents: 8800, discountCents: 0, currency: 'PLN', salesLinkId: 'link-book-bundle', lines,
+      fulfilmentStatus: 'to_pack', providerObjectIds: { checkoutSession: sessionId, paymentIntent: 'pi_test_old_api_locker' },
+      shipping: {
+        rateId: 'locker', label: 'Parcel locker', amountCents: 0, carrier: 'inpost',
+        pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
+        address: { name: 'Test Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' },
+        phone: '+48500100200',
+      },
+    });
+    expect(order?.cancelReason ?? null).toBeNull();
+    expect(h.stock.levels.get(tenantA.id, 'product-book')).toMatchObject({ onHand: 48, reserved: 0 });
+    expect(h.stock.reservations).toEqual([expect.objectContaining({ productId: 'product-book', checkoutSnapshotId: snapshotId, status: 'committed' })]);
+    expect(h.stock.events.filter((stockEvent) => stockEvent.type === 'committed' || stockEvent.type === 'committed_late'))
+      .toEqual([expect.objectContaining({ productId: 'product-book', type: committedAs, quantity: -1 })]);
+    expect(h.refundJobs).toEqual([]);
+    expect(h.queued.map((message) => message.payload.kind)).not.toContain('order-sold-out-refund');
+    expect(h.enrollmentEmails).toHaveLength(1);
+    expect(h.enrollmentEmails[0]).toMatchObject({ to: 'test.buyer@example.com', payload: { purchase: {
+      totalCents: 8800,
+      delivery: { method: 'Parcel locker', pickupPoint: { code: 'WAW01M' }, address: null },
+    } } });
+    expect([...h.grants.values()].map((grant) => grant.productId)).toEqual(['product-course']);
+
+    expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: false }));
+    expect(h.orders).toHaveLength(1);
+    expect(h.stock.levels.get(tenantA.id, 'product-book')).toMatchObject({ onHand: 48, reserved: 0 });
+    expect(h.stock.events.filter((stockEvent) => stockEvent.type === 'committed' || stockEvent.type === 'committed_late')).toHaveLength(1);
+    expect(h.enrollmentEmails).toHaveLength(1);
+    expect(h.refundJobs).toEqual([]);
   });
 });
 

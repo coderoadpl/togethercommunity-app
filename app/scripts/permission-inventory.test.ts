@@ -15,10 +15,12 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(541);
-    expect(inventory.useCases).toHaveLength(404);
+    expect(inventory.routes).toHaveLength(545);
+    expect(inventory.useCases).toHaveLength(407);
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
+    expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/parcel-lockers/:code'))
+      .toMatchObject({ capability: 'checkout:read', before: ['public'], after: ['public'] });
     for (const row of [
       inventory.routes.find((entry) => entry.subject === 'POST /api/products/stock/adjust'),
       inventory.useCases.find((entry) => entry.subject === 'stock.ts#adjustProductStock'),

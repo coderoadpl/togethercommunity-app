@@ -1764,6 +1764,65 @@ describe('marketing e-mail use-case integration', () => {
     expect(deps.outbox.items).toHaveLength(0);
   });
 
+  it('applies the withdrawals of a suppressed address and records none of its new consents', async () => {
+    const deps = await setup();
+    const keptDefinition = { ...definition, id: 'definition-2', key: 'events' };
+    const newDefinition = { ...definition, id: 'definition-3', key: 'updates' };
+    await deps.definitions.create('tenant-1', keptDefinition, {
+      ...version, id: 'version-2', definitionId: keptDefinition.id, label: 'I want event announcements',
+    });
+    await deps.definitions.create('tenant-1', newDefinition, {
+      ...version, id: 'version-3', definitionId: newDefinition.id, label: 'I want product updates',
+    });
+    await deps.consents.record('tenant-1', {
+      ...consent('member@example.test'), id: 'consent-kept', definitionId: keptDefinition.id,
+      wordingSnapshot: 'I want event announcements',
+    });
+    expect((await addManualSuppression(ctx, { email: 'member@example.test', sourceRef: 'staff-1' }, deps)).ok).toBe(true);
+    const token = 'suppressed_preferences_token_12345';
+    await deps.unsubscribes.create('tenant-1', {
+      id: 'unsubscribe-suppressed-preferences', tenantId: 'tenant-1', token,
+      email: 'member@example.test', memberId: 'member-1', campaignSendId: null,
+      scope: 'all_marketing', createdAt: NOW, usedAt: null,
+    });
+    const save = (selectedDefinitionIds: string[]) => saveMarketingConsentPreferences(anonymousCtx, {
+      token, selectedDefinitionIds,
+      presentDefinitionIds: [definition.id, keptDefinition.id, newDefinition.id],
+      evidence: { collectedAt: NOW, proofRef: 'preference-page' },
+      confirmationBaseUrl: 'https://tenant.test/marketing/confirm',
+    }, deps);
+
+    const rows = async () => (await deps.consents.listByEmail('tenant-1', 'member@example.test')).map((row) => ({
+      definitionId: row.definitionId,
+      status: row.status,
+    }));
+
+    expect(await save([definition.id, keptDefinition.id, newDefinition.id]))
+      .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await rows()).toEqual([
+      { definitionId: definition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'confirmed' },
+    ]);
+    expect(await save([definition.id, newDefinition.id]))
+      .toEqual({ ok: true, value: { pendingConfirmations: 0, subscriptionsRefused: true } });
+    expect(await rows()).toEqual([
+      { definitionId: definition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'withdrawn' },
+    ]);
+    expect(await save([])).toEqual({ ok: true, value: { pendingConfirmations: 0, subscriptionsRefused: false } });
+    expect(await rows()).toEqual([
+      { definitionId: definition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'confirmed' },
+      { definitionId: keptDefinition.id, status: 'withdrawn' },
+      { definitionId: definition.id, status: 'withdrawn' },
+    ]);
+    expect(await getUnsubscribePreferences(anonymousCtx, { token }, deps)).toMatchObject({
+      ok: true, value: { globallySuppressed: true },
+    });
+    expect(deps.outbox.items).toHaveLength(0);
+  });
+
   it('supports suppression lifting, campaign CRUD gates, and retention orchestration', async () => {
     const deps = await setup();
     const added = await addManualSuppression(ctx, { email: 'member@example.test', sourceRef: 'staff-1' }, deps);

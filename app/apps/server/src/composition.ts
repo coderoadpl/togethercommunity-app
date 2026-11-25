@@ -30,12 +30,13 @@ import { createOrderVerificationRepository } from '#adapters/db/order-verificati
 import { createOrderFulfilmentRepository, createOrderPersonalizationRepository } from '#adapters/db/order-fulfilment.js';
 import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
-import { createFakeShipxClient } from '#adapters/shipx/fake.js';
+import { createFakePickupPointDirectory, createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
-import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import { createInpostPointsDirectory } from '#adapters/shipx/points.js';
+import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
-import { releaseExpiredStockReservations, type StockRepository } from '#core/server/index.js';
+import { releaseExpiredStockReservations, withPickupPointLookupBudget, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -92,6 +93,8 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createOrderRefundJobRepository } from '#adapters/db/order-refund-jobs.js';
+import { createRefundJobQueue } from '#adapters/db/refund-job-queue.js';
+import { createOrderStaffRefundRepository } from '#adapters/db/order-staff-refunds.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
 import { createEmailEventRepository } from '#adapters/db/email-events.js';
 import { createPaymentTransactionPort } from '#adapters/db/payment-transaction.js';
@@ -344,6 +347,7 @@ import type {
   OrderRepository,
   OrderDetailRepository,
   OrderRefundJobRepository,
+  OrderStaffRefundRepository,
   PaymentRefundRepository,
   StripeWebhookOwnershipReader,
   PostRepository,
@@ -422,7 +426,8 @@ import { createCoalescedRunner, createDeferredCoalescedRunner } from './coalesce
 import { schedulerContext, snsWebhookContext } from './marketing-worker-context.js';
 import { recordAppError } from './telemetry.js';
 import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.js';
-import { selectPublicRateLimitPolicies, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { selectPublicRateLimitPolicies, wiresRealPickupPointDirectory, type PublicRateLimitPolicies } from './public-rate-limit.js';
+import { lookupBudgetSpentOnError } from './parcel-locker-budget.js';
 import { createRealtimeTransport } from './realtime-transport.js';
 import { APP_VERSION } from './version.js';
 
@@ -553,11 +558,13 @@ export interface AppDeps {
   orders: OrderRepository & MemberOrderListReader;
   orderDetails?: OrderDetailRepository;
   orderRefundJobs?: Pick<OrderRefundJobRepository, 'findByOrderId'>;
+  orderStaffRefunds?: OrderStaffRefundRepository;
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
   orderPersonalizations?: OrderPersonalizationRepository;
   orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
+  pickupPoints?: PickupPointDirectory;
   paymentRefunds: PaymentRefundRepository;
   subscriptions: MemberSubscriptionRepository;
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
@@ -989,6 +996,7 @@ export const createDeps = (
     env.APP_CUSTOM_DOMAIN_TARGET ?? platformHost ?? new URL(env.APP_BASE_URL).hostname;
   const notificationRepository = createNotificationRepository(db);
   const publicRateLimitBuckets = createPublicRateLimitRepository(db);
+  const publicRateLimitPolicies = selectPublicRateLimitPolicies(env);
   const tenantRepositoryOptions = singleTenantMode
     ? {
         onMultipleTenants: createMultipleTenantsReporter(),
@@ -1237,8 +1245,9 @@ export const createDeps = (
     if (!result.ok) process.stderr.write(`[email-outbox] opportunistic dispatch failed: ${safeLogMessage(result.error.message)}\n`);
   }, options.keepAlive);
   const runOrderRefundDispatch = (dispatchOptions: DispatchOrderRefundJobsOptions = {}) => dispatchOrderRefundJobs({
-    refundJobs: createOrderRefundJobRepository(db),
+    refundJobs: createRefundJobQueue(db),
     orderDetails: orderRepository,
+    members: createMemberRepository(db),
     payment,
     tenants,
     tenantAccess,
@@ -1618,6 +1627,7 @@ export const createDeps = (
     consumerSales: createConsumerSalesRepository(db),
     orderDetails: orderRepository,
     orderRefundJobs: createOrderRefundJobRepository(db),
+    orderStaffRefunds: createOrderStaffRefundRepository(db),
     orderVerification: createOrderVerificationRepository(db),
     metaCapi: { repository: createMetaCapiRepository(db, metaCapiReaders, logger), tenants, clock, hash: contentHash, logger,
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
@@ -1630,6 +1640,10 @@ export const createDeps = (
       shipxSettings: createShipxSettingsRepository(db),
       wait: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     },
+    pickupPoints: withPickupPointLookupBudget(
+      wiresRealPickupPointDirectory(env) ? createInpostPointsDirectory() : createFakePickupPointDirectory(),
+      { buckets: lookupBudgetSpentOnError(publicRateLimitBuckets, logger), clock, window: publicRateLimitPolicies.parcelLockerLookupsGlobal },
+    ),
     paymentRefunds: createPaymentRefundRepository(db),
     subscriptions: createMemberSubscriptionRepository(db),
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
@@ -1673,7 +1687,7 @@ export const createDeps = (
     importHourlyValidationRecordLimit: env.IMPORT_HOURLY_VALIDATION_RECORD_LIMIT,
     importDailyRecordLimit: env.IMPORT_DAILY_RECORD_LIMIT,
     rateLimitBuckets: publicRateLimitBuckets,
-    publicRateLimitPolicies: selectPublicRateLimitPolicies(env),
+    publicRateLimitPolicies,
     m2mTransactionalRateLimits: {
       perMinute: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_MINUTE,
       perDay: env.M2M_TRANSACTIONAL_EMAIL_RATE_PER_DAY,

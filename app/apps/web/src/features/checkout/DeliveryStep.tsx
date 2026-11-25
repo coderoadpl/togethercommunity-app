@@ -15,29 +15,33 @@ import {
 
 import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
 
-import { CheckIcon, ChevronDownIcon, MapPinIcon } from '../../components/ui/account-icons.js';
+import { CheckIcon, ChevronDownIcon, CircleAlertIcon, MapPinIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
 import { formatPrice } from '../../lib/format.js';
-import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerChosenCaption, CheckoutLockerName, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
+import { CheckoutDeliveryCard, CheckoutDeliveryLabel, CheckoutDeliveryPrice, CheckoutInlineToggle, CheckoutLockerChosen, CheckoutLockerChosenCaption, CheckoutLockerName, CheckoutLockerRejection, CheckoutPriceOption, FinePrint, VisuallyHidden } from '../../theme.js';
 import { rowAction } from './checkout-keys.js';
 import { LockerPicker, pointSummary } from './LockerPicker.js';
 import { useHistoryEntry } from './use-history-entry.js';
+import type { CheckLocker } from './use-locker-check.js';
 import {
   acceptsPoint,
   closedLockerPicker,
   lockerEntry,
+  lockerRejection,
   pickedPickupPoint,
   reduceLockerPicker,
+  typedLockerCheck,
   type CheckoutEvent,
   type CheckoutState,
   type GeowidgetAccess,
   type PickedPickupPoint,
 } from './index.web.js';
 
-export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowidget, disabled, layout = 'list' }: {
+export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, language, geowidget, disabled, layout = 'list' }: {
   rates: PublicShippingRate[];
   state: CheckoutState;
   dispatch: (event: CheckoutEvent) => void;
+  checkLocker: CheckLocker;
   currency: string;
   language: 'pl' | 'en';
   geowidget: GeowidgetAccess;
@@ -49,10 +53,23 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
   const [codeBlurred, setCodeBlurred] = useState(false);
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
+  const check = typedLockerCheck(state);
+  const codeRejected = !codeInvalid && check?.status === 'rejected';
   const picked = pickedPickupPoint(state);
+  const pickedRejection = picked === null ? null : lockerRejection(state);
   const [picker, sendPicker] = useReducer(reduceLockerPicker, closedLockerPicker);
   const [codeShown, setCodeShown] = useState(() => state.pickupPointCode !== '' && picked === null);
   const entry = lockerEntry(geowidget, picker);
+  const rejectedCheck = check?.status === 'rejected' ? check : null;
+  const [seenRejection, setSeenRejection] = useState(rejectedCheck);
+  const [openedBy, setOpenedBy] = useState<typeof rejectedCheck>(null);
+  if (rejectedCheck !== seenRejection) {
+    setSeenRejection(rejectedCheck);
+    if (rejectedCheck !== null && entry.kind === 'map' && !codeShown) {
+      setCodeShown(true);
+      setOpenedBy(rejectedCheck);
+    }
+  }
   const pickerHistory = useHistoryEntry(() => sendPicker({ type: 'pickerCancelled' }));
   const opener = useRef<HTMLButtonElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
@@ -69,6 +86,10 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
   const cancelPicker = () => {
     pickerHistory.leave();
     sendPicker({ type: 'pickerCancelled' });
+  };
+  const toggleCode = () => {
+    setOpenedBy(null);
+    setCodeShown((shown) => !shown);
   };
   const typeCode = () => {
     codeAfterExit.current = true;
@@ -101,8 +122,18 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
     withheld_for_staff: { text: t.shipping.lockerMapStaffHint, testId: 'checkout-locker-map-staff-hint' },
     map_failed: { text: t.shipping.lockerMapFailed, testId: 'checkout-locker-map-failed' },
   }[entry.reason];
+  const checkLine = codeInvalid || check === null || check.status === 'unavailable' ? null
+    : check.status === 'checking' ? <Typography variant="body2" color="text.secondary">{t.shipping.lockerChecking}</Typography>
+      : check.status === 'rejected' ? <CheckoutLockerRejection variant="body2" role={check === openedBy ? 'alert' : undefined}><CircleAlertIcon />{t.shipping.lockerRejected[check.reason]}</CheckoutLockerRejection>
+        : (
+          <>
+            <CheckoutLockerChosenCaption variant="caption" color="text.secondary"><CheckIcon />{t.shipping.lockerCheckFound}</CheckoutLockerChosenCaption>
+            <CheckoutLockerName variant="body2">{pointSummary(check)}</CheckoutLockerName>
+            {check.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{check.address}</Typography>}
+          </>
+        );
   const codeField = (
-    <FormControl fullWidth error={codeInvalid}>
+    <FormControl fullWidth error={codeInvalid || codeRejected}>
       <FormLabel htmlFor="checkout-pickup-point">{t.shipping.lockerCodeLabel}</FormLabel>
       <OutlinedInput
         id="checkout-pickup-point"
@@ -110,11 +141,17 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
         value={state.pickupPointCode}
         disabled={disabled}
         required
-        inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': 'checkout-pickup-point-hint', 'data-testid': 'checkout-pickup-point' }}
+        inputProps={{ maxLength: 12, autoCapitalize: 'characters', 'aria-describedby': checkLine === null ? 'checkout-pickup-point-hint' : 'checkout-pickup-point-check', 'data-testid': 'checkout-pickup-point' }}
         onChange={(event) => dispatch({ type: 'pickupPointCodeChanged', code: event.target.value })}
-        onBlur={() => setCodeBlurred(true)}
+        onBlur={() => {
+          setCodeBlurred(true);
+          void checkLocker();
+        }}
       />
-      <FormHelperText id="checkout-pickup-point-hint" sx={{ mx: 0 }}>{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
+      {checkLine === null ? (
+        <FormHelperText id="checkout-pickup-point-hint" error={codeInvalid} sx={{ mx: 0 }}>{codeInvalid ? t.shipping.lockerCodeInvalid : t.shipping.lockerCodeHint}</FormHelperText>
+      ) : null}
+      <Box id="checkout-pickup-point-check" role="status" aria-live="polite" data-testid="checkout-pickup-point-check" sx={{ minWidth: 0, mt: checkLine === null ? 0 : '3px' }}>{checkLine}</Box>
     </FormControl>
   );
   const lockerChoice = picked === null ? (
@@ -122,11 +159,14 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       {t.shipping.lockerChoose}
     </Button>
   ) : (
-    <CheckoutLockerChosen>
+    <CheckoutLockerChosen rejected={pickedRejection !== null}>
       <Box id={`${lockerId}-picked`} data-testid="checkout-pickup-point-selected" sx={{ minWidth: 0 }}>
-        <CheckoutLockerChosenCaption variant="caption" color="text.secondary"><CheckIcon />{t.shipping.lockerSelected}</CheckoutLockerChosenCaption>
+        <CheckoutLockerChosenCaption variant="caption" color="text.secondary">{pickedRejection === null ? <CheckIcon /> : null}{t.shipping.lockerSelected}</CheckoutLockerChosenCaption>
         <CheckoutLockerName variant="body2">{pointSummary(picked)}</CheckoutLockerName>
         {picked.address === null ? null : <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: 'anywhere' }}>{picked.address}</Typography>}
+        {pickedRejection === null ? null : (
+          <CheckoutLockerRejection variant="body2" role="alert" data-testid="checkout-pickup-point-selected-rejected"><CircleAlertIcon />{t.shipping.lockerRejected[pickedRejection.reason]}</CheckoutLockerRejection>
+        )}
       </Box>
       <Button
         ref={opener}
@@ -148,7 +188,7 @@ export const DeliveryStep = ({ rates, state, dispatch, currency, language, geowi
       {entry.kind === 'map' ? (
         <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
           {lockerChoice}
-          <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={`${lockerId}-code`} onClick={() => setCodeShown((shown) => !shown)} data-testid="checkout-locker-know-code">
+          <CheckoutInlineToggle type="button" aria-expanded={codeShown} aria-controls={`${lockerId}-code`} onClick={toggleCode} data-testid="checkout-locker-know-code">
             {t.shipping.lockerKnowCode}
             <ChevronDownIcon />
           </CheckoutInlineToggle>

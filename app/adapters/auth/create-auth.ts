@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 import {
   DEFAULT_LANGUAGE,
+  MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
   magicLink as renderMagicLink,
   normalizeEmail,
   PASSWORD_MIN_LENGTH,
@@ -31,6 +32,7 @@ import { safeErrorMessage, safeLogMessage, serializeErrorChain } from '#core/ser
 import type { Db } from '#adapters/db/client.js';
 import { account, devMagicLinks, passkey as passkeyTable, session, twoFactor as twoFactorTable, user, verification } from '#adapters/db/schema.js';
 
+import { withoutBrowserSessionToken } from './browser-session-token.js';
 import { twoFactorChallengeUrl } from './two-factor-challenge.js';
 
 export interface AuthSettings {
@@ -93,8 +95,6 @@ export const BETTER_AUTH_PASSWORD_RESET_PATH = '/api/auth/request-password-reset
 export const BETTER_AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/send-verification-email';
 
 export const PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
-
-export const MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS = 60 * 60;
 
 export const MAGIC_LINK_CONTEXT_MAX_ENTRIES = 512;
 
@@ -354,6 +354,9 @@ const hostScopedCredentials = (settings: AuthSettings) => {
     },
   };
 };
+
+// The app never calls these; they would hand a page script the stored Google id token, which mints a fresh session.
+const UNUSED_PROVIDER_TOKEN_PATHS = ['/get-access-token', '/refresh-token', '/account-info'];
 
 const additionalTwoFactorPaths = new Set([
   '/sign-in/social',
@@ -726,6 +729,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
     secret: settings.secret,
     baseURL: settings.baseUrl,
     trustedOrigins: settings.trustedOrigins,
+    disabledPaths: UNUSED_PROVIDER_TOKEN_PATHS,
     logger: {
       level: 'error',
       log: (level, message) => {
@@ -883,7 +887,7 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
       },
     },
     ...(settings.google
-      ? { socialProviders: { google: settings.google } }
+      ? { socialProviders: { google: { ...settings.google, disableIdTokenSignIn: true } } }
       : {}),
     plugins: [
       ...(settings.google ? [oneTap()] : []),
@@ -1010,8 +1014,11 @@ export const createAuth = (db: Db, settings: AuthSettings) => {
   });
   // Better Auth starts initialization eagerly; observe rejection before a request awaits it.
   void auth.$context.catch(() => undefined);
+  const sessionCookieName = getCookies(auth.options).sessionToken.name;
   return {
     ...auth,
+    handler: async (request: Request): Promise<Response> =>
+      withoutBrowserSessionToken(request, await auth.handler(request), sessionCookieName),
     setMagicLinkDeliveryContext: (email: string, context: MagicLinkDeliveryContext) => {
       deliveryContexts.set(normalizeEmail(email), context);
     },

@@ -44,6 +44,7 @@ import type {
   ProductPriceHistoryRepository,
   EmailOutboxRepository,
   OrderRefundJobRepository,
+  OrderStaffRefundRepository,
   PaymentProvider,
   PaymentTransactionPort,
   StripeWebhookOwnershipReader,
@@ -452,7 +453,10 @@ const shippingFields = (shipping: OrderShipping | null): CheckoutOrderFulfilment
 const outOfStockFields = (shipping: OrderShipping | null): CheckoutOrderFulfilment =>
   ({ ...(shipping === null ? {} : { shipping }), cancelReason: 'out_of_stock' });
 
-type CheckoutCompletionDeps = StripeWebhookDeps & { orderRefundJobs: OrderRefundJobRepository };
+type CheckoutCompletionDeps = StripeWebhookDeps & {
+  orderRefundJobs: OrderRefundJobRepository;
+  orderStaffRefunds?: Pick<OrderStaffRefundRepository, 'noteChargeRefunded'>;
+};
 
 const outOfStockProductIds = async (
   tenant: Tenant,
@@ -531,15 +535,24 @@ const recordOutOfStockCancellation = async (
   return ok({ job, refundQueued, emailsQueued: true });
 };
 
+const checkoutTotalMatchesLines = (snapshot: CheckoutSnapshot, checkout: CheckoutSessionEvent): boolean =>
+  checkout.amountTotalCents != null &&
+  checkout.amountTotalCents + (checkout.discountTotalCents ?? 0) === snapshot.lines.reduce((sum, line) => sum + line.grossCents, 0);
+
 const checkoutShipping = (
   snapshot: CheckoutSnapshot | null,
-  event: PaymentWebhookEvent,
-): Result<OrderShipping | null, AppError> => {
+  checkout: CheckoutSessionEvent,
+): Result<{ shipping: OrderShipping | null; shippingCents: number }, AppError> => {
   const line = snapshot?.lines.find(isShippingLine);
-  if (snapshot === null || line === undefined) return ok(null);
+  if (snapshot === null || line === undefined) return ok({ shipping: null, shippingCents: checkout.shippingCostCents ?? 0 });
   if (snapshot.shipping == null) return err(validation('Checkout snapshot is missing its shipping selection'));
-  if (event.checkoutSession?.shippingCostCents !== line.grossCents) return err(validation('Checkout shipping cost does not match its shipping line'));
-  return orderShippingFrom(snapshot.shipping, event.checkoutSession.shipping);
+  const shippingCostCents = checkout.shippingCostCents ?? null;
+  if (shippingCostCents !== null && shippingCostCents !== line.grossCents) return err(validation('Checkout shipping cost does not match its shipping line'));
+  if (shippingCostCents === null && !checkoutTotalMatchesLines(snapshot, checkout)) {
+    return err(validation('Checkout shipping cost is missing and the session total does not confirm its shipping line'));
+  }
+  const shipping = orderShippingFrom(snapshot.shipping, checkout.shipping);
+  return shipping.ok ? ok({ shipping: shipping.value, shippingCents: line.grossCents }) : shipping;
 };
 
 const applyCheckoutCompleted = async (
@@ -572,9 +585,10 @@ const applyCheckoutCompleted = async (
     return err(validation(STRIPE_TERMS_EVIDENCE_MISSING));
   }
   if (snapshot !== null && event.checkoutSession.amountTotalCents != null &&
-      event.checkoutSession.amountTotalCents + (event.checkoutSession.discountTotalCents ?? 0) !== snapshot.lines.reduce((sum, line) => sum + line.grossCents, 0)) return err(validation('Checkout total does not match its lines'));
-  const shipping = checkoutShipping(snapshot, event);
-  if (!shipping.ok) return shipping;
+      !checkoutTotalMatchesLines(snapshot, event.checkoutSession)) return err(validation('Checkout total does not match its lines'));
+  const delivery = checkoutShipping(snapshot, event.checkoutSession);
+  if (!delivery.ok) return delivery;
+  const shipping = delivery.value.shipping;
   const email = event.checkoutSession.email ?? metadata.memberEmail;
   if (!email) return err(validation('Stripe checkout session is missing the member email'));
 
@@ -595,7 +609,7 @@ const applyCheckoutCompleted = async (
   const couponContext = event.mode === 'test' ? null : await couponPaymentContext(tenant, event, deps);
   const billing = await billingForCheckout(tenant.id, event, deps);
   const couponCoversFullPrice =
-    couponContext !== null && (event.checkoutSession.amountTotalCents ?? 0) === (event.checkoutSession.shippingCostCents ?? 0);
+    couponContext !== null && (event.checkoutSession.amountTotalCents ?? 0) === delivery.value.shippingCents;
 
   const pending = event.mode === 'test'
     ? await deps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, { checkoutSession: event.objectId })
@@ -605,7 +619,7 @@ const applyCheckoutCompleted = async (
   const completedTestOrder = pending === null ? null : await deps.orders.completeTestCheckout(tenant.id, {
     ...pending, attribution: snapshot?.attribution ?? metadata.attribution ?? pending.attribution ?? null, paidAt: deps.clock.nowIso(), providerObjectIds: providerObjectIdsForCheckout(event),
     ...(metadata.salesLinkId != null ? { billing } : {}),
-    ...shippingFields(shipping.value),
+    ...shippingFields(shipping),
   });
   if (event.mode === 'test' && completedTestOrder === null) return ignorePaymentMode(tenant, event, deps, 'no pending test checkout');
   const stockItems = snapshot === null ? [{ productId: metadata.productId, quantity: 1 }] : stockQuantitiesFromLines(snapshot.lines);
@@ -646,7 +660,7 @@ const applyCheckoutCompleted = async (
     }
     memberId = fulfilled.value.memberId;
   }
-  const fulfilment = outOfStock ? outOfStockFields(shipping.value) : shippingFields(shipping.value);
+  const fulfilment = outOfStock ? outOfStockFields(shipping) : shippingFields(shipping);
   const discounted =
     couponContext === null
       ? null
@@ -909,6 +923,15 @@ const revokeRefundedAccess = async (tenant: Tenant, order: Order, deps: StripeWe
   }
 };
 
+const noteStaffRefundsDue = async (tenant: Tenant, order: Order, event: PaymentWebhookEvent, deps: CheckoutCompletionDeps): Promise<boolean> => {
+  if (event.type !== 'charge.refunded' || deps.orderStaffRefunds === undefined) return false;
+  const due = await deps.orderStaffRefunds.noteChargeRefunded(tenant.id, order.id, deps.clock.nowIso());
+  for (const refund of due) {
+    deps.logger.warn(`[order-refund] staff refund due again after charge.refunded tenant=${tenant.id} order=${order.id} refund=${refund.id}`);
+  }
+  return due.length > 0;
+};
+
 const applyPaymentAdjustment = async (
   tenant: Tenant,
   event: PaymentWebhookEvent,
@@ -929,7 +952,8 @@ const applyPaymentAdjustment = async (
     if (order.status === 'paid') {
       await deps.paymentRefunds.markOrderPartiallyRefunded(tenant.id, order.id);
     }
-    return ok({ processed: true });
+    const staffRefundsDue = await noteStaffRefundsDue(tenant, order, event, deps);
+    return ok({ processed: true, ...(staffRefundsDue ? { refundQueued: true } : {}) });
   }
 
   const providerSubscriptionId = order.providerObjectIds['subscription'];
@@ -966,6 +990,7 @@ const applyPaymentAdjustment = async (
   let refundQueued = false;
   if (order.cancelReason == null) {
     await revokeRefundedAccess(tenant, order, deps);
+    refundQueued = await noteStaffRefundsDue(tenant, order, event, deps);
   } else if (event.type === 'charge.refunded') {
     const noted = await deps.orderRefundJobs.noteChargeRefunded(tenant.id, order.id, deps.clock.nowIso());
     if (noted?.status === 'resolved_externally') {

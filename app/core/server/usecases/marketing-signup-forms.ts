@@ -117,7 +117,7 @@ export const submitMarketingSignupForm = async (tenantId: string, slug: string, 
     if (definition.doubleOptIn && !alreadyConfirmed) {
       const token = deps.tokens.nextToken();
       await repos.confirmations.create(tenantId, { id: deps.ids.nextId(), tenantId, token, marketingConsentRowId: consent.id, createdAt: now, expiresAt: new Date(Date.parse(now) + 86_400_000).toISOString(), usedAt: null });
-      const queued = await repos.outbox.enqueue({ id: deps.ids.nextId(), tenantId, to: consent.email, now, payload: { kind: 'marketing-consent-confirmation', language: evidence.language, wording: consent.wordingSnapshot, confirmationUrl: `${evidence.confirmationBaseUrl}/${token}` } });
+      const queued = await repos.outbox.enqueue({ id: deps.ids.nextId(), tenantId, to: consent.email, now, payload: { kind: 'marketing-consent-confirmation', language: evidence.language, wording: consent.wordingSnapshot, confirmationUrl: `${evidence.confirmationBaseUrl}/${token}?lang=${evidence.language}` } });
       if (!queued.ok) return queued;
       emailsQueued = true;
     }

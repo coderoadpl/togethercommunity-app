@@ -56,7 +56,9 @@ are retired. Storybook has no separate committed PNG baseline. The
 [page capture path](visual-regression.md#storybook) compares recorded page stories
 with the application goldens. `pnpm run storybook:build` verifies that the catalogue
 compiles; `pnpm run visual` builds and captures the catalogue without a database and
-`pnpm run visual:update` remains the only baseline-authoring command.
+`pnpm run visual:update` remains the baseline-authoring command; baselines may
+also come from the pull request's own CI capture under the conditions in
+[Baselines from the CI capture](visual-regression.md#baselines-from-the-ci-capture).
 
 ## Merge gate
 
@@ -116,8 +118,9 @@ queries or run outside the query cache. Timeout diagnostics include fetching que
 keys and held calls. Page decorators use the production tenant-loading boundary
 and baseline placement. Animation suppression belongs to the capture harness after
 the page settles, matching the application harness; disabling it before mount
-changes the course upload button’s initial border paint. The shared screen specification supplies the splash's 7 KiB minimum
-PNG size and skips network-idle waiting. Password recovery stories synchronize
+changes the course upload button’s initial border paint. The shared screen specification supplies the splash's per-screen 4 KiB minimum
+PNG size (the neutral splash compresses below the 7 KiB it used before; its ready
+step waits for the visible mark and label instead) and skips network-idle waiting. Password recovery stories synchronize
 the fixture route's token and error parameters with the iframe URL because the
 production auth pages read those values from the browser location.
 

@@ -145,7 +145,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/image-assets/product-cover/upload' || path === '/api/image-assets/product-cover/complete') return 'product:write';
   if (path === '/api/image-assets/product-image/upload' || path === '/api/image-assets/product-image/complete') return 'product:write';
   if (path === '/api/image-assets/branding/upload' || path === '/api/image-assets/branding/complete') return 'tenant:settings:write';
-  if (path === '/api/public/payment-config' || path === '/api/public/checkout/session-status' || path === '/api/public/checkout/coupon') return 'checkout:read';
+  if (path === '/api/public/payment-config' || path === '/api/public/checkout/session-status' || path === '/api/public/checkout/coupon' || path === '/api/public/parcel-lockers/:code') return 'checkout:read';
   if (path === '/api/public/checkout/session' || path === '/api/public/sales-links/:slug/checkout') return 'checkout:start';
   if (path === '/api/public/auth-config' || path === '/api/public/auth-resolve') return 'auth:use';
   if (path.startsWith('/api/webhooks/')) return 'webhook:process';
@@ -286,6 +286,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/ship') return 'order:write';
   if (path === '/api/orders/:orderId/personalization') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
+  if (['/api/orders/:orderId/refund-preview', '/api/orders/:orderId/refunds', '/api/orders/:orderId/packing-list'].includes(path)) return 'order:refund';
   if (path === '/api/orders/changes') return 'order:read';
   if (path === '/api/orders/:orderId/shipx') return method === 'GET' ? 'order:read' : 'order:write';
   if (['/api/orders/:orderId/shipx/refresh', '/api/orders/:orderId/shipx/label', '/api/orders/:orderId/shipx/discard'].includes(path)) return 'order:write';

@@ -8,6 +8,7 @@ import { createLegacyCheckoutHarness, legacyBaseUrl, legacyProducts, legacyTenan
 
 import { createCheckoutSnapshotRepository } from './checkout-snapshots.js';
 import { createEmailOutboxRepository } from './email-outbox.js';
+import { waitForSettledOrderChanges } from './order-change-feed-test-helpers.js';
 import { createOrderChangeRepository } from './order-changes.js';
 import { createOrderRefundJobRepository } from './order-refund-jobs.js';
 import { createPaymentTransactionPort } from './payment-transaction.js';
@@ -448,6 +449,7 @@ describe('refund dispatcher for orders cancelled out of stock', () => {
     const feed = createOrderChangeRepository(database.db);
     const orderRepository = createOrderRepository(database.db);
     const changesAfter = async (after: string | undefined) => {
+      await waitForSettledOrderChanges(database.db, legacyTenant.id);
       const read = await feed.listOrderChanges(legacyTenant.id, { limit: 200, ...(after === undefined ? {} : { after }) });
       if (read.kind !== 'changes') throw new Error('Unexpected feed reset');
       return read.changes;

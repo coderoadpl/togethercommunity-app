@@ -33,7 +33,7 @@ export const verifyMarketingSignupBrowser = async (baseUrl: string, staffToken: 
     await page.getByLabel('Name (optional)', { exact: true }).fill('Hosted reader');
     await page.getByRole('button', { name: 'Sign up', exact: true }).click();
     await page.waitForURL('**/marketing/forms/public-newsletter/thanks?lang=en');
-    await page.getByText('Check your inbox and confirm your email address to complete your signup.').waitFor();
+    await page.getByText('One more step: confirm your email', { exact: true }).waitFor();
     await page.screenshot({ path: join(artifacts, 'hosted-pending-390.png'), fullPage: true });
     const contacts = await api.listMarketingContacts({ search: 'hosted-reader@example.org', consentDefinitionId, consentState: 'pending_confirmation' });
     if (!contacts.ok || contacts.value.contacts.length !== 1) throw new Error('Hosted signup did not create a contact with pending consent');

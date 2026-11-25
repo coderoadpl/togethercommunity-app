@@ -26,6 +26,7 @@ const driftWorkflowSchema = z.object({
   jobs: z.object({
     'rulesets-drift': z.object({
       'timeout-minutes': z.number(),
+      permissions: z.record(z.string()),
       defaults: z.object({ run: z.object({ 'working-directory': z.string() }) }),
       steps: z.array(stepSchema),
     }),
@@ -65,7 +66,8 @@ describe('rulesets-drift workflow', () => {
   });
 
   it('keeps the token scope at the issue-writing minimum', () => {
-    expect(workflow.permissions).toEqual({ contents: 'read', issues: 'write' });
+    expect(workflow.permissions).toEqual({ contents: 'read' });
+    expect(job.permissions).toEqual({ contents: 'read', issues: 'write' });
   });
 
   it('reconciles the drift issue with the repository token', () => {

@@ -74,6 +74,45 @@ short reason when there is one. The pay button stays disabled until an option,
 and a valid code when the option needs one, is chosen, and a line under the
 button says which of the two is missing.
 
+A typed code is checked at the carrier through the
+[parcel locker lookup](#parcel-locker-lookup-at-the-carrier) when the buyer
+leaves the code field and again when the form is submitted, through the bound
+`actions.publicParcelLocker` query (no vendor script, so the check works the
+same for staff sessions and test mode). A polite live region under the field
+(`role="status"`) says **Checking the parcel locker code…** while the carrier
+is asked, then shows **Parcel locker found** with the code, the locker name and
+its address, or one error, behind an exclamation-circle glyph, for a code the
+carrier does not know, a point where parcels cannot be collected, or a locker
+that is not operating. While that line is shown it is the first line under the
+field and the example hint is hidden; the hint is shown for an empty field,
+before the code is checked, or when the carrier cannot be asked, and becomes
+the format error for a
+malformed code. The field's `aria-describedby` names only the line that is
+shown. On an error the field and its label turn red and the field is marked
+`aria-invalid`, the pay button stays disabled and the line under it reads
+**Choose another parcel locker or type another code to go to payment.** (the
+hosted cart page shows the same line under its button); editing the code
+clears the verdict, and so does an answer for a code the field no longer shows. When the carrier cannot be
+asked (it is down, the lookup is rate-limited or the workspace answer is
+refused) the page shows nothing and lets the buyer pay, because the server
+accepts the code as unverified. The page asks its own server once per lookup,
+without retries. A code chosen on the map is never looked up by the page. When
+the server still refuses the locker on checkout start or on a simulated
+purchase, the page shows its reason once: under the field, or under the
+selected point for a map choice (a `role="alert"` line, and the box takes the
+error border), never again in an alert by the pay button. A preview answer that
+arrives after that refusal does not replace it. The pay button stays disabled
+until the buyer changes the locker. The submit-time check runs only when the chosen
+delivery option needs a locker. While it runs the form is locked and the pay
+button shows its pending label; the payment then starts from the form as it is
+at that moment, and does not start when the locker, the form, the payable
+amount, the currency or the payment mode changed. The page waits at most five
+seconds for that check; after that it leaves the decision to the server and
+starts the payment, and a later answer never starts it again. The lookup runs
+also when the browser reports being offline, so the check never pauses. Focus
+and keyboard rules of the page do not change: Enter in the code field still
+does not submit the form.
+
 ### Parcel locker picker
 
 The map never sits inside the checkout page. `LockerPicker` in
@@ -202,8 +241,9 @@ days, and otherwise keeps its own layout, a
 plain list of delivery options with the parcel locker block (**Choose a parcel
 locker** or the chosen locker, and **I know the code**) directly under the
 locker option, before the next option.
-The locker name and address stored on the order are as entered by the buyer;
-only the code is validated, and staff pack by the code. When the buyer reaches
+The locker stored on the order carries the carrier's canonical code, name and
+address whenever the carrier answered, see
+[Parcel locker lookup at the carrier](#parcel-locker-lookup-at-the-carrier). When the buyer reaches
 the checkout page through an in-app navigation from another page, the document
 keeps that page's content security policy, the map does not load, the picker
 says so, and the code input remains the way to choose a locker.
@@ -219,6 +259,9 @@ The server validates it again:
 | unknown or inactive option | `validation` |
 | locker option without a locker, or address option with one | `validation` |
 | locker code not matching `^[A-Z0-9]{4,12}$` after trimming and upper-casing | `validation` |
+| locker code the carrier does not know | `validation` with the message `No InPost parcel locker has this code` and `details.pickupPointReason: 'not_found'` |
+| carrier point that is not a parcel locker or cannot hold parcels for collection | `validation`, `This InPost point cannot hold parcels for collection`, `not_usable` |
+| carrier point that is not operating | `validation`, `This InPost parcel locker is not operating`, `not_operating` |
 | order total, shipping fee included, is zero (a free or fully discounted product with a zero-fee option) | `validation` with the message `Delivery is not available for free orders`, returned before any checkout snapshot or coupon session is written; the checkout page shows it as a localized message |
 
 The zero-total rule exists because a free order never reaches Stripe, so
@@ -240,6 +283,96 @@ as `display_name`, `tax_behavior: 'inclusive'` and the optional business-day
 estimate), plus `shipping_address_collection` limited to the allowed countries
 and `phone_number_collection`. See [Payments](payments.md#shipping-in-stripe-checkout).
 
+### Parcel locker lookup at the carrier
+
+Every checkout path that accepts a parcel locker (single product, sales link and
+cart, which meet in `withCheckoutShipping` in
+`core/server/usecases/checkout-selection.ts`, and the simulated purchase) asks
+the carrier about the code through the `PickupPointDirectory` port before any
+checkout snapshot, consent capture, coupon session, stock reservation or payment
+session is written. Coupon validation previews and the direct sales-link
+handoff ignore delivery and never ask the carrier; the direct handoff refuses
+shipped products anyway.
+
+The production adapter (`adapters/shipx/points.ts`) calls the public ShipX
+Points resource `GET https://api-shipx-pl.easypack24.net/v1/points/<code>`,
+which needs no authentication, with a fixed host for live and test mode alike
+(the codes are real lockers), the normalized code URL-encoded as the only
+variable part, a 3-second timeout, no retries and no redirects. Carrier
+documentation:
+[Points 1.23.0](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/28639230/1.23.0+Points)
+and [the points field reference](https://dokumentacja-inpost.atlassian.net/wiki/spaces/PL/pages/18153470);
+the newer token-gated `api.inpost.pl` points gateways are not used. The adapter
+parses the answer strictly: only a body `{"status":404,"key":"point_not_found"}`
+means not found, whether it comes with HTTP 200 (what the carrier sends for an
+unknown code) or HTTP 404. Any other HTTP 404, such as the
+`{"status":404,"error":"routing_not_found"}` answer the host gives for a path it
+does not route, any other status, a timeout, a network error, a body that is
+not valid UTF-8 or does not parse, a body with a key or text value PostgreSQL
+cannot store in `jsonb` (U+0000 or an unpaired surrogate half, in any field,
+checked before the body is read as not found) or an answer for another point
+mean the carrier is unavailable.
+Recorded answers live in `adapters/shipx/fixtures/`: `point-operating.json`,
+`point-not-found.json` and `routing-not-found.json` keep the recorded shape of real answers with every
+human-language value (address, location description, display name, error
+message) replaced by an English placeholder, and the `point-*.derived.json`
+files change only `status`, `type` or `functions`.
+
+A point is usable only when `status` is `Operating`, its `type` includes
+`parcel_locker` and its `functions` include `parcel_collect`
+(`inpostPointRejection` in `core/domain/shipping.ts`). These three rules match
+what the map offers with `config="parcelCollect"`. Only the statuses known to
+be negative refuse the sale with `not_operating`: `NonOperating` and
+`Disabled`, which the field reference lists, and `Removed`, which the field
+reference does not list and which is refused as before. Any other status is read
+as if the carrier could not be asked (`withKnownPointStatus`): the page answers
+`unavailable`, the sale goes on with `verified: false`, and the status string
+itself is never stored. InPost partner pickup points that hold parcels for
+collection (`partner_id` 33, typed `parcel_locker` as well as `pop`)
+would pass these three rules. They cannot be chosen today, though: every partner
+pickup point is named like `POP-ABC1`, which the code pattern `^[A-Z0-9]{4,12}$`
+refuses, so a map choice of one is ignored (`parseGeowidgetPoint`) and a typed
+one is refused as malformed before the carrier is asked. If they are allowed
+later, the shipment still requests `inpost_locker_standard`, and InPost switches
+a partner pickup point target to `inpost_locker_customer_service_point` on its
+side. A usable point replaces what
+the client sent with the carrier's canonical code, the location description as
+the name and `address.line1, address.line2` as the address, built by
+`pickupPointDetails`, the same function that reads a map choice.
+
+When the carrier cannot be asked, the sale is not blocked: the code is kept as
+the buyer typed it, with the map's name and address when the page sent them (a
+name or address with U+0000 or an unpaired surrogate half is dropped by
+`checkoutShippingInputSchema`, so it can never fail the snapshot write), and
+the stored pickup point gains `verified: false`, which
+Studio shows as **Locker not verified**. There is no staff e-mail for new
+orders, so the note appears only in Studio. Alternative considered: block
+payment when the locker cannot be verified.
+
+The page uses `GET /api/public/parcel-lockers/<code>`: it resolves the workspace
+like the other public checkout routes, refuses a code that does not match the
+pattern with `validation` before any carrier call, answers `not_found` without
+a carrier call when the workspace has no active parcel locker option, and
+otherwise returns `{ status: 'found', code, name, address, usable, reason }`,
+`{ status: 'not_found' }` or `{ status: 'unavailable' }` with
+`Cache-Control: no-store`. It never forwards a query string or another path. It
+is same-origin only (no open CORS) and limited per client address (30 per
+minute in production), per workspace (600 per minute) and across the platform
+(1,200 per minute for every carrier call, of which the page's lookups may use
+600), see
+[Security](security.md#parcel-locker-lookup).
+
+The directory follows the payment provider: a deployment with
+`PAYMENT_PROVIDER=stripe` (production and any staging that runs Stripe test
+mode) asks InPost, and one with `PAYMENT_PROVIDER=fake` (development,
+end-to-end runs and the smoke gate) uses the fake directory in
+`adapters/shipx/fake.ts`: `WAW01M`, `WAW02M` and `WAW03M` are operating lockers,
+`CLOSED01` is not operating, `SENDONLY1` is a send-only point, `OUTAGE01`
+simulates the carrier being down, and every other code, such as `MISSING1`, is
+not found. The lookup limits above follow the directory too: every deployment
+that asks InPost, staging included, uses the production figures, and only one
+with the fake directory uses the higher development values.
+
 ## Order data
 
 The checkout snapshot appends a shipping line after the product lines:
@@ -250,17 +383,32 @@ its name, gross, net and VAT split at the option's VAT rate and
 and the allowed countries at checkout start, so later edits to the option do not
 change an order in flight.
 
-When Stripe reports the completed session, the webhook requires the collected
-shipping cost to equal the shipping line and a delivery address in an allowed
-country; otherwise the event is rejected as a validation failure. The total check
-compares `amount_total + amount_discount` with the sum of all snapshot lines,
-shipping included. The paid order stores:
+When Stripe reports the completed session, the webhook requires a shipping fee
+reported by the event (`shipping_cost.amount_total`, or
+`total_details.amount_shipping` in older API versions) to equal the shipping line,
+and a delivery address in an allowed country; otherwise the event is rejected as
+a validation failure. When the event reports no fee, the session is accepted only
+when its total matches every snapshot line, and a session without `amount_total`
+is rejected (see [Webhook API version](payments.md#webhook-api-version)). The
+total check compares `amount_total + amount_discount` with the sum of all
+snapshot lines, shipping included. The paid order stores:
 
 - `orders.lines` with the shipping line last;
-- `orders.shipping`: the frozen option, the pickup point or `null`, the
+- `orders.shipping`: the frozen option, the pickup point or `null` (with
+  `verified: false` only when the carrier could not be asked), the
   delivery address (`name`, `line1`, `line2`, `postalCode`, `city`, `country`)
   and the phone number collected by Stripe;
 - `orders.fulfilment_status = 'to_pack'`. Orders without shipping keep `null`.
+
+Rollback: the unverified mark is one optional key, written only when the carrier
+could not be asked, in the same JSONB pickup point object of
+`checkout_snapshots.shipping` and `orders.shipping`; no migration adds it. Every
+schema the previous release uses to read stored orders, checkout snapshots,
+fulfilment views and e-mail payloads is non-strict, so that release reads such a
+row and drops the key, and e-mail payloads never carry it
+(`orderDeliveryDetails` copies only the code, name and address).
+`core/domain/shipping-rollback.test.ts` holds a literal copy of the previous
+release's shipping schemas and proves they parse what this release writes.
 
 Every consumer that grants or revokes access, issues physical lines, lists My
 products or enrols products skips the shipping line. Coupons discount product
@@ -295,7 +443,8 @@ is shown below that line, see [Fulfilment](#fulfilment).
 ## Studio
 
 The order detail page shows a **Delivery** card (option, price, locker,
-address, phone) and a fulfilment chip (**To pack** or **Shipped**). The orders
+address, phone, and a **Locker not verified** warning for a pickup point stored
+with `verified: false`) and a fulfilment chip (**To pack** or **Shipped**). The orders
 list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 `fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
@@ -696,7 +845,11 @@ one conditional `UPDATE` that succeeds only when `operation_started_at` is
 `NULL` or older than the lease of 90 seconds; a request that finds the claim
 held answers `fulfilment_conflict` ("Another request is creating the InPost
 shipment for this order; refresh the order in a moment") without calling
-ShipX. The lease is longer than the slowest request: the 20-second deadline
+ShipX. Taking the claim first locks the order row (`SELECT … FOR UPDATE`, the
+lock a staff refund takes) and re-reads it; an order that is no longer paid and
+`to_pack`, for example because a staff refund took it off the packing list
+after the request read it, is refused with `conflict` and no claim is taken.
+The lease is longer than the slowest request: the 20-second deadline
 plus the last ShipX step: one call of at most 5 seconds, since no call in this
 flow is retried, or the reconciliation lookup of at most 5 pages of 5 seconds
 each.
@@ -1440,7 +1593,24 @@ that run first use part of it; a run started any other way (the kick after a
 webhook, the Node ticker) gets 30 seconds from its own start.
 
 The worst case of a job: a job makes at most two Stripe calls (the refund list
-and the create call, or one refund list for a status read). Every refund call has a 5-second
+and the create call, or one refund list for a status read) while the payment
+has at most 100 refunds. A longer refund list is read page by page (100
+refunds a page, at most 10 pages), one more call per page, and never past a
+deadline: the job's deadline is the run's deadline, and on the cron tick at
+most 21 seconds after the job was claimed. The first page is read at once (claiming
+the job already made room for it); the list stops before any further page that
+could not end by that deadline less the worst case of the create call (a status
+read keeps no time for one), so the job still ends by its deadline. A list cut
+short this way, or longer than 1,000 refunds, counts as a list that could not
+be read (a temporary failure, retried on the schedule below), never as Stripe
+refusing the refund, for sold-out and staff refunds alike (decision D-Q3'): no
+refund is created, reopened or settled from it. On the cron tick this leaves a
+payment with more than 100 refunds to be refunded by the kick after a webhook,
+the kick after a staff refund request or the Node ticker, whose 30-second runs
+leave room for more pages. A staff refund of a payment whose refunds no run can
+read in full ends when its retries end: `unconfirmed` with the staff alert when
+a create call may have reached Stripe, otherwise `failed` with nothing refunded;
+it never pays twice. Every refund call has a 5-second
 timeout and no network retry (the SDK's per-request `timeout` and
 `maxNetworkRetries: 0`). stripe-node still repeats a request once when its
 connection was reset (`ECONNRESET` or `EPIPE`), after a 0.5-second pause, so a
@@ -1658,8 +1828,348 @@ dispatch. It releases at most 100 expired `active` reservations per run, oldest
 first, each in its own transaction, and logs one line when it released any. A
 failing sweep is logged and never stops that tick's e-mail dispatch.
 
-Refunds never change stock. Staff put goods back with an adjustment whose
+Refunds never change stock, except a full staff refund with stock return (see
+Staff refunds below). Staff put goods back with an adjustment whose
 reason is `returned` (recorded as a `returned` event).
+
+#### Staff refunds
+
+An owner or admin can refund a paid order from Studio or the CLI, in full or in
+part, through the workspace's own Stripe key of the order's mode. The refund
+runs through the same dispatcher, idempotency keys, retries, permission
+handling, staff alerts and status reads as the sold-out refund above; there is
+no second refund path. Staff refunds are stored in their own table,
+`order_staff_refunds`, which the previous release never reads, so a rollback
+cannot stop the sold-out refunds; staff refunds waiting to reach Stripe then
+wait until the release is back.
+
+An order can be refunded by staff when it is `paid` or `partially_refunded`,
+was paid through Stripe with a payment intent, was paid more than zero, was not
+cancelled because its goods sold out (its own job refunds it) and something is
+left to refund. Anything else is refused with `conflict` or
+`validation` and a sentence naming the reason. The refundable remainder is the
+paid amount minus the larger of the refunds Stripe lists for the payment (not
+`failed` or `canceled`) and the staff refunds the platform recorded that may
+still move money; when Stripe's list cannot be read, the platform's records
+decide and the preview says so, and Stripe still refuses anything above the
+charge. An order marked `refunded` is never refunded from Studio or the CLI
+(decision D-Q4'): it was refunded in full, refunded outside the platform or
+disputed, and the refusal says so. When a full staff refund fails at Stripe
+after `charge.refunded` marked the order refunded, the staff alert tells staff
+to refund the payment in the Stripe Dashboard.
+
+- **Every staff refund issues exactly its stored amount, once.** Its own
+  Stripe refund is the one whose metadata `refundJobId` names the staff refund,
+  or whose id was stored. A staff refund never re-derives its amount from other
+  refunds, never pays another refund's shortfall and never reopens because
+  another refund failed; a staff refund that fails alerts staff about its own
+  amount.
+- **Full refund** (no amount): the remainder computed under the order lock when
+  it is requested, stored as a remainder refund (`kind = remainder`, which
+  offers the stock and packing choices below). The request names the remainder
+  staff confirmed in `expectedAmountCents`; when the remainder changed since
+  (another refund failed, was issued or was made in the Stripe Dashboard), the
+  request is refused with `conflict`, a message naming the current remainder
+  and `details.remainderCents`, and nothing is stored. A dashboard refund made
+  after the request that leaves less on the charge than the stored amount makes
+  Stripe refuse the refund: it ends `failed`, nothing is refunded, no buyer
+  e-mail is sent and the staff alert names the stored amount and says nothing
+  was refunded. A dashboard refund that fails after a staff refund was
+  paid is not paid again by the platform.
+- **Partial refund** (any typed amount, also one equal to the remainder):
+  stored as an amount refund; `expectedAmountCents` may be left out or must
+  equal the amount. Partial refunds may follow each other.
+- **Remainder seen**: every new request names the remainder staff saw in
+  `expectedRemainderCents` (a full refund may name it in `expectedAmountCents`
+  alone; when it sends both they must be equal). Under the order lock a request
+  whose remainder differs is refused with `conflict`, a message naming the
+  current remainder and `details.remainderCents`, and nothing is stored, so a
+  typed amount that a dashboard refund made after the preview turned into the
+  whole remainder never ends access or a subscription without staff seeing it.
+  Studio reloads the preview; the CLI sends the remainder its operator
+  confirmed with `--remainder`, never one it read itself, and prints the new
+  preview. A request without
+  the field is refused with `validation`, except a replay of a stored refund by
+  its request key.
+- **Already refunded**: when Stripe answers that the charge is already refunded
+  (dashboard refunds cover it), the staff refund has no refund of its own and
+  keeps watching. Once dashboard refunds that have succeeded cover the whole
+  charge it ends `skipped_refunded`; while such a dashboard refund is still
+  pending it keeps watching, and it issues its own amount if that refund fails,
+  waiting an hour at a time while another staff refund of the order is waiting
+  to reach Stripe.
+- **Unknown outcomes**: before every create call the dispatcher saves, under
+  the job's lease, that a create attempt is under way
+  (`create_outcome_unknown`) together with the key generation it uses; a worker
+  lost after Stripe accepted the refund therefore leaves the attempt recorded,
+  and a dispatcher that lost the lease sends no request. A staff refund whose
+  create call got no answer, a `409 idempotency_key_in_use` or a Stripe server
+  error (`5xx`) keeps its key generation, so the next attempt either replays
+  the refund Stripe made or makes it once; that attempt lists the payment's
+  refunds first and takes over its own by `refundJobId`. The record is cleared
+  only when its own Stripe refund is seen (in a list or returned by the create
+  call) or when a list that shows none was followed by a create call Stripe
+  answered with a refusal. While it is set, no failed refund list (not found,
+  missing permission or any other answer) counts as Stripe refusing the refund:
+  the read is retried, and a refund whose retries end while its refunds cannot
+  be read ends `unconfirmed` with the `unconfirmed` alert, never `failed`, and
+  still counts against the remainder and in the refunded totals. Sold-out jobs
+  record no attempt and move to the next key generation after a server error,
+  as before.
+- **One at a time**: at most one staff refund of an order may wait to reach
+  Stripe (`pending`, `running`, `blocked_permission`); a second one is refused
+  with `conflict` until the first is accepted or failed. Every request carries
+  a `requestKey`: the same key for the same order returns the existing refund
+  when the amount and choices match, and `conflict` otherwise, so a double
+  click or a retried request never refunds twice.
+- **Packing and label state**: the preview names whether the order is on the
+  packing list and whether it has a shipment or bought label, and the request
+  sends that state back in `expectedShipmentState`
+  (`{ onPackingList, hasShipmentOrLabel }`). When the state read under the
+  order lock differs (a label was bought or the order was packed after the
+  preview), the request is refused with `conflict`, a message asking to check
+  the refund again and `details.shipmentState` naming the current state, and
+  nothing is stored or moved. Studio reloads the preview with its new choices
+  and defaults and the CLI sends the state of the preview it just read. A
+  request without the field (an older CLI) is not checked.
+- **Stock and packing**: a full refund of an order that is `to_pack` without a
+  shipment or label returns its committed stock (a `returned` stock event per
+  product with `reference = { orderId, reason: "staff_refund" }`) and takes the
+  order off the packing list by default; staff may untick either. Goods
+  returned to stock cannot stay on the packing list: returning stock while
+  keeping a `to_pack` order on the list is refused with `validation` (put the
+  order back later with Ship anyway, which takes the stock back). With a
+  shipment or bought label, stock return defaults to off and the label is not
+  cancelled; any carrier shipment row of the order counts as a bought label,
+  also a claim the carrier has not been called for yet (an attempt that failed
+  or was given up is deleted). The carrier claim and the refund serialise on the
+  order row: the InPost create use-case takes its claim only after re-reading the
+  order under `SELECT … FOR UPDATE` and refuses with `conflict` before any
+  carrier call when the order is no longer `to_pack` (a staff refund took it off
+  the packing list), and a refund that runs after the claim sees the claim. A
+  `shipped` order is never moved. A typed amount that covers the
+  whole remainder when it is requested gets the same stock and packing choices
+  and defaults; any smaller amount changes no stock, packing or access, and
+  asking for either change with it is refused. Both
+  choices apply when the refund is requested; a refund that later fails leaves
+  them as chosen and the staff alert says so. "Ship anyway"
+  (`POST /api/orders/:orderId/packing-list`, `order ship-anyway`) puts an order
+  without fulfilment status back to `to_pack` and, in the same transaction,
+  takes back out of stock the units a staff refund returned (an `adjusted`
+  stock event with `reference = { orderId, reason: "staff_refund_ship_anyway" }`),
+  once. It takes back only units on hand that no other checkout has reserved
+  (`on_hand - reserved`); when fewer are free than it must take back, it is
+  refused with `conflict` naming the products, and staff adjust the stock
+  first.
+- **Access and subscriptions**: the existing `charge.refunded` handler marks a
+  fully refunded order `refunded` and revokes the grants of its products unless
+  another purchase keeps them; a partial refund changes no grant. When the
+  order is the latest invoice of a subscription that is still running, the
+  handler also cancels that subscription at Stripe; the preview says so
+  (`cancelsSubscription`) and the dialog and the CLI preview name it for a full
+  refund. The handler also
+  makes the order's waiting staff refunds due at once, so Studio shows the
+  outcome within a minute. Access revoked that way is not given back when the
+  refund fails later: the `failed_after_submission` alert of a staff refund and
+  Studio's refund history tell staff to check the member's access and restore
+  it only if it was revoked and should be restored (a partial refund never ends
+  access, and another purchase may have kept it) and, because an order marked
+  refunded cannot be refunded again here, to refund the payment in the Stripe
+  Dashboard. A partial refund keeps access and the subscription, but
+  the dialog and the CLI preview say that when the payment ends fully refunded
+  (for example through another refund, also one made in the Stripe Dashboard)
+  access may end and the subscription stops, as for a full refund.
+- **Buyer e-mail**: one refund notice per staff refund (outbox id
+  `order-refund-issued:<refundId>`), queued in the transaction that records
+  that Stripe holds the platform's own refund as `pending` or `succeeded`; a
+  refund that `requires_action` sends it at the status read that first sees it
+  `pending` or `succeeded`, the last scheduled one included, even when that
+  read ends the refund `unconfirmed` for staff because it is still awaited. It is rendered when it is queued from the
+  `order-refund-issued` template, in the language and branding of the sold-out
+  e-mail, and stored pre-rendered as an `m2m-transactional` message (subject,
+  HTML and text) with source `staff-refunds` and no tenant transport
+  requirement, the shape the previous release renders and lists, so a rollback
+  neither drops it nor cuts the paging of older e-mails in Sent e-mails
+  (decision D10'). It names the amount of the platform's own Stripe refund in
+  the currency's own minor units (a zero-decimal currency such as JPY is not
+  divided by 100), the short order reference and the usual arrival time; never
+  a provider id or the staff note.
+- **Staff alerts**: a staff refund raises the alerts of the sold-out refund
+  (retrying, blocked by the permission, still blocked after 72 hours, failed,
+  failed after it was issued, not confirmed) on the same outbox id scheme
+  (`order-refund-alert:<refundId>:<alert>:<attempt>:<recipient>`) and attempt
+  rules, but with wording of its own: a staff member asked to refund the amount
+  of the order, what state it is in, whether anything was refunded, the stock
+  and packing changes that stay for a refund that is no longer tried, the
+  access guidance for a refund that failed after it was issued (check the
+  member's access and restore it only if it was revoked and should be
+  restored) and the last error. The `failed` alert and the one still blocked
+  after 72 hours, where nothing was refunded, tell staff to refund the requested
+  amount again from the order page as a partial refund, not the whole
+  remainder, or at most that amount by hand in the Stripe Dashboard. A retry whose request got an
+  answer says the refund has not reached Stripe yet; a retry after an unknown
+  outcome has a subject of its own ("outcome not known yet") and says Stripe
+  may already have received the request, which the retries repeat, so the
+  order is never refunded twice. An `unconfirmed` alert names why (the request
+  may have reached Stripe but its refunds could not be read, Stripe still had
+  the refund in progress at the last check, a full refund made outside the
+  platform the key could not confirm, or no confirmation) and tells staff to
+  check the refund of the requested amount in the Stripe Dashboard and act on
+  the status shown there: `Succeeded` needs nothing more; `Pending` must not be
+  refunded again and is followed there to a final status, since automatic
+  checks have stopped; `Requires action` is completed there; and `Failed`,
+  `Canceled` or a refund that is not listed means refunding there only the
+  unpaid part of the amount this refund requested, never more than Stripe shows
+  as left to refund on the payment; the order is updated once Stripe reports
+  the refund. The `failed_after_submission` alert of an order already marked
+  refunded gives the same guidance; the one of any other order tells staff to
+  refund the requested amount again from the order page as a partial refund,
+  not the whole remainder. Whether the order is already marked refunded is read
+  when the alert is written, after the call to Stripe, so a `charge.refunded`
+  that lands during the call is taken into account. The explanation of a staff refund
+  in the alerts and in Studio's refund history is derived in the reader's
+  language from the refund's status and flags (`create_outcome_unknown`,
+  `provider_refund_status`, `permission_blocked_at`) and from the order's
+  status; `last_error` keeps only Stripe's own words, without the adapter's
+  English description of the call, or a short neutral token when the message
+  was written by the platform (for example `waiting_for_other_refund`,
+  `refund_pending` or `refund_list_incomplete`).
+  Each alert is rendered per recipient in the recipient's language when it is
+  queued and stored pre-rendered as an `m2m-transactional` message with source
+  `staff-refunds`, like the buyer notice, so the previous release renders and
+  lists it. Sold-out alerts keep the `order-refund-alert` payload and wording. A refund that never reached Stripe or failed sends none, and
+  neither does a test-mode order, whose checkout sent no buyer e-mail either. A
+  test-mode order never took stock, so restocking it returns nothing.
+- **Audit**: each row keeps who requested it (`requested_by_user_id`,
+  `requested_by_email`), the amount, the staff-only note (at most 500
+  characters; control characters other than line breaks and tabs are refused
+  with `validation`) and the time. The server logs one line per new request with the
+  workspace, order, refund id, actor id and amount, without e-mail addresses or
+  Stripe ids. The dispatcher's log lines replace Stripe object ids and keys in
+  Stripe's messages with `[provider id]`; the refund keeps the message with its
+  object ids for Studio and the staff alert, but every refund failure message
+  has Stripe API keys and webhook secrets (`sk_`, `rk_`, `pk_`, `ek_` live or
+  test keys and `whsec_` secrets) replaced with `[credential]` before it is
+  stored, shown or e-mailed; so is the `failure_reason` of every refund object
+  Stripe returns, before the refund that failed after it was issued stores it.
+  The log line written when `charge.refunded` makes
+  staff refunds due names no Stripe event id. Stripe metadata carries `tenantId`, `orderId`, `reason: staff` and
+  `refundJobId` only.
+
+Routes (session only, `order:refund`, see [the route table](route-table.md)):
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/orders/:orderId/refund-preview` | Paid amount, the refunds observed (`refundedCents`: the committed refunds in Stripe's list when it was read, else the platform's staff and sold-out refunds with a Stripe refund of their own in `submitted`, `succeeded` or `unconfirmed`) and the remainder staff may refund (`remainderCents`, zero for an order that cannot be refunded; `refundedAmountUnknown` when an order marked refunded has observed refunds below the paid amount), currency, mode, whether the remainder came from Stripe, the staff refunds Stripe's list shows (`providerListedRefundIds`, matched by the refund's Stripe id or the `refundJobId` metadata), the part of Stripe's committed refunds that is not final yet (`providerNotFinalCents`: every committed refund Stripe lists except `succeeded` ones, including `pending`, `requires_action` and refunds with no status, dashboard refunds included; 0 when the list could not be read), stock a full refund can return, packing list, shipment or label, invoice, whether the order gives access (`grantsAccess`), whether a full refund cancels a subscription, the default choices and any refund still waiting. An order marked refunded is previewed too, read-only |
+| `POST /api/orders/:orderId/refunds` | `{ requestKey, amountCents?, expectedAmountCents?, expectedRemainderCents?, reason?, restock?, removeFromPackingList?, expectedShipmentState? }` (`expectedAmountCents` required without `amountCents`, `expectedRemainderCents` with it) → `{ refund, created }` |
+| `POST /api/orders/:orderId/packing-list` | Ship anyway |
+
+The routes follow the origin and CSRF policy of other Studio writes and are
+rate-limited with the shared limiter per staff member and per workspace: 10 and
+60 requests a minute for refunds and ship anyway, 60 and 300 for previews; a
+refused request answers `429 rate_limited` with `Retry-After`. The order detail
+(`GET /api/orders/:orderId`) carries `staffRefunds` (newest first) and
+`refundTotals` (paid, refunded, remaining). The Studio orders list
+(`GET /api/orders`) carries `staffRefundStatus` and `staffRefundAmountCents`,
+the state and amount of the order's latest staff refund while it is unsettled; `refundJobStatus` keeps meaning only the
+sold-out refund job, and the shop key order list and the order feed carry no
+staff refund state. The orders export gains a
+trailing `refunded_amount` column (CSV, minor units) and `refundedCents` (JSON):
+the staff and sold-out refunds the platform saw reach Stripe (`submitted`,
+`succeeded` or `unconfirmed` with a Stripe refund of their own), never inferred
+from a `refunded` status; refunds made outside the platform, disputes, refunds
+only requested (`pending`, `running`, `blocked_permission`) and refunds with no
+Stripe refund of their own (a worker lost before it called Stripe, or a refund
+only watching a refusal as already refunded) are not in it, although the last
+ones stay reserved against a second refund. For an order cancelled because its
+goods sold out, the sold-out job counts with its target, the whole payment it
+refunds, also when refunds made outside the platform already paid part of it
+and the job's own Stripe refund paid only the shortfall: the job and those
+refunds together returned the payment, so the column says how much of the
+order was refunded, not how much the job's own refund paid. The order detail
+totals and the preview without Stripe's list count it the same way. The
+shop integration order feed is unchanged. An invoiced order gets no automatic
+correcting invoice; the preview says the order has one.
+
+In Studio the order detail shows a **Payment** card with the paid, refunded and
+remaining amounts. Refunded counts only observed refunds; with Stripe's totals
+it names the part Stripe has not finished ("of which X not final at Stripe",
+from `providerNotFinalCents`, also for a dashboard refund no staff refund
+belongs to), and with the platform's records the staff refunds Stripe has not
+confirmed yet, a sold-out refund job with a Stripe refund included until it
+succeeds; "The whole amount was refunded" appears only when none of it is
+left unfinished and never while the order's sold-out refund job has not
+succeeded. With Stripe's totals a staff refund counts in them only when
+the preview says Stripe's list shows it, and with the platform's only when it
+has a Stripe refund of its own. Any other refund still waiting, one whose
+request may have reached Stripe without an answer, or one only watching other
+refunds after Stripe answered that the charge is already refunded, is listed
+apart as a requested refund, one line per state: "may already be at Stripe"
+when its request may have reached Stripe, "being sent to Stripe now" while the
+dispatcher is calling Stripe, "not sent to Stripe yet", "waiting for the
+permission" with a warning, and "held until other refunds at Stripe settle"
+for a watching refund, which is reserved and so appears on the card too. With
+Stripe's totals a watching refund is not another deduction: the refunds Stripe
+lists already cover it, so it appears as a note below the balance ("A requested
+refund of X is held until other refunds at Stripe settle; ... not deducted
+again") instead of a requested line.
+Whenever the refund preview loaded, the card takes its amounts from the
+preview (Stripe's list, or the platform's records with a note saying Stripe's
+list could not be read), so a refund made in the Stripe Dashboard shows as
+Stripe holds it; only when the preview itself failed does it show the order
+detail's totals and say so, and when neither is available it shows the paid
+amount and says the refund totals are not available instead of a remainder.
+The preview is loaded for an order marked refunded too, so a full refund made
+in the Stripe Dashboard shows the amount Stripe lists; the Refund action stays
+hidden there. An order marked refunded whose observed refunds do not cover the
+payment (refunded outside the platform or disputed) shows "not known here"
+instead of a refunded amount, with a note that nothing more can be refunded
+there,
+a **Refund history** with each refund's amount, requester, time, staff-only
+reason and state (a refund waiting for the refund permission also names its
+attempts, the next attempt and the last possible one, 72 hours after the first
+refusal, from the view's `permissionBlockedAt`), and **Ship anyway** in the delivery card of an order a refund
+took off the packing list. The **Refund** action appears only to an owner or
+admin with a verified e-mail outside impersonation, for an order the preview
+can refund; while another refund of the order waits for Stripe it stays
+disabled with the reason. The dialog refunds the whole remainder it shows by
+default and sends that remainder as `expectedAmountCents`, and with a partial
+amount too as `expectedRemainderCents`; when the server answers that the
+remainder changed, the dialog reloads the preview, names the new remainder and
+lets staff confirm it, with the consequences of the new remainder (a typed
+amount that now covers it says access ends). When it answers that the packing list
+or label changed, the dialog reloads the preview, resets the stock and packing
+choices to the new defaults, says what happened and lets staff confirm again.
+The consequences say that access ends unless another purchase keeps it and,
+for the latest invoice of a running subscription, that a full refund cancels
+the subscription too; for a smaller partial amount on an order with access or
+such a subscription they add that access may end and the subscription stop
+once the payment ends fully refunded. Another refund still waiting for
+Stripe disables the refund button and offers Close; any other `conflict`
+(nothing left, an order that can no longer be refunded, a request key used for
+other values) shows the server's message the same way;
+Ticking the stock option ticks and locks the packing-list option with a hint
+that returned goods cannot stay on the list.
+**Partial amount** takes a decimal amount in the order's currency and names the
+remainder when the amount is refused; it always asks to keep stock and the
+packing list as they are, so a remainder that shrank after the dialog opened
+never turns it into a full refund's choices. Every field is locked while the
+request is in flight, and a refusal stays pinned above the buttons. The stock option is hidden when nothing
+can return to stock (a test-mode order). One request key is generated per
+opening of the dialog and reused on a retry, so a double click or a repeated
+request returns the same refund. On a phone the dialog opens as a bottom sheet
+with the actions pinned below the scrolling content, the primary button first
+in both reading and focus order. The orders list shows the
+amount and state of the latest unsettled staff refund next to the order status;
+on a phone it shows one card per order instead of the table, and a tap anywhere
+on a card opens the order while the buyer name still opens the member.
+
+```bash
+pnpm --silent run cli --tenant acme order refund-preview <orderId>
+pnpm --silent run cli --tenant acme order refund <orderId> --yes --remainder 40.99
+pnpm --silent run cli --tenant acme order refund <orderId> --amount 12.50 --remainder 40.99 --reason 'Damaged cover' --yes
+pnpm --silent run cli --tenant acme order ship-anyway <orderId>
+```
 
 ### Low-stock e-mail
 

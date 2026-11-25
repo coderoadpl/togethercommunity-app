@@ -13,12 +13,15 @@ import {
   type TenantSecret,
   type TenantSettings,
 } from '#core/domain/index.js';
-import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
+import type { CheckoutDeps, PaymentProvider, PublicRateLimitRepository } from '#core/server/index.js';
 
 import { createCheckoutSession, startCheckoutSession, validateCheckoutSelection } from './checkout.js';
+import { validateCartSelection } from './checkout-cart.js';
+import { createPickupPointDirectoryFake, TEST_PICKUP_POINTS } from '../testing/pickup-point-fake.js';
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { captureCheckoutSelection } from './checkout-lines.js';
 import { createDirectSalesLinkCheckout } from './direct-sales-link-checkout.js';
+import { PICKUP_POINT_LOOKUP_BUDGET_SCOPE, withPickupPointLookupBudget } from './pickup-points.js';
 
 const now = '2026-11-05T12:00:00.000Z';
 const tenant: Tenant = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', status: 'active', plan: 'hosted', contentVersion: 1 };
@@ -52,6 +55,7 @@ const harness = (catalog: Product[] = [accessory, course], productIds: string[] 
   const snapshots: CheckoutSnapshot[] = [];
   const orders: Order[] = [];
   const calls: Parameters<PaymentProvider['createCheckoutSession']>[0][] = [];
+  const pickupPoints = createPickupPointDirectoryFake();
   const link = {
     id: 'link-1', tenantId: tenant.id, slug: 'collection', title: 'Collection', heading: 'Collection', description: '',
     productIds, active: true, listed: false, validFrom: null, validTo: null, createdAt: now, updatedAt: now, revision: 1,
@@ -94,6 +98,7 @@ const harness = (catalog: Product[] = [accessory, course], productIds: string[] 
     },
     ids: { nextId: () => 'snapshot-1' },
     clock: { nowIso: () => now },
+    pickupPoints,
     payment: {
       test: async () => ok({ code: 'payment.available', message: 'Payment is available.' }),
       createCheckoutSession: async (input) => { calls.push(input); return ok({ url: 'https://checkout.stripe.test/session', sessionId: 'cs_live_shipping' }); },
@@ -102,7 +107,7 @@ const harness = (catalog: Product[] = [accessory, course], productIds: string[] 
       verifyWebhookEvent: async () => ok({ id: 'evt-1', type: 'ignored', objectId: null, checkoutSession: null }),
     },
   };
-  return { deps, calls, snapshots, orders, link };
+  return { deps, calls, snapshots, orders, link, pickupPoints };
 };
 
 const fullCoupon: Coupon = {
@@ -160,15 +165,68 @@ describe('checkout delivery selection', () => {
     expect(stock.events).toEqual([]);
   });
 
-  it('normalizes the locker code and freezes the rate on the selection', async () => {
+  it('normalizes the locker code, freezes the rate and stores the carrier name and address over the ones the client sent', async () => {
     const h = harness();
     const result = await validateCheckoutSelection(tenant.id, {
-      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: ' waw01m ', name: 'Locker', address: 'Main Street 1' } },
+      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: ' waw01m ', name: 'Locker', address: 'Somewhere else 9' } },
     }, h.deps);
     expect(result).toMatchObject({ ok: true, value: { shipping: {
       rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', allowedCountries: ['PL'],
-      pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Locker', address: 'Main Street 1' },
     } } });
+    expect(result.ok && result.value.shipping?.pickupPoint).toEqual({
+      provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw',
+    });
+    expect(h.pickupPoints.lookups).toEqual(['WAW01M']);
+  });
+
+  it.each([
+    ['a code the carrier does not know', TEST_PICKUP_POINTS.notFound, 'not_found', 'No InPost parcel locker has this code'],
+    ['a point that cannot hold parcels for collection', TEST_PICKUP_POINTS.wrongType, 'not_usable', 'This InPost point cannot hold parcels for collection'],
+    ['a locker that is not operating', TEST_PICKUP_POINTS.notOperating, 'not_operating', 'This InPost parcel locker is not operating'],
+  ])('refuses %s with a translatable reason', async (_case, code, reason, message) => {
+    const h = harness();
+    const result = await validateCheckoutSelection(tenant.id, {
+      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code } },
+    }, h.deps);
+    expect(result).toEqual({ ok: false, error: { code: 'validation', message, details: { pickupPointReason: reason } } });
+  });
+
+  it('accepts the typed code and marks it unverified when the carrier cannot answer', async () => {
+    const h = harness();
+    const result = await validateCheckoutSelection(tenant.id, {
+      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable, name: 'Typed', address: 'Typed street 1' } },
+    }, h.deps);
+    expect(result.ok && result.value.shipping?.pickupPoint).toEqual({
+      provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable, name: 'Typed', address: 'Typed street 1', verified: false,
+    });
+  });
+
+  it('accepts the typed code unverified when the carrier answers with a status it has not documented', async () => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unknownStatus } },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true });
+    expect(h.pickupPoints.lookups).toEqual([TEST_PICKUP_POINTS.unknownStatus]);
+    expect(h.snapshots[0]?.shipping?.pickupPoint).toEqual({ provider: 'inpost', code: TEST_PICKUP_POINTS.unknownStatus, name: null, address: null, verified: false });
+  });
+
+  it('marks the locker unverified when no carrier directory is configured', async () => {
+    const h = harness();
+    delete h.deps.pickupPoints;
+    const result = await validateCheckoutSelection(tenant.id, {
+      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } },
+    }, h.deps);
+    expect(result.ok && result.value.shipping?.pickupPoint).toEqual({ provider: 'inpost', code: 'WAW01M', name: null, address: null, verified: false });
+  });
+
+  it('does not ask the carrier for a courier rate or a coupon preview', async () => {
+    const h = harness();
+    expect(await validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: { rateId: 'courier' } }, h.deps)).toMatchObject({ ok: true });
+    expect(await validateCheckoutSelection(tenant.id, {
+      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.notFound } },
+    }, h.deps, { shipping: 'ignore' })).toMatchObject({ ok: true });
+    expect(h.pickupPoints.lookups).toEqual([]);
   });
 
   it('ignores delivery for coupon previews', async () => {
@@ -197,8 +255,35 @@ describe('checkout with shipping', () => {
     });
     expect(h.snapshots[0]?.shipping).toEqual({
       rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
-      pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null }, allowedCountries: ['PL'],
+      pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' }, allowedCountries: ['PL'],
     });
+  });
+
+  it('asks the carrier before writing any coupon session, stock reservation, snapshot or payment session', async () => {
+    const h = withCoupon(harness());
+    const stock = createStockRepositoryFake();
+    stock.track(tenant.id, accessory.id, 5);
+    h.deps.stock = stock.repository;
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', couponCode: 'GIFT',
+      shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.notFound } },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation', details: { pickupPointReason: 'not_found' } } });
+    expect(h.pickupPoints.lookups).toEqual([TEST_PICKUP_POINTS.notFound]);
+    expect(h.snapshots).toEqual([]);
+    expect(h.couponSessions).toEqual([]);
+    expect(h.calls).toEqual([]);
+    expect(stock.events).toEqual([]);
+  });
+
+  it('carries the unverified mark into the snapshot when the carrier is down', async () => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable } },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: true });
+    expect(h.calls).toHaveLength(1);
+    expect(h.snapshots[0]?.shipping?.pickupPoint).toEqual({ provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable, name: null, address: null, verified: false });
   });
 
   it('keeps the shipping fee out of the bundle line items', async () => {
@@ -312,5 +397,59 @@ describe('checkout selection capture', () => {
     });
     expect(result).toEqual({ ok: false, error: { code: 'validation', message: 'Checkout shipping selection is invalid' } });
     expect(create).not.toHaveBeenCalled();
+  });
+});
+
+describe('parcel locker lookup on every checkout path', () => {
+  const cartAccessory: Product = { ...accessory, id: '8d0f6c7e-2b1a-4c3d-9e8f-0a1b2c3d4e5f' };
+  const locker = (code: string) => ({ rateId: 'locker', pickupPoint: { provider: 'inpost' as const, code } });
+  const paths = {
+    'single product': async (h: ReturnType<typeof harness>, code: string) =>
+      validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: locker(code) }, h.deps),
+    'sales link': async (h: ReturnType<typeof harness>, code: string) =>
+      validateCheckoutSelection(tenant.id, { productId: course.id, salesLinkId: h.link.id, shipping: locker(code) }, h.deps),
+    cart: async (h: ReturnType<typeof harness>, code: string) =>
+      validateCartSelection(tenant.id, { lines: [{ productId: cartAccessory.id, quantity: 1 }], shipping: locker(code) }, h.deps),
+  };
+
+  it.each(Object.entries(paths))('%s rejects an unknown code and stores the canonical point for a known one', async (_path, select) => {
+    const h = harness([accessory, course, cartAccessory], [course.id, accessory.id]);
+    expect(await select(h, 'missing1')).toMatchObject({ ok: false, error: { code: 'validation', details: { pickupPointReason: 'not_found' } } });
+    const accepted = await select(h, 'waw01m');
+    expect(accepted.ok && accepted.value.shipping?.pickupPoint).toEqual({
+      provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw',
+    });
+    expect(h.pickupPoints.lookups).toEqual(['MISSING1', 'WAW01M']);
+  });
+
+  const budgeted = (h: ReturnType<typeof harness>, limit: number) => {
+    const claims: string[] = [];
+    const buckets: PublicRateLimitRepository = {
+      claim: async (input) => { claims.push(input.scope); return claims.length <= input.limit; },
+      purgeExpired: async () => 0,
+    };
+    h.deps.pickupPoints = withPickupPointLookupBudget(h.pickupPoints, { buckets, clock: { nowIso: () => now }, window: { limit, windowMs: 60_000 } });
+    return claims;
+  };
+
+  it.each(Object.entries(paths))('%s draws on the platform-wide lookup budget and accepts the code unverified once it is spent', async (_path, select) => {
+    const h = harness([accessory, course, cartAccessory], [course.id, accessory.id]);
+    const claims = budgeted(h, 1);
+    const verified = await select(h, 'WAW01M');
+    expect(verified.ok && verified.value.shipping?.pickupPoint).toEqual({
+      provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw',
+    });
+    const unverified = await select(h, 'WAW01M');
+    expect(unverified.ok && unverified.value.shipping?.pickupPoint).toEqual({ provider: 'inpost', code: 'WAW01M', name: null, address: null, verified: false });
+    expect(claims).toEqual([PICKUP_POINT_LOOKUP_BUDGET_SCOPE, PICKUP_POINT_LOOKUP_BUDGET_SCOPE]);
+    expect(h.pickupPoints.lookups).toEqual(['WAW01M']);
+  });
+
+  it('does not draw on the lookup budget for a selection refused before the carrier is asked', async () => {
+    const h = harness();
+    const claims = budgeted(h, 1);
+    expect(await validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: locker('WAW-01') }, h.deps)).toMatchObject({ ok: false });
+    expect(await validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: { rateId: 'courier' } }, h.deps)).toMatchObject({ ok: true });
+    expect(claims).toEqual([]);
   });
 });

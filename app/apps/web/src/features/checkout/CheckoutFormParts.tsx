@@ -17,7 +17,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import { CART_CURRENCY_MISMATCH_MESSAGE, FREE_ORDER_DELIVERY_UNAVAILABLE, type BillingData, type CouponCheckoutBreakdown } from '#core/domain/index.js';
+import { CART_CURRENCY_MISMATCH_MESSAGE, FREE_ORDER_DELIVERY_UNAVAILABLE, PICKUP_POINT_REJECTION_MESSAGES, PICKUP_POINT_REJECTION_REASONS, pickupPointRejectionReason, type BillingData, type CouponCheckoutBreakdown } from '#core/domain/index.js';
 import { ApiError } from '#core/client/index.js';
 
 import { localizeError, useTranslations } from '../../i18n/index.js';
@@ -54,6 +54,8 @@ export const couponNeedsEmail = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.message === COUPON_EMAIL_REQUIRED_MESSAGE;
 
 export const checkoutRefusal = (message: string, t: Translations): string | null => {
+  const lockerReason = PICKUP_POINT_REJECTION_REASONS.find((reason) => PICKUP_POINT_REJECTION_MESSAGES[reason] === message);
+  if (lockerReason !== undefined) return t.shipping.lockerRejected[lockerReason];
   switch (message) {
     case FREE_ORDER_DELIVERY_UNAVAILABLE:
       return t.shipping.freeOrderUnavailable;
@@ -63,6 +65,9 @@ export const checkoutRefusal = (message: string, t: Translations): string | null
       return null;
   }
 };
+
+export const lockerRefusalError = (error: unknown): boolean =>
+  error instanceof ApiError && pickupPointRejectionReason(error.appError.details) !== null;
 
 export const checkoutSessionError = (error: unknown, t: Translations): string =>
   (error instanceof ApiError ? checkoutRefusal(error.appError.message, t) : null) ?? localizeError(error, t);

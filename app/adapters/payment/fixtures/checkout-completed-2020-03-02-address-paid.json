@@ -1,0 +1,79 @@
+{
+  "id": "evt_test_old_api_address",
+  "object": "event",
+  "api_version": "2020-03-02",
+  "created": 1795000000,
+  "data": {
+    "object": {
+      "id": "cs_test_old_api_address",
+      "object": "checkout.session",
+      "allow_promotion_codes": false,
+      "amount_subtotal": 8800,
+      "amount_total": 9519,
+      "billing_address_collection": null,
+      "cancel_url": "https://studio.togethercommunity.app/offer/book-bundle?status=cancelled",
+      "client_reference_id": null,
+      "consent": { "promotions": null, "terms_of_service": "accepted" },
+      "consent_collection": { "promotions": "none", "terms_of_service": "required" },
+      "currency": "pln",
+      "customer": "cus_test_old_api_address",
+      "customer_details": {
+        "address": {
+          "city": "Cracow",
+          "country": "PL",
+          "line1": "Market Square 1",
+          "line2": "Flat 2",
+          "postal_code": "31-001",
+          "state": null
+        },
+        "email": "test.buyer@example.com",
+        "name": "Test Buyer",
+        "phone": "+48500100300",
+        "tax_exempt": "none",
+        "tax_ids": []
+      },
+      "customer_email": null,
+      "livemode": true,
+      "locale": "en",
+      "metadata": {
+        "tenantId": "tenant-a",
+        "productId": "product-course",
+        "priceId": "",
+        "memberEmail": "",
+        "language": "en",
+        "salesLinkId": "link-book-bundle",
+        "checkoutSnapshotId": "snapshot-old-api-address",
+        "checkoutConsentCaptureId": "capture-old-api-address"
+      },
+      "mode": "payment",
+      "payment_intent": "pi_test_old_api_address",
+      "payment_method_types": ["card"],
+      "payment_status": "paid",
+      "setup_intent": null,
+      "shipping": {
+        "address": {
+          "city": "Cracow",
+          "country": "PL",
+          "line1": "Market Square 1",
+          "line2": "Flat 2",
+          "postal_code": "31-001",
+          "state": null
+        },
+        "name": "Test Buyer"
+      },
+      "shipping_address_collection": { "allowed_countries": ["PL"] },
+      "shipping_options": [{ "shipping_amount": 1599, "shipping_rate": "shr_test_old_api_address" }],
+      "shipping_rate": "shr_test_old_api_address",
+      "status": "complete",
+      "submit_type": null,
+      "subscription": null,
+      "success_url": "https://studio.togethercommunity.app/offer/book-bundle?status=success",
+      "total_details": { "amount_discount": 880, "amount_shipping": 1599, "amount_tax": 0 },
+      "url": null
+    }
+  },
+  "livemode": true,
+  "pending_webhooks": 1,
+  "request": { "id": null, "idempotency_key": null },
+  "type": "checkout.session.completed"
+}

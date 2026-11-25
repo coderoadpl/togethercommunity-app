@@ -842,6 +842,7 @@
     "studentLessonEditions:[\"lesson-js-variables-1\"]": {
       "ok": true,
       "value": {
+        "currentEdition": null,
         "editions": []
       }
     },

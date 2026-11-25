@@ -17,9 +17,11 @@ import {
 } from '#core/domain/index.js';
 
 import type { AuthPort, EmailOutboxRepository, MemberRepository, ProductRepository, PurchaseRepository, SalesLinkRepository, TenantRepository } from '../ports.js';
+import type { PickupPointDirectory } from '../pickup-point-ports.js';
 import type { StockRepository } from '../stock-ports.js';
 import { buildCheckoutLines } from './checkout-lines.js';
 import { validateCheckoutSelection } from './checkout.js';
+import type { CheckoutSelection } from './checkout-selection.js';
 import { createOrRenewGrant } from './grant-window.js';
 import { ensureMember } from './ensure-member.js';
 import { appendOrder, startSubscription, type SubscriptionLifecycleDeps } from './subscription-lifecycle.js';
@@ -41,6 +43,7 @@ export interface SimulatePurchaseDeps extends SubscriptionLifecycleDeps, Omit<Co
   tenants: TenantRepository;
   salesLinks?: SalesLinkRepository;
   stock?: StockRepository;
+  pickupPoints?: PickupPointDirectory;
   paymentTransaction?: {
     run<T>(operation: (transaction: Pick<SimulatePurchaseDeps, 'members' | 'orders' | 'grants' | 'stock'> & { emailOutbox: Pick<EmailOutboxRepository, 'enqueue'> }) => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
   };
@@ -63,18 +66,27 @@ export const simulatePurchase = async (
   input: SimulatePurchaseInputData,
   deps: SimulatePurchaseDeps,
 ): Promise<Result<SimulatePurchaseResult, AppError>> => {
-  await deps.authPort.initialize();
   const selection = await validateCheckoutSelection(tenantId, input, deps);
   if (!selection.ok) return selection;
-  const { product, price } = selection.value;
-  const built = await buildCheckoutLines(tenantId, selection.value, deps);
+  return simulateValidatedPurchase(tenantId, input, selection.value, deps);
+};
+
+export const simulateValidatedPurchase = async (
+  tenantId: string,
+  input: Pick<SimulatePurchaseInputData, 'email' | 'productId' | 'billing'>,
+  selection: CheckoutSelection,
+  deps: SimulatePurchaseDeps,
+): Promise<Result<SimulatePurchaseResult, AppError>> => {
+  await deps.authPort.initialize();
+  const { product, price } = selection;
+  const built = await buildCheckoutLines(tenantId, selection, deps);
   if (!built.ok) return built;
-  const shipping = selection.value.shipping === undefined ? null : orderShippingFrom(selection.value.shipping, SIMULATED_SHIPPING_DETAILS);
+  const shipping = selection.shipping === undefined ? null : orderShippingFrom(selection.shipping, SIMULATED_SHIPPING_DETAILS);
   if (shipping !== null && !shipping.ok) return shipping;
-  const selectedProducts = selection.value.products ?? [product];
+  const selectedProducts = selection.products ?? [product];
   const tracked = price?.kind !== 'recurring' && deps.stock !== undefined &&
     (await deps.stock.listByProducts(tenantId, selectedProducts.map((item) => item.id))).length > 0;
-  if (selection.value.salesLinkId !== undefined || product.type === 'physical' || tracked) {
+  if (selection.salesLinkId !== undefined || product.type === 'physical' || tracked) {
     if (deps.paymentTransaction === undefined) return err(validation('Simulated purchase transaction is not configured'));
     return deps.paymentTransaction.run(async (transaction) => {
       const checkoutSession = `sim_cs_${deps.ids.nextId()}`;
@@ -90,7 +102,7 @@ export const simulatePurchase = async (
         memberId: member.value.id, productId: product.id, priceId: price?.id ?? null,
         kind: 'one_time', status: 'paid', amountCents: built.value.totalCents + (built.value.shippingCents ?? 0), currency: built.value.currency,
         provider: 'simulated', providerObjectIds: { checkoutSession },
-        billing: input.billing ?? null, salesLinkId: selection.value.salesLinkId ?? null, lines: built.value.lines,
+        billing: input.billing ?? null, salesLinkId: selection.salesLinkId ?? null, lines: built.value.lines,
         ...(shipping === null ? {} : { shipping: shipping.value, fulfilmentStatus: 'to_pack' as const }),
       }, { ...deps, orders: transaction.orders });
       if (hold.value !== null) {

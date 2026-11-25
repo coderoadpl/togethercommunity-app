@@ -7,6 +7,7 @@ import { ToastProvider } from '../../components/ui/Toast.js';
 import { AuthenticationMethods, type AuthenticationMethodsProps } from '../../components/ui/AuthenticationMethods.js';
 import { ChangePasswordForm } from '../../components/ui/ChangePasswordForm.js';
 import { AccountNameFields } from './AccountNameFields.js';
+import { ERASURE_REQUEST_RESPONSE_DAYS } from '#core/domain/index.js';
 import { AccountErasureCard } from './AccountErasureCard.js';
 import { AccountSupportForm } from './AccountSupportForm.js';
 
@@ -39,6 +40,50 @@ describe('Account dialogs', () => {
     await userEvent.click(screen.getByTestId('change-password-submit'));
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ currentPassword: 'current-password', newPassword: 'new-password-long', revokeOtherSessions: true });
     expect(within(screen.getByRole('dialog')).getByTestId('change-password-remote-error')).toBeVisible();
+  });
+
+  it('checks the revocation box by default when asked and submits the cleared choice', async () => {
+    const onSubmit = vi.fn();
+    render(<LanguageProvider><ToastProvider><ChangePasswordForm dialog revokeOtherSessionsByDefault {...idle} onSubmit={onSubmit} /></ToastProvider></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('change-password-open'));
+    expect(screen.getByRole('checkbox', { name: en.changePassword.revokeOtherSessions })).toBeChecked();
+    fill('change-current-password', 'current-password'); fill('change-new-password', 'new-password-long'); fill('change-confirm-password', 'new-password-long');
+    await userEvent.click(screen.getByTestId('change-revoke-sessions'));
+    await userEvent.click(screen.getByTestId('change-password-submit'));
+    expect(onSubmit).toHaveBeenCalledExactlyOnceWith({ currentPassword: 'current-password', newPassword: 'new-password-long', revokeOtherSessions: false });
+  });
+
+  it('focuses the first field when each account dialog opens', async () => {
+    const first = render(<LanguageProvider><AccountNameFields savedDisplayName="Ada" onCancel={vi.fn()} displayName="Ada" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('account-name-open'));
+    const name = screen.getByLabelText(en.account.displayNameLabel);
+    await waitFor(() => expect(name).toHaveFocus());
+    expect(name).toHaveAttribute('autocomplete', 'nickname');
+    first.unmount();
+
+    const password = render(<LanguageProvider><ToastProvider><ChangePasswordForm dialog {...idle} onSubmit={vi.fn()} /></ToastProvider></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('change-password-open'));
+    await waitFor(() => expect(screen.getByTestId('change-current-password')).toHaveFocus());
+    password.unmount();
+
+    const support = render(<LanguageProvider><AccountSupportForm supportSubject="" supportBody="" onSubjectChange={vi.fn()} onBodyChange={vi.fn()} pending={false} onSubmit={vi.fn()} /></LanguageProvider>);
+    await userEvent.click(screen.getByTestId('account-support-open'));
+    await waitFor(() => expect(screen.getByLabelText(en.support.subjectLabel)).toHaveFocus());
+    support.unmount();
+
+    const methods = render(tree(propsWith()));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    await waitFor(() => expect(screen.getByTestId('enable-2fa-password')).toHaveFocus());
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await userEvent.click(screen.getByTestId('add-passkey-open'));
+    await waitFor(() => expect(screen.getByTestId('passkey-name')).toHaveFocus());
+    methods.unmount();
+  });
+
+  it('keeps the inline studio passkey form from taking focus', () => {
+    render(tree(propsWith({ presentation: 'embedded' })));
+    expect(screen.getByTestId('passkey-name')).not.toHaveFocus();
   });
 
   it('opens passkey registration, requires proof and submits a trimmed name', async () => {
@@ -218,8 +263,78 @@ describe('Account dialogs', () => {
     view.rerender(tree({ ...enabled, verifyTotp: { ...props.verifyTotp, submittedAt: 2, success: true } }));
     await screen.findByTestId('backup-codes');
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: en.common.close }));
+    expect(refresh).not.toHaveBeenCalled();
+    await userEvent.click(within(await screen.findByTestId('two-factor-leave-dialog')).getByTestId('two-factor-leave-confirm'));
     expect(refresh).toHaveBeenCalledOnce();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+  it('asks before leaving unsaved backup codes by Close or Escape and stays on Stay', async () => {
+    const props = propsWith();
+    const view = render(tree(props));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    fill('enable-2fa-password', 'fresh-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    const enabled = { ...props, enableTwoFactor: { ...props.enableTwoFactor, success: true, submittedAt: 1, data: enrollment } };
+    view.rerender(tree(enabled));
+    await userEvent.click(await screen.findByTestId('two-factor-next'));
+    fill('verify-totp-code', '123456');
+    view.rerender(tree({ ...enabled, verifyTotp: { ...props.verifyTotp, submittedAt: 2, success: true } }));
+    await screen.findByTestId('backup-codes');
+
+    await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+    const leave = await screen.findByTestId('two-factor-leave-dialog');
+    expect(within(leave).getByRole('heading', { name: en.security.leaveWithoutCodesTitle })).toBeVisible();
+    expect(leave).not.toHaveTextContent('demo-code');
+    await userEvent.click(within(leave).getByRole('button', { name: en.security.leaveWithoutCodesCancel }));
+    await waitFor(() => expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument());
+    expect(screen.getByTestId('backup-codes')).toHaveTextContent('demo-code');
+
+    await userEvent.keyboard('{Escape}');
+    expect(await screen.findByTestId('two-factor-leave-dialog')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: en.security.leaveWithoutCodesCancel }));
+    await waitFor(() => expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument());
+
+    await userEvent.click(screen.getByLabelText(en.security.backupCodesSaved));
+    await userEvent.click(screen.getByRole('button', { name: en.common.close }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByTestId('two-factor-leave-dialog')).not.toBeInTheDocument();
+  });
+  it('goes back from verification to the QR code', async () => {
+    const props = propsWith();
+    const view = render(tree(props));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    fill('enable-2fa-password', 'fresh-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    view.rerender(tree({ ...props, enableTwoFactor: { ...props.enableTwoFactor, success: true, submittedAt: 1, data: enrollment } }));
+    await userEvent.click(await screen.findByTestId('two-factor-next'));
+    fill('verify-totp-code', '12');
+    await userEvent.click(screen.getByTestId('two-factor-back'));
+    expect(screen.getByTestId('two-factor-step')).toHaveTextContent(en.security.wizardSteps.qr);
+    expect(screen.getByTestId('two-factor-qr-code')).toBeVisible();
+    await userEvent.click(screen.getByTestId('two-factor-next'));
+    expect(screen.getByTestId('verify-totp-code')).toHaveValue('');
+    expect(props.verifyTotp.run).not.toHaveBeenCalled();
+  });
+  it('drops the wrong-code alert from an earlier attempt after going back', async () => {
+    const props = propsWith();
+    const view = render(tree(props));
+    await userEvent.click(screen.getByTestId('enable-2fa-open'));
+    fill('enable-2fa-password', 'fresh-password');
+    await userEvent.click(screen.getByTestId('enable-2fa'));
+    const enabled = { ...props, enableTwoFactor: { ...props.enableTwoFactor, success: true, submittedAt: 1, data: enrollment } };
+    view.rerender(tree(enabled));
+    await userEvent.click(await screen.findByTestId('two-factor-next'));
+    fill('verify-totp-code', '123456');
+    const failed = { ...enabled, verifyTotp: { ...props.verifyTotp, submittedAt: 2, error: failure } };
+    view.rerender(tree(failed));
+    expect(screen.getByTestId('verify-totp-error')).toBeVisible();
+    expect(screen.getByTestId('verify-totp-code')).toHaveAttribute('aria-invalid', 'true');
+
+    await userEvent.click(screen.getByTestId('two-factor-back'));
+    await userEvent.click(screen.getByTestId('two-factor-next'));
+    expect(screen.getByTestId('verify-totp-code')).toHaveValue('');
+    expect(screen.queryByTestId('verify-totp-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('verify-totp-code')).toHaveAttribute('aria-invalid', 'false');
   });
   it('provides a finish path when enrollment returns no backup codes', async () => {
     const refresh = vi.fn();
@@ -266,6 +381,11 @@ describe('Account dialogs', () => {
 
     view.rerender(tree({ ...props, regenerateBackupCodes: { ...props.regenerateBackupCodes, success: true, submittedAt: 2, data: ['replacement'] } }));
     expect(await screen.findByTestId('backup-codes')).toHaveTextContent('replacement');
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('heading')).toHaveTextContent(en.security.regeneratedBackupCodesTitle);
+    expect(within(dialog).getAllByRole('button', { name: en.common.close })).toHaveLength(1);
+    expect(within(dialog).getByTestId('two-factor-finish')).toHaveTextContent(en.security.regeneratedBackupCodesDone);
+    expect(within(dialog).getByTestId('two-factor-finish')).toBeDisabled();
   });
   it.each([
     ['regenerate-backup-codes', 'regenerateBackupCodes'],
@@ -291,6 +411,18 @@ describe('Account dialogs', () => {
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeVisible();
   });
 
+  it('labels the saved display name and falls back to a not-set value instead of an empty line', () => {
+    const view = render(<LanguageProvider><AccountNameFields savedDisplayName="Ada" onCancel={vi.fn()} displayName="Ada" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    const value = screen.getByTestId('account-display-name-value');
+    expect(value.tagName).toBe('DD');
+    expect(value).toHaveTextContent('Ada');
+    const label = screen.getByText(en.account.displayNameLabel);
+    expect(label.tagName).toBe('DT');
+    expect(label.parentElement).toBe(value.parentElement);
+    view.rerender(<LanguageProvider><AccountNameFields savedDisplayName="  " onCancel={vi.fn()} displayName="" onChange={vi.fn()} pending={false} dirty={false} /></LanguageProvider>);
+    expect(screen.getByTestId('account-display-name-value')).toHaveTextContent(en.account.displayNameNotSet);
+  });
+
   it('opens support and keeps submit errors in the dialog', async () => {
     const onSubmit = vi.fn();
     render(<LanguageProvider><AccountSupportForm supportSubject="Help" supportBody="Details" onSubjectChange={vi.fn()} onBodyChange={vi.fn()} pending={false} error={failure} onSubmit={onSubmit} /></LanguageProvider>);
@@ -314,5 +446,96 @@ describe('Account dialogs', () => {
     await userEvent.click(screen.getByTestId('account-erasure-create'));
     expect(props.onCreate).toHaveBeenCalledExactlyOnceWith({ confirmEmail: 'demo@example.com' });
     expect(within(screen.getByRole('dialog')).getByRole('alert')).toBeVisible();
+  });
+
+  it.each(['cancelled', 'rejected'] as const)('keeps the %s status and offers a new erasure request', async (status) => {
+    const onCreate = vi.fn();
+    render(<LanguageProvider><AccountErasureCard
+      request={{ id: 'erasure-1', tenantId: 't1', memberId: 'm1', status, reason: null, requestedAt: '2026-06-20T12:00:00.000Z', dueAt: '2026-07-20T12:00:00.000Z', resolvedAt: '2026-06-30T12:00:00.000Z', resolvedByUserId: null, resolutionNote: null }}
+      pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail="demo@example.com"
+      onConfirmEmailChange={vi.fn()} onCreate={onCreate} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>);
+    expect(screen.getByTestId('account-erasure-status')).toHaveTextContent(en.account.erasureClosed[status]({ date: new Date('2026-06-30T12:00:00.000Z').toLocaleDateString('en') }));
+    expect(screen.queryByTestId('account-erasure-cancel')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('account-erasure-open'));
+    await userEvent.click(within(screen.getByRole('dialog')).getByTestId('account-erasure-create'));
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith({ confirmEmail: 'demo@example.com' });
+  });
+
+  it('closes the erasure confirmation once the request is open so a later cancellation does not reopen it', async () => {
+    const onConfirmEmailChange = vi.fn();
+    const card = (request: Parameters<typeof AccountErasureCard>[0]['request']) => <LanguageProvider><AccountErasureCard
+      request={request} pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail="demo@example.com"
+      onConfirmEmailChange={onConfirmEmailChange} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>;
+    const base = { id: 'erasure-1', tenantId: 't1', memberId: 'm1', reason: null, requestedAt: '2026-06-20T12:00:00.000Z', dueAt: '2026-07-20T12:00:00.000Z', resolvedByUserId: null, resolutionNote: null };
+    const view = render(card(null));
+    await userEvent.click(screen.getByTestId('account-erasure-open'));
+    expect(screen.getByRole('dialog')).toBeVisible();
+    view.rerender(card({ ...base, status: 'open', resolvedAt: null }));
+    expect(screen.getByTestId('account-erasure-cancel')).toBeVisible();
+    expect(onConfirmEmailChange).toHaveBeenLastCalledWith('');
+    view.rerender(card({ ...base, status: 'cancelled', resolvedAt: '2026-06-21T12:00:00.000Z' }));
+    expect(screen.getByTestId('account-erasure-open')).toBeVisible();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('confirms erasure with Enter, shows the address to retype and clears the typed value on close', async () => {
+    const onCreate = vi.fn();
+    const onConfirmEmailChange = vi.fn();
+    const card = (typed: string) => <LanguageProvider><AccountErasureCard
+      request={null} pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail={typed}
+      onConfirmEmailChange={onConfirmEmailChange} onCreate={onCreate} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>;
+    const view = render(card(''));
+    await userEvent.click(screen.getByTestId('account-erasure-open'));
+    const field = screen.getByLabelText(en.account.erasureConfirmLabel);
+    expect(field).toHaveAttribute('type', 'email');
+    expect(field).toHaveAttribute('autocomplete', 'off');
+    expect(field).toHaveAttribute('autocapitalize', 'none');
+    expect(field).toHaveAccessibleDescription(en.account.erasureConfirmHint({ email: 'demo@example.com' }));
+    expect(within(screen.getByRole('dialog')).getByTestId('account-erasure-confirm-hint')).toHaveTextContent('demo@example.com');
+    await userEvent.type(field, '{Enter}');
+    expect(onCreate).not.toHaveBeenCalled();
+    view.rerender(card('Demo@Example.com'));
+    await userEvent.type(screen.getByLabelText(en.account.erasureConfirmLabel), '{Enter}');
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith({ confirmEmail: 'Demo@Example.com' });
+    await userEvent.click(screen.getByTestId('confirm-dialog-cancel'));
+    expect(onConfirmEmailChange).toHaveBeenLastCalledWith('');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('offers no new erasure request after a completed one', () => {
+    render(<LanguageProvider><AccountErasureCard
+      request={{ id: 'erasure-1', tenantId: 't1', memberId: 'm1', status: 'completed', reason: null, requestedAt: '2026-06-20T12:00:00.000Z', dueAt: '2026-07-20T12:00:00.000Z', resolvedAt: '2026-06-30T12:00:00.000Z', resolvedByUserId: null, resolutionNote: null }}
+      pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail=""
+      onConfirmEmailChange={vi.fn()} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>);
+    expect(screen.getByTestId('account-erasure-status')).toHaveTextContent(en.account.erasureClosed.completed({ date: new Date('2026-06-30T12:00:00.000Z').toLocaleDateString('en') }));
+    expect(screen.queryByTestId('account-erasure-open')).not.toBeInTheDocument();
+  });
+
+  it('states the erasure scope on the card and the review process in the dialog without repeating the intro', async () => {
+    render(<LanguageProvider><AccountErasureCard
+      request={null} pending={false} error={null} createPending={false} createError={null}
+      cancelPending={false} cancelError={null} email="demo@example.com" erasureConfirmEmail=""
+      onConfirmEmailChange={vi.fn()} onCreate={vi.fn()} onCancel={vi.fn()} onRetry={vi.fn()}
+    /></LanguageProvider>);
+    const effects = within(screen.getByTestId('account-erasure-effects')).getAllByRole('listitem').map((item) => item.textContent);
+    expect(effects).toEqual([
+      en.account.erasureEffects.profile,
+      en.account.erasureEffects.posts,
+      en.account.erasureEffects.access,
+      en.account.erasureEffects.signIn,
+    ]);
+    await userEvent.click(screen.getByTestId('account-erasure-open'));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByTestId('account-erasure-dialog-body')).toHaveTextContent(en.account.erasureDialogBody({ days: ERASURE_REQUEST_RESPONSE_DAYS }));
+    expect(dialog.getByTestId('account-erasure-dialog-body')).toHaveTextContent('within 30 days');
+    expect(dialog.queryByText(en.account.erasureIntro)).not.toBeInTheDocument();
   });
 });

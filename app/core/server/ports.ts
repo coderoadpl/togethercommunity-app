@@ -173,6 +173,8 @@ import type {
   ProviderRefund,
   OrderRefundJob,
   ClaimedOrderRefundJob,
+  ClaimedRefundJob,
+  OrderStaffRefund,
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
@@ -763,9 +765,25 @@ export interface MemberCourseProgressRepository {
     input: { memberId: string; courseId: string },
   ): Promise<MemberCourseProgress | null>;
   listByMember(tenantId: string, memberId: string): Promise<MemberCourseProgress[]>;
-  findOrCreate(
+  addCompletedLesson(
     tenantId: string,
-    input: { id: string; memberId: string; courseId: string; now: string },
+    input: { id: string; memberId: string; courseId: string; lessonId: string; now: string },
+  ): Promise<MemberCourseProgress>;
+  removeCompletedLesson(
+    tenantId: string,
+    input: { memberId: string; courseId: string; lessonId: string; now: string },
+  ): Promise<MemberCourseProgress | null>;
+  setLastViewed(
+    tenantId: string,
+    input: {
+      id: string;
+      memberId: string;
+      courseId: string;
+      lessonId?: string;
+      moduleId?: string;
+      chapterId?: string;
+      now: string;
+    },
   ): Promise<MemberCourseProgress>;
   update(tenantId: string, progress: MemberCourseProgress): Promise<MemberCourseProgress | null>;
   countReferencingLesson(tenantId: string, lessonId: string): Promise<number>;
@@ -1285,7 +1303,7 @@ export interface PaymentProvider {
     paymentIntentId: string;
     amountCents: number;
     idempotencyKey: string;
-    metadata: { orderId: string; reason: 'out_of_stock' };
+    metadata: { orderId: string; reason: 'out_of_stock' } | { orderId: string; reason: 'staff'; refundJobId: string };
   }): Promise<Result<ProviderRefund, AppError>>;
   getRefund?(input: {
     mode: 'live' | 'test';
@@ -1296,6 +1314,7 @@ export interface PaymentProvider {
     mode: 'live' | 'test';
     tenantId: string;
     paymentIntentId: string;
+    deadlineAt?: number;
   }): Promise<Result<ProviderRefund[], AppError>>;
   verifyWebhookEvent(input: {
     tenantId: string;
@@ -1433,8 +1452,10 @@ export interface AutoInvoiceJobRepository {
   complete(tenantId: string, jobId: string): Promise<void>;
 }
 
-export type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
+type OrderRefundJobUpdate = Partial<Pick<OrderRefundJob,
   'status' | 'nextAttemptAt' | 'lastError' | 'providerRefundId' | 'providerRefundStatus' | 'submittedAt' | 'statusChecks' | 'keyGeneration' | 'permissionBlockedAt' | 'transientFailureStreak'>>;
+
+export type RefundJobUpdate = OrderRefundJobUpdate & Partial<Pick<OrderStaffRefund, 'createOutcomeUnknown'>>;
 
 export interface OrderRefundJobRepository {
   enqueue(tenantId: string, job: OrderRefundJob): Promise<boolean>;
@@ -1449,6 +1470,62 @@ export interface OrderRefundJobRepository {
     staffAlerts?: readonly EmailOutboxEnqueueInput[],
   ): Promise<OrderRefundJob | null>;
   noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderRefundJob | null>;
+}
+
+export interface RefundJobQueue {
+  claimDue(input: { now: string; leaseMs: number }): Promise<ClaimedRefundJob | null>;
+  countDue(input: { now: string }): Promise<number>;
+  staffRefundWaiting(tenantId: string, orderId: string, input: { except: string }): Promise<boolean>;
+  markCreateAttempt(tenantId: string, jobId: string, lease: ClaimedRefundJob['lease'], input: { keyGeneration: number; now: string }): Promise<boolean>;
+  release(
+    tenantId: string,
+    jobId: string,
+    lease: ClaimedRefundJob['lease'],
+    update: RefundJobUpdate & { now: string },
+    staffAlerts?: readonly EmailOutboxEnqueueInput[],
+    buyerNotice?: EmailOutboxEnqueueInput,
+  ): Promise<OrderRefundJob | OrderStaffRefund | null>;
+}
+
+export interface StaffRefundCreationState {
+  order: Order;
+  platformCommittedCents: number;
+  sameRequest: OrderStaffRefund | null;
+  waiting: OrderStaffRefund | null;
+  hasLabel: boolean;
+}
+
+export type StaffRefundDecision =
+  | { kind: 'existing'; refund: OrderStaffRefund }
+  | { kind: 'create'; refund: OrderStaffRefund };
+
+interface StaffRefundCreated {
+  refund: OrderStaffRefund;
+  created: boolean;
+  returnedToStock: Array<{ productId: string; quantity: number }>;
+}
+
+export interface OrderStaffRefundRepository {
+  /** Locks the order row, hands the locked state to `decide` and applies its decision in the same transaction. */
+  create(
+    tenantId: string,
+    input: {
+      orderId: string;
+      requestKey: string;
+      actorUserId: string;
+      now: string;
+      decide(state: StaffRefundCreationState): Result<StaffRefundDecision, AppError>;
+    },
+  ): Promise<Result<StaffRefundCreated, AppError>>;
+  listByOrder(tenantId: string, orderId: string): Promise<OrderStaffRefund[]>;
+  platformCommittedCents(tenantId: string, orderId: string): Promise<number>;
+  platformRefundedCents(tenantId: string, orderId: string): Promise<number>;
+  hasLabel(tenantId: string, orderId: string): Promise<boolean>;
+  returnableStock(tenantId: string, orderId: string): Promise<Array<{ productId: string; quantity: number }>>;
+  refundedCentsByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, number>>;
+  activeRefundByOrder(tenantId: string, orderIds: readonly string[]): Promise<Map<string, Pick<OrderStaffRefund, 'status' | 'amountCents'>>>;
+  noteChargeRefunded(tenantId: string, orderId: string, now: string): Promise<OrderStaffRefund[]>;
+  shipAnyway(tenantId: string, orderId: string, input: { actorUserId: string; now: string }): Promise<Result<Order, AppError>>;
 }
 
 export interface KsefCredentials {
@@ -1997,6 +2074,7 @@ export interface PaymentTransactionPort {
       emailOutbox: EmailOutboxRepository;
       autoInvoiceJobs: AutoInvoiceJobRepository;
       orderRefundJobs: OrderRefundJobRepository;
+      orderStaffRefunds?: Pick<OrderStaffRefundRepository, 'noteChargeRefunded'>;
       checkoutConsentJobs: CheckoutConsentJobRepository;
       consentTransaction: PaymentTransactionPort;
       consents: TermsConsentRepository;
@@ -2910,8 +2988,12 @@ export interface SubscriptionAdoptionTransaction {
   ): Promise<Result<T, AppError>>;
 }
 
+export interface LessonEditionVersion extends LessonEdition {
+  version: EntityVersionRecord;
+}
+
 export interface LessonEditionRepository {
-  list(tenantId: string, lessonId: string): Promise<LessonEdition[]>;
+  list(tenantId: string, lessonId: string): Promise<LessonEditionVersion[]>;
   find(tenantId: string, lessonId: string, number: string): Promise<EntityVersionRecord | null>;
   mark(tenantId: string, version: EntityVersionRecord, edition: LessonEditionInput, markedAt: string, expectedEditionNumber: string | null): Promise<LessonEdition | 'conflict'>;
   unmark(tenantId: string, lessonId: string, number: string): Promise<boolean>;

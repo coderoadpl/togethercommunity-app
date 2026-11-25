@@ -17,6 +17,9 @@ describe('HTML to plaintext', () => {
   it('preserves relative links and telephone URLs', () => {
     expect(createHtmlToText().convert('<a href="/course">Course</a> <a href="tel:+123456789">Call</a>')).toBe('Course (/course) Call (tel:+123456789)');
   });
+  it('drops spaces before line breaks', () => {
+    expect(createHtmlToText().convert('<p>One <b> </b> <br>Two</p>')).toBe('One\nTwo');
+  });
   it('enforces its input limit', () => {
     expect(() => createHtmlToText().convert('a'.repeat(1_000_001))).toThrow('limit');
   });

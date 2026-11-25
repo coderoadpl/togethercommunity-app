@@ -107,3 +107,11 @@ export const downloadCopyQuerySchema = z.object({
   (value.productId !== undefined && value.copyIdentifier !== undefined));
 
 export type DownloadCopyQuery = z.infer<typeof downloadCopyQuerySchema>;
+
+const MEMBER_DOWNLOAD_FAILURE_CODES = ['no_access', 'not_found', 'failed'] as const;
+
+export const memberDownloadFailureCodeSchema = z.enum(MEMBER_DOWNLOAD_FAILURE_CODES);
+
+export type MemberDownloadFailureCode = z.infer<typeof memberDownloadFailureCodeSchema>;
+
+export const downloadFailureReferenceSchema = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/u);

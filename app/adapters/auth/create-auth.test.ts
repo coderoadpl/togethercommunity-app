@@ -3,7 +3,7 @@ import { BASE_ERROR_CODES } from 'better-auth';
 import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { err, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
+import { err, MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS, normalizeEmail, ok, PASSWORD_MIN_LENGTH, unavailable, validation } from '#core/domain/index.js';
 import { emailEvents, members, passkey, session, tenants, twoFactor, user, verification } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import { createDevEmailPort } from '#adapters/email/dev.js';
@@ -29,7 +29,6 @@ import {
   magicLinkCallbackOriginCheck,
   magicLinkCallbackOriginMatches,
   MAGIC_LINK_CONTEXT_MAX_ENTRIES,
-  MAGIC_LINK_TOKEN_EXPIRES_IN_SECONDS,
   PASSKEY_SENSITIVE_PROOF_MAX_AGE_SECONDS,
   passwordResetOriginMatches,
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
@@ -283,14 +282,15 @@ describe('real-provider sign-in and passkey proofs', () => {
       expect(verified.headers.get('location')).toBe(callbackURL);
       expect(challengeCookie).toBe('');
       const token = verified.headers.get('set-auth-token');
-      expect(token).not.toBeNull();
-      expect(await authPort.getAuthenticatedUser(new Headers({
-        authorization: `Bearer ${token}`,
-      }))).toMatchObject({ email, emailVerified: true });
       if (useExistingSession) {
-        expect(token).toBe(originalToken);
+        expect(token).toBeNull();
+        expect(verified.headers.getSetCookie().map((entry) => entry.split(';')[0])).toContain(originalCookie);
         expect(await authPort.getAuthenticatedUser(new Headers({ cookie: originalCookie })))
           .toMatchObject({ email, emailVerified: true });
+      } else {
+        expect(await authPort.getAuthenticatedUser(new Headers({
+          authorization: `Bearer ${token ?? ''}`,
+        }))).toMatchObject({ email, emailVerified: true });
       }
     }
   });

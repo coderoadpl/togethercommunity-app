@@ -611,7 +611,7 @@ describe('member event repository', () => {
       createdAt: NOW,
     });
     const progress = createMemberCourseProgressRepository(db);
-    const row = await progress.findOrCreate(ACME, {
+    const row = await progress.setLastViewed(ACME, {
       id: 'progress-member-events',
       memberId: 'mem-acme',
       courseId: 'course-member-events',

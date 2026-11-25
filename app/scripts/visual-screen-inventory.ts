@@ -82,6 +82,7 @@ const prepareBootSplash = async (page: Page): Promise<ScreenPreparation> => {
   };
 };
 
+const LIGHTBOX_POINTER_STORY = 'pages-lessonplayer--lightbox-light-desktop';
 const UNREAD_BADGE_SELECTOR = '[data-testid="notification-badge"] .MuiBadge-badge:not(.MuiBadge-invisible)';
 
 // The count arrives asynchronously, so a shot can otherwise land on a bare bell.
@@ -191,7 +192,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/login',
     fixtureName: 'login',
     viewports: ['mobile'],
-    ready: (page) => page.getByTestId('sign-in-methods-unavailable').waitFor(visible),
+    ready: (page) => page.getByTestId('sign-in-rate-limited').waitFor(visible),
   },
   {
     name: 'login-tenant',
@@ -274,7 +275,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     tenantSlug: 'akademia',
     path: '/',
     ready: async (page) => {
-      await page.getByRole('heading', { name: en.anon.homeTitle }).waitFor(visible);
+      await page.getByTestId('anon-offer').waitFor(visible);
       await page.getByTestId('tenant-logo').first().waitFor(visible);
     },
   },
@@ -316,7 +317,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     viewports: ['mobile'],
     ready: async (page) => {
       await page.getByTestId('anon-join-cta').waitFor(visible);
-      await page.getByTestId('public-space-events-empty').waitFor(visible);
+      await page.getByTestId('public-space-events').waitFor({ state: 'detached' });
       await page.getByTestId('public-post-body-post-community-hello').waitFor(visible);
     },
   },
@@ -500,7 +501,7 @@ export const SCREENS: readonly ScreenSpec[] = [
     path: '/my/courses/course-js/lessons/lesson-js-variables-2',
     ready: async (page) => {
       await page.getByTestId('locked-lesson-upsell').waitFor(visible);
-      await page.getByTestId('locked-product-price').waitFor(visible);
+      await page.getByTestId('unlock-lesson-cta').waitFor(visible);
     },
   },
   {
@@ -523,8 +524,20 @@ export const SCREENS: readonly ScreenSpec[] = [
     viewports: ['desktop', 'mobile'],
     isolateCapture: true,
     ready: async (page) => {
-      await page.getByRole('dialog', { name: en.lesson.enlargeImage }).waitFor(visible);
-      await page.getByRole('button', { name: en.common.close }).waitFor(visible);
+      // Only a trusted pointer click leaves the close button without a focus ring; story play clicks are synthetic.
+      if (new URL(page.url()).searchParams.get('id') === LIGHTBOX_POINTER_STORY) await page.getByTestId('lesson-html').locator('img[role="button"]').click();
+      const lightbox = page.getByTestId('lesson-image-lightbox');
+      await lightbox.waitFor(visible);
+      await lightbox.locator('[data-slot="close"]').waitFor(visible);
+      await lightbox.locator('img').evaluate(async (image) => {
+        if (image instanceof HTMLImageElement) await image.decode();
+      });
+    },
+    settled: async (page) => {
+      // The lesson image can finish loading after the overlay opens and move the footer bar under the scrim; only the mobile captures showed it.
+      if ((page.viewportSize()?.width ?? 0) < 900) {
+        await repaintLocator(page, page.locator('footer').filter({ has: page.getByTestId('prev-lesson') }));
+      }
     },
   })),
   {
@@ -554,9 +567,15 @@ export const SCREENS: readonly ScreenSpec[] = [
     auth: 'creator',
     path: '/panel',
     prepare: prepareBootSplash,
-    ready: (page) => page.getByRole('status', { name: 'Opening your workspace…' }).waitFor(visible),
+    ready: async (page) => {
+      const splash = page.getByTestId('tenant-gate-pending');
+      await splash.getByText('Loading…').waitFor(visible);
+      await splash.getByTestId('brand-loader-core').waitFor(visible);
+      await splash.getByTestId('brand-loader-ring').waitFor(visible);
+    },
     waitForNetworkIdle: false,
-    minBytes: 7 * 1024,
+    // The neutral splash compresses to about 6 KiB; the ready step and BrandLoader.test.tsx guard its content instead.
+    minBytes: 4 * 1024,
   },
   {
     name: 'panel-spaces',

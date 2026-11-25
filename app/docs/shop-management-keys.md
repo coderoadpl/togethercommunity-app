@@ -32,7 +32,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
 | End-to-end replay with three keys (`scripts/shop-machine-replay.test.ts`) | Available |
 | Propose mode: catalogue, sales-link and settings writes become [change proposals](change-proposals.md) the owner approves or rejects | Available (images refused) |
-| Invoices and refunds | Not offered with a shop key; staff session routes only |
+| Invoices and refunds | Not offered with a shop key; staff session routes only. A shop key never refunds; a propose-mode key never refunds |
 
 ## Backend only
 
@@ -539,7 +539,9 @@ action that changes an order needs `shop:fulfilment:write`, and a warehouse
 integration usually carries both. An order id from another workspace answers
 `404 not_found`. Shipments, line issues and ShipX events are recorded under the
 issuing owner's account. Invoices and refunds are not available with a shop
-management key; they stay on the staff session routes.
+management key; they stay on the staff session routes. A shop key never
+refunds; a propose-mode key never refunds: no scope grants `order:refund`, and
+the [staff refund routes](shop.md#staff-refunds) answer a key `401`.
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|
@@ -564,7 +566,11 @@ list returns both live and test orders, as the session list does. The export
 and the packing list answer the session JSON envelope with `filename`,
 `mimeType` and `content`; the label answers the PDF bytes with the session
 route's `content-type`, `content-disposition: attachment` and
-`cache-control: private, no-store` headers.
+`cache-control: private, no-store` headers. The export carries the session
+export's columns, including the trailing `refunded_amount` (CSV, minor units)
+and `refundedCents` (JSON): the platform-recorded staff and sold-out refunds,
+or the paid amount for a `refunded` order (see
+[Staff refunds](shop.md#staff-refunds)).
 
 Each order line in the list, detail and verify responses carries `quantity`
 (1 for lines stored without one) and `issuedCount`, as on the session routes;

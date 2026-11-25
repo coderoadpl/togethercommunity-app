@@ -1,4 +1,4 @@
-import { Box, Button, Paper, Typography } from '@mui/material';
+import { Box, Button, Link, Paper, Typography } from '@mui/material';
 
 import { ApiError } from '#core/client/index.js';
 
@@ -59,6 +59,9 @@ const headingFor = (error: unknown, t: Messages): string => {
 const detailFor = (error: unknown, t: Messages): string =>
   error instanceof ApiError ? localizeErrorCode(error.appError.code, t) : t.errors.detailGeneric;
 
+const isUnauthorized = (error: unknown): boolean =>
+  error instanceof ApiError && error.appError.code === 'unauthorized';
+
 interface RootErrorFallbackProps {
   error: unknown;
   traceId: string | undefined;
@@ -85,13 +88,29 @@ export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) =>
           {detailFor(error, t)}
         </Typography>
         {traceId === undefined ? null : (
-          <Typography variant="caption" component="p" sx={{ mb: '1.4rem' }}>
-            {t.errors.traceId} <code>{traceId}</code>
-          </Typography>
+          <Box sx={{ mb: '1.4rem' }}>
+            <Typography variant="caption" component="p">
+              {t.errors.traceId} <code>{traceId}</code>
+            </Typography>
+            <Typography variant="caption" component="p" data-testid="root-error-trace-hint">
+              {t.errors.traceIdHint}
+            </Typography>
+          </Box>
         )}
-        <Button variant="contained" fullWidth onClick={() => window.location.reload()}>
-          {t.common.reload}
-        </Button>
+        {isUnauthorized(error) ? (
+          <Button variant="contained" fullWidth href="/login" data-testid="root-error-sign-in">
+            {t.auth.signInLink}
+          </Button>
+        ) : (
+          <Button variant="contained" fullWidth onClick={() => window.location.reload()}>
+            {t.common.reload}
+          </Button>
+        )}
+        <Box sx={{ mt: '1rem', display: 'flex', justifyContent: 'center' }}>
+          <Link href="/" variant="body2" data-testid="root-error-start">
+            {t.errors.backToStart}
+          </Link>
+        </Box>
       </Paper>
     </Box>
   );

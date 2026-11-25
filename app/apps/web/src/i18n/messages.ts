@@ -7,10 +7,12 @@ import type {
   ImportAuditAction,
   ImportAuditResourceType,
   LessonBlockType,
+  MemberDownloadFailureCode,
   MemberEventType,
   OrderRefundJobView,
   ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
+  StaffRefundReason,
   StripeAdoptionRefusal,
   TenantAuditEventKind,
   VersionPreviewFieldName,
@@ -26,20 +28,32 @@ export const format = (template: string, params: MessageParams): string =>
 export interface Messages {
   metaCapi: {
     privacyPolicy: string;
+    newTabHint: string;
     fieldsToggle: string;
     fieldsPurchase: string;
     fieldsIdentity: string;
     fieldsBrowser: string;
     fieldsAttribution: string;
     decisionError: string;
+    textChanged: string;
+    withdrawError: string;
+    saving: string;
+    decide: string;
     granted: string;
     denied: string;
     undecided: string;
     withdrawn: string;
     withdraw: string;
+    withdrawShort: string;
+    withdrawing: string;
     withdrawHint: string;
+    rowGranted: string;
+    rowDenied: string;
+    rowWithdrawn: string;
+    withdrawnNotice: (params: { title: string }) => string;
     privacyHeading: string;
     order: (params: { id: string }) => string;
+    purchase: (params: { product: string; date: string }) => string;
     settingsHeading: string;
     enabled: string;
     settingsHelp: string;
@@ -366,12 +380,16 @@ export interface Messages {
     headingImpersonationReadOnly: string;
     headingNotFound: string;
     headingTenantNotFound: string;
+    bootEyebrow: string;
+    bootHeading: string;
+    backToStart: string;
     headingValidation: string;
     headingConflict: string;
     headingSlugReserved: string;
     headingSoldOut: string;
     detailGeneric: string;
     traceId: string;
+    traceIdHint: string;
     messageUnauthorized: string;
     messageInvalidCredentials: string;
     messageForbidden: string;
@@ -416,7 +434,12 @@ export interface Messages {
   auth: {
     signInNoticeLabel: string;
     invalidCredentials: string;
-    signInRateLimited: string;
+    signInRateLimitedRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedTitle: string;
+    signInRateLimitedRetryNow: string;
+    signInRateLimitedLeadRetryIn: (params: { delay: string }) => string;
+    signInRateLimitedLeadWait: string;
+    signInRateLimitedChooseMethod: string;
     signInTitle: string;
     signInToTenant: (params: { tenant: string }) => string;
     signInLead: string;
@@ -426,20 +449,20 @@ export interface Messages {
     emailHelper: string;
     orSeparator: string;
     emailInvalid: string;
+    emailRequired: string;
     passwordLabel: string;
+    showPassword: string;
     passwordTooShort: (params: { min: number }) => string;
+    passwordRequired: string;
     nameLabel: string;
+    nameRequired: string;
     signInIdle: string;
     signInPending: string;
     identifierContinue: string;
     identifierPending: string;
     signingInAs: (params: { email: string }) => string;
-    changeIdentifier: string;
+    changeIdentifierSuffix: string;
     changeIdentifierShort: string;
-    signInMethodsUnavailable: string;
-    signInMethodsChoosePrompt: string;
-    signInMethodsChooseMagicLink: string;
-    signInMethodsChoosePassword: string;
     methodTitle: string;
     methodLead: string;
     methodMagicLinkTitle: string;
@@ -450,12 +473,18 @@ export interface Messages {
     methodPasskeyBody: string;
     passkeyLink: string;
     passkeyPending: string;
+    passkeyCancelled: string;
     twoFactorTitle: string;
     twoFactorIntro: string;
     twoFactorCodeLabel: string;
     twoFactorVerifying: string;
     twoFactorVerifyTotp: string;
+    twoFactorInvalidCode: string;
     twoFactorUseBackupCode: string;
+    twoFactorBackupIntro: string;
+    twoFactorBackupCodeLabel: string;
+    twoFactorVerifyBackupCode: string;
+    twoFactorUseAppCode: string;
     twoFactorBackToLogin: string;
     continueWithGoogle: string;
     forgotPassword: string;
@@ -464,8 +493,9 @@ export interface Messages {
     magicLinkExpiredOnStep: string;
     checkInboxTitle: string;
     magicLinkRequestedBody: (params: { email: string }) => string;
+    magicLinkSentHint: (params: { minutes: number }) => string;
     magicLinkResend: string;
-    magicLinkResendCooldown: (params: { seconds: number }) => string;
+    magicLinkResendCooldown: (params: { delay: string }) => string;
     magicLinkResent: string;
     magicLinkFetching: string;
     openMagicLink: string;
@@ -487,7 +517,8 @@ export interface Messages {
     alreadyHaveAccount: string;
     signInLink: string;
     registeredTitle: string;
-    registeredOnTenantBody: (params: { host: string }) => string;
+    signUpConfirmationSent: (params: { email: string }) => string;
+    registeredOnTenantBody: (params: { workspace: string }) => string;
     registeredCreateOwnCta: string;
     registeredBoughtHint: string;
     registeredUseMagicLinkCta: string;
@@ -497,11 +528,11 @@ export interface Messages {
     terms: string;
     privacy: string;
     and: string;
+    required: string;
   };
   tenant: {
     visitorNotice: (params: { email: string }) => string;
     visitorOwnCommunity: string;
-    visitorSwitchAccount: string;
     choose: string;
     eachOwnDomain: string;
     welcome: string;
@@ -873,6 +904,11 @@ export interface Messages {
     lockerTypeCode: string;
     lockerCodeInvalid: string;
     lockerSelected: string;
+    lockerChecking: string;
+    lockerCheckFound: string;
+    lockerRejected: Record<'not_found' | 'not_usable' | 'not_operating', string>;
+    orderLockerUnverified: string;
+    orderLockerUnverifiedHint: string;
     lockerMapStaffHint: string;
     chooseDelivery: string;
     noDeliveryOptions: string;
@@ -1173,6 +1209,125 @@ export interface Messages {
     refundJobBlockedHelp: string;
     refundJobFailedHelp: string;
     refundJobUnconfirmedHelp: string;
+    orderDetailsHeading: string;
+    staffRefund: {
+      paymentTitle: string;
+      productsSubtotal: string;
+      deliverySubtotal: string;
+      paidTotal: string;
+      refunded: string;
+      requestedRefund: string;
+      waitingForPermission: string;
+      inProgress: (params: { amount: string }) => string;
+      notFinalAtProvider: (params: { amount: string }) => string;
+      remaining: string;
+      action: string;
+      fullyRefunded: string;
+      paymentPlatformTotals: string;
+      paymentPreviewFailedTotals: string;
+      refundedUnknownValue: string;
+      refundedUnknown: string;
+      notSentYet: string;
+      mayBeAtProvider: string;
+      beingSent: string;
+      watchingOtherRefunds: string;
+      heldNotDeducted: (params: { amount: string }) => string;
+      soldOutNotConfirmed: string;
+      totalsUnavailable: string;
+      waitingBlocksAction: string;
+      notPaidOut: string;
+      stateChip: (params: { state: string }) => string;
+      listChip: (params: { amount: string; state: string }) => string;
+      states: Record<OrderRefundJobView['status'], string>;
+      historyTitle: string;
+      historyCount: (params: { count: number }) => string;
+      requestedBy: (params: { who: string; time: string }) => string;
+      reasonLabel: string;
+      waitingForStripe: string;
+      completedAt: (params: { time: string }) => string;
+      attempts: (params: { count: number }) => string;
+      nextAttempt: (params: { time: string }) => string;
+      lastAttempt: (params: { time: string }) => string;
+      restocked: string;
+      removedFromPackingList: string;
+      reasonHelp: Record<StaffRefundReason, (params: { amount: string }) => string>;
+      blockedTitle: string;
+      blockedBuyerEmail: string;
+      blockedBody: string;
+      blockedNoAction: string;
+      paymentSettingsLink: string;
+      offPackingChip: string;
+      offPackingNote: string;
+      offPackingRestockedNote: string;
+      shipAnyway: string;
+      shippingAnyway: string;
+      previewLoading: string;
+      dialogTitle: (params: { id: string }) => string;
+      dialogSubtitle: (params: { buyer: string; paid: string; date: string }) => string;
+      modeLive: string;
+      modeTest: string;
+      partialSwitch: string;
+      partialOffHint: string;
+      partialOnHint: string;
+      amountLabel: string;
+      amountFullHelp: string;
+      amountPartialHelp: (params: { remainder: string; paid: string }) => string;
+      amountTooHigh: (params: { remainder: string }) => string;
+      amountNotPositive: (params: { remainder: string }) => string;
+      amountInvalid: (params: { decimals: number; remainder: string }) => string;
+      amountWhole: (params: { remainder: string }) => string;
+      goodsAndPackingTitle: string;
+      goodsTitle: string;
+      restock: string;
+      restockHintUnshipped: string;
+      restockHintShipped: string;
+      removeFromPackingList: string;
+      removeFromPackingListHint: string;
+      removeFromPackingListUnavailable: string;
+      removeFromPackingListWithRestock: string;
+      shippedWarningTitle: string;
+      shippedWarningBody: string;
+      partialInfoTitle: string;
+      partialInfoBody: string;
+      partialMayEndAccess: (params: { access: boolean; subscription: boolean }) => string;
+      partialFullInfoTitle: string;
+      partialFullInfoBody: string;
+      reasonPlaceholder: string;
+      reasonCount: (params: { count: number; max: number }) => string;
+      consequencesTitle: string;
+      consequenceProvider: (params: { amount: string }) => string;
+      consequenceProviderCap: (params: { remainder: string }) => string;
+      consequenceProviderHint: string;
+      consequenceEmail: (params: { buyer: string }) => string;
+      consequenceTestMode: string;
+      consequenceTestModeHint: string;
+      consequenceAccessEnds: string;
+      consequenceAccessStays: string;
+      consequenceSubscriptionCancelled: string;
+      consequenceRestock: (params: { units: string }) => string;
+      consequenceRestockAndRemove: (params: { units: string }) => string;
+      consequenceNoRestock: string;
+      consequenceRemoveFromPackingList: string;
+      consequenceStaysOnPackingList: string;
+      consequenceLabel: string;
+      consequenceLabelHint: string;
+      consequenceStatusFull: string;
+      consequenceStatusPartial: string;
+      consequenceLaterRemainder: (params: { amount: string }) => string;
+      consequenceInvoice: string;
+      consequencePlatformRecords: string;
+      consequenceFinal: string;
+      consequenceFinalHint: string;
+      footerFinal: string;
+      submit: (params: { amount: string }) => string;
+      submitWithoutAmount: string;
+      submitting: string;
+      errorConflict: string;
+      errorRefused: string;
+      errorRemainderChanged: (params: { remainder: string }) => string;
+      errorShipmentChanged: string;
+      errorRateLimited: string;
+    };
     invoiceDownload: string;
     ksefNumber: string;
     ksefPdfDownload: string;
@@ -1250,9 +1405,11 @@ export interface Messages {
     nextPage: string;
   };
   tenantNotFound: {
+    eyebrow: string;
     title: string;
     body: string;
     hint: string;
+    startCta: string;
   };
   panel: {
     navigation: string;
@@ -1397,6 +1554,7 @@ export interface Messages {
     heading: string;
     verifiedStatus: string;
     pending: (params: { email: string }) => string;
+    pendingMember: (params: { email: string }) => string;
     resend: string;
     sending: string;
     sent: string;
@@ -1404,6 +1562,8 @@ export interface Messages {
     expired: string;
     invalid: string;
     providerError: string;
+    resendSignedIn: string;
+    resendSignedOut: string;
   };
   security: {
     passkeyProofShort: string;
@@ -1414,6 +1574,7 @@ export interface Messages {
     sessionsSummary: ({ count }: { count: number }) => string;
     passkeyCount: ({ count }: { count: number }) => string;
     continueSetup: string;
+    wizardBack: string;
     disableTwoFactorConfirm: string;
     wizardSteps: Record<'password' | 'qr' | 'verify' | 'codes' | 'done', string>;
     twoFactorStatusUnknown: string;
@@ -1428,9 +1589,14 @@ export interface Messages {
     backupCodesCopied: string;
     downloadBackupCodes: string;
     backupCodesSaved: string;
+    leaveWithoutCodesTitle: string;
+    leaveWithoutCodesBody: string;
+    leaveWithoutCodesConfirm: string;
+    leaveWithoutCodesCancel: string;
     finishSetup: string;
     setupComplete: string;
     twoFactorDescription: string;
+    twoFactorNeedsPassword: string;
     heading: string;
     setOrResetPasswordHeading: string;
     setOrResetPassword: string;
@@ -1470,6 +1636,8 @@ export interface Messages {
     twoFactorOff: string;
     regenerateBackupCodes: string;
     regeneratingBackupCodes: string;
+    regeneratedBackupCodesTitle: string;
+    regeneratedBackupCodesDone: string;
     backupCodesRegenerated: string;
     sessionsHeading: string;
     sessionsIntro: string;
@@ -2226,6 +2394,7 @@ export interface Messages {
   };
   shell: {
     navigationAria: string;
+    publicNavigationAria: string;
     start: string;
     searchEntry: string;
     downloadsSection: string;
@@ -2275,14 +2444,19 @@ export interface Messages {
     homeTitle: string;
     coursesSection: string;
     spacesSection: string;
+    offersSection: string;
+    offerBuyCta: string;
     guestHeading: string;
-    joinOfferCta: string;
     readOnlyBanner: string;
     emptyFeed: string;
     lockedCourseHint: string;
     unlockCta: string;
     emptyTitle: string;
     emptyBody: string;
+    courseNotFoundBody: string;
+    lockedSpaceBody: string;
+    courseNotOnSale: string;
+    courseHaveAccessSignIn: string;
   };
   search: {
     title: string;
@@ -2311,7 +2485,6 @@ export interface Messages {
     productWithoutCoursesBody: string;
     productCoursesHeading: string;
     productCoursesHint: string;
-    courseNotFound: string;
     productNotInLibrary: string;
     backToMyProducts: string;
     grantActiveLabel: string;
@@ -2329,8 +2502,23 @@ export interface Messages {
     coursesEmptyRenewHint: string;
     downloadProductBody: string;
     downloadsHeading: string;
-    downloadFile: (params: { name: string }) => string;
-    downloadNoCopyIdentifier: string;
+    downloadButton: string;
+    downloadFileVersion: (params: { name: string; number: number }) => string;
+    downloadsGroupLabel: (params: { title: string }) => string;
+    downloadVersionShort: (params: { number: number }) => string;
+    openCourse: string;
+    viewCourses: string;
+    productsOtherEmailHint: string;
+    viewOffer: string;
+    availableOffers: string;
+    continueCourse: string;
+    downloadPreparing: string;
+    downloadFailures: Record<MemberDownloadFailureCode, string>;
+    productEyebrow: string;
+    loadingProduct: string;
+    productLoadFailed: string;
+    productNotFound: string;
+    productAccessExpired: (params: { date: string }) => string;
   };
   downloadCopies: {
     showMore: string;
@@ -2358,7 +2546,6 @@ export interface Messages {
     courseUnavailable: string;
     courseNotInLibrary: string;
     backToMyCourses: string;
-    searchLessons: string;
     filterPlaceholder: string;
     filterHint: string;
     noMatches: string;
@@ -2371,6 +2558,8 @@ export interface Messages {
     accessPartiallyUnlocked: string;
     completionComplete: string;
     completionPartial: string;
+    nextLesson: string;
+    renewInMyProducts: string;
   };
   courseOverview: {
     progressTitle: string;
@@ -2384,21 +2573,27 @@ export interface Messages {
     aboutCourse: string;
     coverAlt: (params: { name: string }) => string;
     statLessons: (params: { count: number }) => string;
+    lessonCount: (params: { count: number }) => string;
     statDuration: string;
     durationHoursMinutes: (params: { hours: number; minutes: number }) => string;
     durationMinutesOnly: (params: { minutes: number }) => string;
+    aboutShowMore: string;
+    aboutShowLess: string;
   };
   lesson: {
     enlargeImage: string;
+    enlargeNamedImage: (params: { alt: string }) => string;
     editionLabel: (params: { number: string }) => string;
-    previousEditions: string;
-    editionMenu: string;
-    editionOlderWarning: string;
-    editionBackToCurrent: string;
+    editionsTitle: string;
+    editionCurrentVersion: string;
+    editionCurrentMark: string;
+    editionOlderNotice: (params: { number: string; date: string }) => string;
+    editionNotice: (params: { number: string }) => string;
+    editionGoToCurrent: string;
     mediaFailedTitle: string;
     videoFailedTitle: string;
-    videoMissingLibrary: string;
-    videoSecretInvalid: string;
+    videoUnavailable: string;
+    videoUnavailableNoContact: string;
     mediaOpenExternal: string;
     loading: string;
     unavailable: string;
@@ -2408,16 +2603,16 @@ export interface Messages {
     videoPlaceholder: string;
     openPdf: string;
     contentLocked: string;
-    noAccessYet: string;
+    noAccess: string;
     lockedInProduct: string;
     backToCourse: string;
     browseCourses: string;
     markCompleted: string;
     completed: string;
     unmarkCompleted: string;
-    unmarkCompletedHint: string;
     completeContinue: string;
     completing: string;
+    completionFailed: string;
     previousLesson: string;
     nextLesson: string;
     firstLesson: string;
@@ -2444,6 +2639,14 @@ export interface Messages {
     pdfTitle: string;
     attachmentsHeading: string;
     downloadAttachment: (params: { name: string }) => string;
+    lockedSkipped: (params: { count: number }) => string;
+    notForSaleTitle: string;
+    notForSaleBody: string;
+    notForSaleBodyNoContact: string;
+    contactCreator: string;
+    undoCompletion: string;
+    unlockNextLesson: string;
+    lockedSkippedNotForSale: (params: { count: number }) => string;
   };
   discussion: {
     heading: string;
@@ -2520,7 +2723,9 @@ export interface Messages {
     emptyFeed: string;
     emptyFeedReadOnly: string;
     openThread: string;
+    openThreadAria: (params: { author: string; excerpt: string }) => string;
     reactAria: (params: { emoji: string }) => string;
+    reactionCountAria: (params: { emoji: string; count: number }) => string;
     addReaction: string;
     postMenu: string;
     copyLink: string;
@@ -2533,6 +2738,7 @@ export interface Messages {
     backToSpaces: string;
     backToFeed: string;
     pinnedHeading: string;
+    latestHeading: string;
     pinnedChip: string;
     announcementChip: string;
     pin: string;
@@ -2621,8 +2827,9 @@ export interface Messages {
     back: string;
     profileHeading: string;
     tabsLabel: string;
-    tabs: { profile: string; security: string; notifications: string; playback: string };
+    tabs: { profile: string; security: string; preferences: string; playback: string };
     displayNameLabel: string;
+    displayNameNotSet: string;
     displayNameHint: string;
     displayNameSave: string;
     displayNameSaved: string;
@@ -2632,15 +2839,15 @@ export interface Messages {
     avatarUploading: string;
     avatarRemove: string;
     avatarTooLarge: string;
+    avatarUnsupportedType: string;
     editName: string;
     passwordStatusSet: string;
     passwordStatusUnset: string;
-    setPassword: string;
     passwordHeading: string;
     passwordIntro: string;
-    setOrResetPassword: string;
+    forgotPasswordPrompt: string;
+    forgotPasswordEmailLink: string;
     resetSending: string;
-    resetSent: string;
     billingHeading: string;
     billingIntro: string;
     managePayments: string;
@@ -2661,12 +2868,14 @@ export interface Messages {
     dataExportPreparing: string;
     erasureHeading: string;
     erasureIntro: string;
+    erasureEffects: Record<'profile' | 'posts' | 'access' | 'signIn', string>;
+    erasureDialogBody: (input: { days: number }) => string;
     erasureConfirmLabel: string;
+    erasureConfirmHint: (input: { email: string }) => string;
     erasureRequestButton: string;
     erasureOpen: (input: { dueAt: string }) => string;
     erasureCancelButton: string;
-    erasureRequestStatus: Record<'open' | 'cancelled' | 'rejected' | 'completed', string>;
-    erasureResolved: (input: { status: string; resolvedAt: string }) => string;
+    erasureClosed: Record<'cancelled' | 'rejected' | 'completed', (input: { date: string }) => string>;
   };
   changePassword: {
     minimumHint: ({ min }: { min: number }) => string;
@@ -2690,10 +2899,12 @@ export interface Messages {
     intro: string;
     emailLabel: string;
     invalidEmail: string;
+    emailRequired: string;
     submitIdle: string;
     submitPending: string;
     successTitle: string;
-    successBody: string;
+    successBody: (params: { email: string }) => string;
+    useDifferentAddress: string;
     backToLogin: string;
   };
   resetPassword: {
@@ -2705,12 +2916,15 @@ export interface Messages {
     submitPending: string;
     mismatch: string;
     tooShort: (params: { min: number }) => string;
+    passwordRequired: string;
+    confirmRequired: string;
     missingTokenTitle: string;
     missingToken: string;
     successTitle: string;
     successBody: string;
     goToLogin: string;
     requestNewLink: string;
+    backToLogin: string;
   };
   support: {
     heading: string;
@@ -3105,6 +3319,7 @@ export interface Messages {
     couponEmailHint: string;
     payBlockedDelivery: string;
     payBlockedLocker: string;
+    payBlockedLockerRejected: string;
     payBlockedPersonalizationText: string;
     payBlockedPersonalizationCondition: string;
     payBlockedCoupon: string;

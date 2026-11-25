@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import { z } from 'zod';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull } from 'drizzle-orm';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { createCliAuthAdapter, createBetterAuthClientAdapter } from '#adapters/auth/client-adapter.js';
@@ -66,7 +66,7 @@ const plan: Scenario[] = [
   { name: 'community', principal: 'student.active@together.dev', tenant: 'studio', page: 'community', route: '/community', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.listSpaces(); } },
   { name: 'course', principal: 'student.active@together.dev', tenant: 'studio', page: 'course', route: '/my/courses/course-js', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentProgress('course-js'); await api.studentCourses(); } },
   { name: 'my-courses', principal: 'student.active@together.dev', tenant: 'studio', page: 'my-courses', route: '/my', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourses(); } },
-  { name: 'my-products', principal: 'student.active@together.dev', tenant: 'studio', page: 'my-products', route: '/my/products', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.getMemberSettings(); } },
+  { name: 'my-products', principal: 'student.active@together.dev', tenant: 'studio', page: 'my-products', route: '/my/products', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.getMemberSettings(); await api.studentCourses(); } },
   { name: 'product-stub', principal: 'student.active@together.dev', tenant: 'studio', page: 'product-stub', route: '/my/course/product-js-full', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.myProducts(); await api.studentCourses(); } },
   { name: 'search', principal: 'student.active@together.dev', tenant: 'studio', page: 'search', route: '/search', courseId: 'course-js', lessonId: '', spaceId: '', extra: async (api) => { await api.studentCourseStructure('course-js'); await api.studentCourseStructure('course-react'); await api.searchPosts({ query: 'lesson' }); } },
   { name: 'anon-home-branded', principal: 'anonymous', tenant: 'akademia', page: 'anon-home-branded', route: '/', courseId: '', lessonId: '', spaceId: '', extra: async (api) => { await api.publicNavigation(); } },
@@ -253,8 +253,9 @@ try {
     const [tenant] = await db.select().from(tenants).where(eq(tenants.id, 'tenant-akademia'));
     const [document] = await db.select().from(tenantDocuments).where(eq(tenantDocuments.id, 'document-akademia-privacy'));
     const [version] = await db.select().from(tenantDocumentVersions).where(eq(tenantDocumentVersions.id, 'document-akademia-privacy-v1'));
-    if (!tenant || !document || !version || !version.publishedAt) throw new Error('Missing legal seed');
-    save('hosted-legal-document', { nonce: 'storybook', brand: { tenant: tenantSchema.parse(tenant), settings: tenantSettingsSchema.parse(tenant) }, language: 'en', path: `/legal/${document.slug}/v/${version.version}`, title: document.title, content: version.content, immutableVersion: { version: version.version, publishedAt: version.publishedAt } });
+    const [latest] = await db.select().from(tenantDocumentVersions).where(and(eq(tenantDocumentVersions.tenantId, 'tenant-akademia'), eq(tenantDocumentVersions.documentId, 'document-akademia-privacy'), isNotNull(tenantDocumentVersions.publishedAt))).orderBy(desc(tenantDocumentVersions.version)).limit(1);
+    if (!tenant || !document || !version || !version.publishedAt || !latest) throw new Error('Missing legal seed');
+    save('hosted-legal-document', { nonce: 'storybook', brand: { tenant: tenantSchema.parse(tenant), settings: tenantSettingsSchema.parse(tenant) }, language: 'en', slug: document.slug, title: document.title, content: version.content, version: { version: version.version, publishedAt: version.publishedAt }, address: 'permanent', latestVersion: latest.version });
     const common = { nonce: 'storybook', brand: { tenant: tenantSchema.parse(tenant), settings: tenantSettingsSchema.parse(tenant) }, language: 'en' as const };
     const [token] = await db.select().from(unsubscribeTokens).where(and(eq(unsubscribeTokens.tenantId, tenant.id), eq(unsubscribeTokens.id, 'unsubscribe-akademia-visual')));
     if (!token) throw new Error('Missing unsubscribe seed');

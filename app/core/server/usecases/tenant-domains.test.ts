@@ -228,6 +228,8 @@ const harness = (input: {
     getObject: async () => ok(new Uint8Array()),
     objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
     probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+    copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+    digestObject: () => Promise.reject(new Error('digestObject is not used here')),
     probeCors: async (_configuration, origins) => {
       storageCorsProbes.push(origins);
       return origins.map((origin) => ({ origin, status: input.storageCorsStatus ?? 'ok' }));

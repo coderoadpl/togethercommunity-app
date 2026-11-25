@@ -206,6 +206,8 @@ const storageFor = (
   getObject: async () => ok(new Uint8Array()),
   objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
   probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+  copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+  digestObject: () => Promise.reject(new Error('digestObject is not used here')),
   probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' as const })),
   presignPut: (input) => ok(`${input.url}?signed=put`),
   presignGet: (input) => ok(`${input.url}?signed=get`),

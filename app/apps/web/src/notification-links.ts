@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 
-import type { Notification } from '#core/domain/index.js';
+import { changeProposalNotificationFacts, type Notification } from '#core/domain/index.js';
 
 import { translateDeletedContent } from './i18n/deleted-content.js';
 import type { Messages } from './i18n/index.js';
@@ -47,7 +47,12 @@ const notificationSubject = (notification: Notification): string =>
     ? notification.payload.domain ?? ''
     : notification.kind === 'space-event'
       ? notification.payload.lessonName
-      : notification.payload.authorDisplay ?? '';
+      : notification.kind === 'change-proposal'
+        ? changeProposalNotificationFacts(notification)?.keyName ?? ''
+        : notification.payload.authorDisplay ?? '';
+
+const changeProposalGroupTitle = (notification: Notification): string =>
+  changeProposalNotificationFacts(notification)?.groupTitle ?? '';
 
 const titleWithSubject = (t: Messages, notification: Notification, subject: string): string => {
   const { lessonName } = notification.payload;
@@ -71,11 +76,12 @@ const titleWithSubject = (t: Messages, notification: Notification, subject: stri
 };
 
 export const notificationSnippet = (t: Messages, notification: Notification): string => {
+  if (notification.kind === 'change-proposal') {
+    const title = changeProposalGroupTitle(notification);
+    return title.length === 0 ? '' : t.notifications.changeProposalGroup({ title });
+  }
   const { snippet } = notification.payload;
-  if (snippet.length === 0) return '';
-  return notification.kind === 'change-proposal'
-    ? t.notifications.changeProposalGroup({ title: snippet })
-    : translateDeletedContent(snippet, t);
+  return snippet.length === 0 ? '' : translateDeletedContent(snippet, t);
 };
 
 /** A placeholder no message bundle and no user-supplied name can contain. */
@@ -88,7 +94,7 @@ interface IsolatedLine {
 }
 
 export const notificationSnippetParts = (t: Messages, notification: Notification): IsolatedLine => {
-  const { snippet } = notification.payload;
+  const snippet = changeProposalGroupTitle(notification);
   if (notification.kind !== 'change-proposal' || snippet.length === 0) {
     return { before: notificationSnippet(t, notification), isolated: '', after: '' };
   }

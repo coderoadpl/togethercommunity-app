@@ -479,20 +479,25 @@ export const LessonPlayerPage = ({
   });
   const lastViewedRef = useRef<string | null>(null);
   useEffect(() => {
+    const sent = `${courseId}/${lessonId}`;
     if (
       !authenticated ||
       !ownProgress ||
-      lastViewedRef.current === lessonId ||
+      lastViewedRef.current === sent ||
       !lesson.isSuccess ||
       lesson.isPlaceholderData ||
-      structure.isPending
+      structure.isPending ||
+      location === null ||
+      location.module === null ||
+      location.chapter === null ||
+      location.row?.accessStatus !== 'fully-accessible'
     ) return;
-    lastViewedRef.current = lessonId;
+    lastViewedRef.current = sent;
     lastViewed.mutate({
       courseId,
       lessonId,
-      moduleId: location?.module?.id,
-      chapterId: location?.chapter?.id,
+      moduleId: location.module.id,
+      chapterId: location.chapter.id,
     });
   }, [authenticated, ownProgress, lesson.isSuccess, lesson.isPlaceholderData, structure.isPending, location, courseId, lessonId, lastViewed]);
 
@@ -509,17 +514,32 @@ export const LessonPlayerPage = ({
     lessonId: string;
     done: boolean;
   } | null>(null);
+  const [recordedIn, setRecordedIn] = useState<{ lessonId: string; courseId: string } | null>(null);
+  const recordedElsewhere = recordedIn !== null && recordedIn.lessonId === lessonId && recordedIn.courseId !== courseId;
+  const recordedProgress = useQuery({
+    ...actions.studentProgress(recordedIn?.courseId ?? courseId),
+    enabled: authenticated && recordedElsewhere,
+    meta: { background: true },
+  });
   const completedFromServer =
-    progress.data?.progress.completedLessonIds.includes(lessonId) ?? false;
+    (progress.data?.progress.completedLessonIds.includes(lessonId) ?? false) ||
+    (recordedElsewhere && (recordedProgress.data?.progress.completedLessonIds.includes(lessonId) ?? false));
   const completed = optimisticDone?.lessonId === lessonId
     ? optimisticDone.done
     : completedFromServer;
 
-  const settleCompletion = async () => {
+  const settleCompletion = async (
+    written: { courseId: string } | undefined,
+    settledLessonId: string,
+  ) => {
     await Promise.all([
       queryClient.invalidateQueries(actions.studentCourseInvalidates()),
       queryClient.invalidateQueries(actions.memberNavigationInvalidates()),
+      written === undefined || written.courseId === courseId
+        ? undefined
+        : queryClient.prefetchQuery(actions.studentProgress(written.courseId)),
     ]);
+    if (written !== undefined) setRecordedIn({ lessonId: settledLessonId, courseId: written.courseId });
     setOptimisticDone(null);
   };
 
@@ -528,7 +548,7 @@ export const LessonPlayerPage = ({
     onMutate: ({ lessonId: completedLessonId }) =>
       setOptimisticDone({ lessonId: completedLessonId, done: true }),
     onError: () => setOptimisticDone(null),
-    onSettled: settleCompletion,
+    onSettled: (data, _error, input) => settleCompletion(data?.progress, input.lessonId),
   });
 
   const uncomplete = useMutation({
@@ -536,7 +556,7 @@ export const LessonPlayerPage = ({
     onMutate: ({ lessonId: uncompletedLessonId }) =>
       setOptimisticDone({ lessonId: uncompletedLessonId, done: false }),
     onError: () => setOptimisticDone(null),
-    onSettled: settleCompletion,
+    onSettled: (data, _error, input) => settleCompletion(data?.progress, input.lessonId),
   });
 
   const { reset: resetComplete } = complete;
@@ -683,16 +703,34 @@ export const LessonPlayerPage = ({
       .map((groupIndex, htmlIndex) => [groupIndex, headingDocument.htmlBlocks[htmlIndex]] as const),
   );
 
+  const followRecordedCourse = (recordedCourseId: string) => {
+    if (recordedCourseId === courseId) return;
+    const search = threadRootPostId === null ? {} : { thread: threadRootPostId };
+    void navigate(editionNumber === undefined ? {
+      to: '/my/courses/$courseId/lessons/$lessonId',
+      params: { courseId: recordedCourseId, lessonId },
+      search,
+      hash: true,
+      replace: true,
+    } : {
+      to: '/my/courses/$courseId/lessons/$lessonId/editions/$number',
+      params: { courseId: recordedCourseId, lessonId, number: editionNumber },
+      search,
+      hash: true,
+      replace: true,
+    });
+  };
+
   const markComplete = () => {
     setCompletionIntent('mark');
     uncomplete.reset();
-    complete.mutate({ lessonId });
+    complete.mutate({ lessonId, courseId }, { onSuccess: (data) => followRecordedCourse(data.progress.courseId) });
   };
 
   const unmarkComplete = () => {
     setCompletionIntent('unmark');
     complete.reset();
-    uncomplete.mutate({ lessonId });
+    uncomplete.mutate({ lessonId, courseId });
   };
 
   const continueToNext = () => {
@@ -700,7 +738,7 @@ export const LessonPlayerPage = ({
     uncomplete.reset();
     setContinuing(true);
     complete.mutate(
-      { lessonId },
+      { lessonId, courseId },
       {
         onSuccess: () => {
           if (nextHref === null) setContinuing(false);

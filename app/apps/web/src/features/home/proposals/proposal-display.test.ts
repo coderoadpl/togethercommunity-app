@@ -3,13 +3,38 @@ import { describe, expect, it } from 'vitest';
 import { changeProposalGroupItems } from '../../../test/change-proposal-fixtures.js';
 import {
   groupReferences,
+  imageFingerprint,
   isSameOriginPublicAssetPath,
+  proposalFileChanges,
   proposalRows,
   proposalTarget,
+  proposedImagePaths,
+  shortProposedImagePath,
   stockAdjustmentProductId,
 } from './proposal-display.js';
 
 describe('proposal display', () => {
+  it('shortens only a content-addressed image address, keeping the fingerprint, the last four digest characters and the extension', () => {
+    const digest = '88daee5b37693c1f5e354e2b46fbba036fa4a67a3150a00082a6176c047c271c';
+    const proposed = `/api/public/assets/product-cover/${digest}.png`;
+    expect(shortProposedImagePath(proposed)).toBe('/api/public/assets/product-cover/88daee5b3769…271c.png');
+    expect(shortProposedImagePath(proposed)).toContain(imageFingerprint(digest));
+    expect(imageFingerprint(digest)).toBe('88daee5b3769');
+    expect(shortProposedImagePath('/api/public/assets/product-cover/field-guide.webp')).toBeNull();
+    expect(shortProposedImagePath('https://images.example.org/a.webp')).toBeNull();
+  });
+
+  it('lists each distinct proposed image address of pending proposals once', () => {
+    const first = `/api/public/assets/product-cover/${'a'.repeat(64)}.png`;
+    const second = `/api/public/assets/logo/${'b'.repeat(64)}.webp`;
+    expect(proposedImagePaths([
+      { id: 'proposal-1', input: { coverUrl: first }, effect: { coverUrl: { before: null, after: first } } },
+      { id: 'proposal-2', input: { logoUrl: second }, effect: { logoUrl: { before: null, after: second }, shopName: { before: 'Old', after: 'Acme' } } },
+      { id: 'proposal-3', input: { coverUrl: first }, effect: { coverUrl: { before: '/api/public/assets/product-cover/field-guide.webp', after: first } } },
+      { id: 'proposal-4', input: {}, effect: { coverUrl: { before: null, after: '/api/public/assets/product-cover/field-guide.webp' } } },
+    ])).toEqual([first, second]);
+  });
+
   it('shows an image only for a same-origin public asset path', () => {
     expect(isSameOriginPublicAssetPath('/api/public/assets/product-cover/a.webp')).toBe(true);
     expect(isSameOriginPublicAssetPath('https://images.example.org/a.webp')).toBe(false);
@@ -25,8 +50,29 @@ describe('proposal display', () => {
       kind: 'change',
       field: 'coverUrl',
       before: { kind: 'text', text: 'https://images.example.org/old.jpg', long: false, breakAnywhere: true },
-      after: { kind: 'image', path: '/api/public/assets/product-cover/new.webp' },
+      after: { kind: 'image', path: '/api/public/assets/product-cover/new.webp', awaitingApproval: null },
     }]);
+  });
+
+  it('routes the proposed image of a pending proposal to the owner preview, and keeps the public rule otherwise', () => {
+    const digest = 'e'.repeat(64);
+    const proposed = `/api/public/assets/product-cover/${digest}.webp`;
+    const live = `/api/public/assets/product-cover/${'f'.repeat(64)}.png`;
+    const proposal = { input: { coverUrl: proposed }, effect: { coverUrl: { before: live, after: proposed } } };
+    expect(proposalRows(proposal, undefined, 'proposal-1')).toEqual([{
+      kind: 'change',
+      field: 'coverUrl',
+      before: { kind: 'image', path: live, awaitingApproval: null },
+      after: { kind: 'image', path: proposed, awaitingApproval: { proposalId: 'proposal-1', digest, extension: 'webp' } },
+    }]);
+    expect(proposalRows(proposal)).toEqual([{
+      kind: 'change',
+      field: 'coverUrl',
+      before: { kind: 'image', path: live, awaitingApproval: null },
+      after: { kind: 'image', path: proposed, awaitingApproval: null },
+    }]);
+    expect(proposalRows({ input: {}, effect: { coverUrl: { before: null, after: 'https://images.example.org/a.png' } } }, undefined, 'proposal-1')[0])
+      .toMatchObject({ after: { kind: 'text', text: 'https://images.example.org/a.png' } });
   });
 
   it('keeps a stock adjustment a delta', () => {
@@ -75,5 +121,35 @@ describe('proposal display', () => {
           after: { kind: 'record', entries: [{ field: 'colour', value: { kind: 'text', text: 'red', long: false, breakAnywhere: true } }] },
         },
       ]);
+  });
+
+  it('derives an added file, a new version and a removal from the file lists by id, and whether no file is left', () => {
+    const file = (id: string, lineageId: string, versionNumber: number, latest: boolean) => ({
+      id, lineageId, versionNumber, latest, fileName: `${id}.pdf`, contentType: 'application/pdf', sizeBytes: 1024, fingerprint: null, versionNote: null,
+    });
+    const first = file('file-1', 'file-1', 1, true);
+    const added = file('staged-1', 'staged-1', 1, true);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [first, added] } } }))
+      .toEqual({ changes: [{ kind: 'added', file: added }], complete: true, leavesNoFile: false });
+
+    const second = file('staged-2', 'file-1', 2, true);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [{ ...first, latest: false }, second] } } }))
+      .toEqual({ changes: [{ kind: 'replaced', file: second, previous: first }], complete: true, leavesNoFile: false });
+
+    expect(proposalFileChanges({ effect: { files: { before: [{ ...first, latest: false }, second], after: [first] } } }))
+      .toEqual({ changes: [{ kind: 'removed', file: second, current: first }], complete: true, leavesNoFile: false });
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [] } } }))
+      .toEqual({ changes: [{ kind: 'removed', file: first, current: null }], complete: true, leavesNoFile: true });
+  });
+
+  it('marks a file change incomplete when another file changed too, and reads nothing from a list it cannot parse', () => {
+    const first = { id: 'f', lineageId: 'f', versionNumber: 1, latest: true, fileName: 'f.pdf', contentType: 'application/pdf', sizeBytes: 1, fingerprint: null, versionNote: null };
+    const added = { ...first, id: 'g', lineageId: 'g' };
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [{ ...first, fileName: 'renamed.pdf' }, added] } } })?.complete).toBe(false);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [{ ...first, latest: false }, added] } } })?.complete).toBe(false);
+    expect(proposalFileChanges({ effect: { files: { before: [first], after: [first] } } })).toBeNull();
+    expect(proposalFileChanges({ effect: { files: { before: 'none', after: [first] } } })).toBeNull();
+    expect(proposalFileChanges({ effect: { title: { before: 'a', after: 'b' } } })).toBeNull();
+    expect(proposalFileChanges({ effect: { files: { before: null, after: [added] } } })).toEqual({ changes: [{ kind: 'added', file: added }], complete: true, leavesNoFile: false });
   });
 });

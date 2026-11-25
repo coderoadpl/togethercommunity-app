@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
+import { SHOP_ASSETS_ROUTES, SHOP_CATALOG_ROUTES, SHOP_DOWNLOAD_ROUTES, SHOP_INTEGRATION_ROUTES, SHOP_ORDER_ROUTES, SHOP_SETTINGS_ROUTES } from '#core/contract/index.js';
 
 import { createShopManagementClient } from './http.js';
 
@@ -65,6 +65,7 @@ describe('shop management client', () => {
       await client.publishProduct({ id: 'product-1' }),
       await client.unpublishProduct({ id: 'product-1' }),
       await client.deleteProductDraft({ productId: 'product-1' }),
+      await client.setProductAccess({ id: 'product-1', accessItems: [{ level: 'course', courseId: 'course-1' }] }),
       await client.listProductPrices('product/1'),
       await client.createProductPrice({ productId: 'product-1', kind: 'one_time', amountCents: 4900 }),
       await client.deactivateProductPrice({ id: 'price-1' }),
@@ -84,6 +85,7 @@ describe('shop management client', () => {
       expect(call.headers.has('cookie')).toBe(false);
     }
     expect(seen[5]?.body).toEqual({ productId: 'product-1' });
+    expect(seen[6]?.body).toEqual({ id: 'product-1', accessItems: [{ level: 'course', courseId: 'course-1' }] });
     expect(seen[3]?.body).toEqual({ id: 'product-1' });
   });
 
@@ -408,6 +410,100 @@ describe('shop management client asset calls', () => {
     const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
     expect(await client.uploadProductCover({ kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: 4, body: new Uint8Array(4) })).toMatchObject({ ok: false, error: { code: 'internal' } });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('shop management client download file calls', () => {
+  const stagedFile = {
+    id: 'staged-1', fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: 4, sha256: 'a'.repeat(64), copiedFrom: null,
+    createdAt: '2026-11-15T10:00:00.000Z', expiresAt: '2026-11-22T10:00:00.000Z',
+  };
+  const asset = {
+    id: 'staged-1', lineageId: 'staged-1', versionNumber: 1, versionNote: null, supersededAt: null, productId: 'product-1', fileName: 'workbook.pdf',
+    contentType: 'application/pdf', sizeBytes: 4, status: 'ready', createdAt: '2026-11-15T10:00:00.000Z', personalisationSizeExceeded: false,
+  };
+  const answer = (method: string, path: string): unknown => {
+    if (path === SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path) {
+      return { upload: { id: 'upload-1', url: 'https://storage.example.test/candidate?signature=1', headers: { 'content-type': 'application/pdf', 'content-length': '4' }, expiresAt: '2026-11-15T10:15:00.000Z' } };
+    }
+    if (path === SHOP_DOWNLOAD_ROUTES.listStagedDownloads.path && method === 'GET') return { files: [stagedFile] };
+    if (path.startsWith('/api/m2m/shop/downloads/staged/')) return { discarded: true };
+    if (path.startsWith('/api/m2m/shop/downloads/')) return { file: stagedFile };
+    if (path.endsWith('/downloads') && method === 'GET') return { assets: [asset], personalisationMaxBytes: 52428800 };
+    if (path.endsWith('/remove')) return { deleted: true };
+    return { asset };
+  };
+
+  it('stages a file with the signed headers on a PUT that carries no key, then completes it by its upload id', async () => {
+    const seen: { method: string; path: string; headers: Headers; body: unknown }[] = [];
+    const body = new Blob([new Uint8Array([0x25, 0x50, 0x44, 0x46])]);
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      seen.push({ method: init?.method ?? 'GET', path: url.pathname, headers: new Headers(init?.headers), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body });
+      if (url.hostname === 'storage.example.test') return new Response(null);
+      return Response.json({ ok: true, data: answer(init?.method ?? 'GET', url.pathname) });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
+    const result = await client.stageProductDownload({ fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: 4, body });
+    expect(result).toEqual({ ok: true, value: { file: stagedFile } });
+    expect(seen.map((call) => `${call.method} ${call.path}`)).toEqual([
+      `POST ${SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path}`, 'PUT /candidate', `POST ${SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path}`,
+    ]);
+    expect(seen[0]?.body).toEqual({ fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: 4 });
+    expect(seen[1]?.body).toBe(body);
+    expect(seen[1]?.headers.get('content-type')).toBe('application/pdf');
+    expect(seen[1]?.headers.get('content-length')).toBe('4');
+    for (const header of ['x-api-key', 'x-tenant', 'authorization']) expect(seen[1]?.headers.has(header)).toBe(false);
+    expect(seen[2]?.body).toEqual({ uploadId: 'upload-1' });
+    for (const call of [seen[0], seen[2]]) expect(call?.headers.get('x-api-key')).toBe('shop-secret');
+  });
+
+  it('does not complete an upload the storage refused', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => init?.method === 'PUT'
+      ? new Response(null, { status: 403 })
+      : Response.json({ ok: true, data: answer(init?.method ?? 'GET', new URL(String(input)).pathname) }));
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    expect(await client.stageProductDownload({ fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: 4, body: new Uint8Array(4) }))
+      .toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('sends the copy, list, discard, attach, replace and remove calls to their keyed routes with encoded ids', async () => {
+    const seen: { method: string; path: string; body: unknown; key: string | null }[] = [];
+    const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
+      const url = new URL(String(input));
+      seen.push({ method: init?.method ?? 'GET', path: url.pathname, body: typeof init?.body === 'string' ? JSON.parse(init.body) : null, key: new Headers(init?.headers).get('x-api-key') });
+      return Response.json({ ok: true, data: answer(init?.method ?? 'GET', url.pathname) });
+    });
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    expect((await client.listProductDownloads('product/1')).ok).toBe(true);
+    expect((await client.copyProductDownload({ productId: 'product-1', assetId: 'asset-1' })).ok).toBe(true);
+    expect((await client.listStagedDownloads()).ok).toBe(true);
+    expect((await client.discardStagedDownload('staged/1')).ok).toBe(true);
+    expect((await client.addProductDownload({ productId: 'product-2', stagedFileId: 'staged-1' })).ok).toBe(true);
+    expect((await client.replaceProductDownload({ productId: 'product-2', replacesAssetId: 'asset-1', stagedFileId: 'staged-1', versionNote: 'Second edition' })).ok).toBe(true);
+    expect(await client.removeProductDownload({ productId: 'product-2', assetId: 'asset-1' })).toEqual({ ok: true, value: { outcome: 'applied', deleted: true } });
+    expect(seen.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'GET /api/m2m/shop/products/product%2F1/downloads',
+      `POST ${SHOP_DOWNLOAD_ROUTES.copyStagedDownload.path}`,
+      `GET ${SHOP_DOWNLOAD_ROUTES.listStagedDownloads.path}`,
+      'DELETE /api/m2m/shop/downloads/staged/staged%2F1',
+      `POST ${SHOP_DOWNLOAD_ROUTES.addProductDownload.path}`,
+      `POST ${SHOP_DOWNLOAD_ROUTES.replaceProductDownload.path}`,
+      `POST ${SHOP_DOWNLOAD_ROUTES.removeProductDownload.path}`,
+    ]);
+    expect(seen.map((call) => call.body)).toEqual([
+      null, { productId: 'product-1', assetId: 'asset-1' }, null, null, { productId: 'product-2', stagedFileId: 'staged-1' },
+      { productId: 'product-2', replacesAssetId: 'asset-1', stagedFileId: 'staged-1', versionNote: 'Second edition' }, { productId: 'product-2', assetId: 'asset-1' },
+    ]);
+    expect(seen.every((call) => call.key === 'shop-secret')).toBe(true);
+  });
+
+  it('surfaces a cap refusal with its code', async () => {
+    const refusal = { code: 'conflict', message: 'This key already holds 20 staged or uploading files', details: { changeProposalCap: 'key_staged_files' } };
+    const fetchImpl = vi.fn<typeof fetch>(async () => Response.json({ ok: false, error: refusal }, { status: 409 }));
+    const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', fetchImpl });
+    expect(await client.copyProductDownload({ productId: 'product-1', assetId: 'asset-1' })).toEqual({ ok: false, error: refusal });
   });
 });
 

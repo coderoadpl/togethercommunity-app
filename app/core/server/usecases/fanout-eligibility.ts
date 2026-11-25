@@ -19,7 +19,13 @@ export const fanoutRecipient = (access: NotificationFanoutAccess): NotificationR
 export const fanoutCanAccessSpace = (access: NotificationFanoutAccess, space: Space): boolean =>
   space.visibility === 'members' || access.activeProductIds.some((id) => space.productIds.includes(id));
 
-export const fanoutCanAccessThread = (access: NotificationFanoutAccess, context: ThreadContextInfo): boolean => {
-  if (context.space !== null) return fanoutCanAccessSpace(access, context.space);
-  return context.lessonLocation !== null && isLessonAccessibleByLookup(buildAccessLookup(access.accessItems), context.lessonLocation);
+export interface ThreadReach {
+  courseId: string | null;
+}
+
+export const fanoutThreadReach = (access: NotificationFanoutAccess, context: ThreadContextInfo): ThreadReach | null => {
+  if (context.space !== null) return fanoutCanAccessSpace(access, context.space) ? { courseId: null } : null;
+  const lookup = buildAccessLookup(access.accessItems);
+  const opened = context.lessonLocations.find((location) => isLessonAccessibleByLookup(lookup, location));
+  return opened === undefined ? null : { courseId: opened.courseId };
 };

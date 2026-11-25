@@ -13,15 +13,17 @@ import {
   changeProposalKeyReceiptSchema,
   changeProposalKeyState,
   changeProposalOperationSchema,
+  changeProposalOwnerDetailSchema,
   changeProposalSchema,
   changeProposalStatusSchema,
   changeProposalSubmitCapability,
   changeProposalTargetKind,
-  knownChangeProposalOperation,
+  registeredChangeProposalOperation,
   toChangeProposalKeyReceipt,
   toChangeProposalOwnerDetail,
   type ChangeProposal,
 } from './change-proposal.js';
+import { accessItemIds, changeProposalAccessChange } from './change-proposal-inputs.js';
 
 const CREATED = '2026-01-01T00:00:00.000Z';
 const NOW = '2026-01-02T00:00:00.000Z';
@@ -51,7 +53,7 @@ const proposal = (overrides: Partial<ChangeProposal> = {}): ChangeProposal => ch
 });
 
 describe('change proposal operations', () => {
-  it('lists the catalogue, sales-link and settings operations', () => {
+  it('lists the catalogue, sales-link, settings and product access operations', () => {
     expect(changeProposalOperationSchema.options).toEqual([
       'product.create',
       'product.update',
@@ -67,6 +69,7 @@ describe('change proposal operations', () => {
       'sales-link.update',
       'sales-link.delete',
       'settings.update',
+      'product.set-access',
     ]);
   });
 
@@ -84,6 +87,7 @@ describe('change proposal operations', () => {
     expect(changeProposalTargetKind('stock.adjust')).toBe('product');
     expect(changeProposalTargetKind('sales-link.delete')).toBe('sales-link');
     expect(changeProposalTargetKind('settings.update')).toBe('settings');
+    expect(changeProposalTargetKind('product.set-access')).toBe('product');
   });
 
   it('rejects an operation outside the release', () => {
@@ -163,8 +167,9 @@ describe('change proposal shape', () => {
   it('reads a stored operation this release does not know, of the stored shape, and refuses any other text', () => {
     const later = changeProposalSchema.parse({ ...proposal(), operation: 'image.attach-cover', target: { kind: 'product', id: 'product-1' } });
     expect(later.operation).toBe('image.attach-cover');
-    expect(knownChangeProposalOperation(later.operation)).toBeNull();
-    expect(knownChangeProposalOperation('product.update')).toBe('product.update');
+    expect(registeredChangeProposalOperation(later.operation)).toBeNull();
+    expect(registeredChangeProposalOperation('product.update')).toBe('product.update');
+    expect(registeredChangeProposalOperation('download.remove')).toBe('download.remove');
     expect(changeProposalKeyReceiptSchema.safeParse(toChangeProposalKeyReceipt(later, NOW)).success).toBe(true);
     for (const operation of ['Image.attach', 'image', 'image.attach.cover', 'image.attach-', '-image.attach', `image.${'a'.repeat(60)}`]) {
       expect(changeProposalSchema.safeParse({ ...proposal(), operation }).success, operation).toBe(false);
@@ -219,7 +224,37 @@ describe('change proposal views', () => {
     decidedBy: { email: 'owner@example.test', formerTeamMember: false },
     targetLabel: 'Live title',
     targetPrice: { kind: 'recurring' as const, interval: 'month' as const, intervalCount: 1, amountCents: 1900, currency: 'EUR' },
+    proposedFiles: [],
+    accessLabels: null,
   };
+
+  it('adds the proposed files only to a view of a proposal that attaches one, so other views keep their shape', () => {
+    expect(toChangeProposalOwnerDetail(proposal(), facts, [], NOW)).not.toHaveProperty('proposedFiles');
+    const file = { id: 'staged-1', available: true, copiedFrom: { productId: 'guide', productTitle: 'Field Guide', versionNumber: 2 } };
+    const withFile = toChangeProposalOwnerDetail(proposal(), { ...facts, proposedFiles: [file] }, [], NOW);
+    expect(withFile.proposedFiles).toEqual([file]);
+    expect(changeProposalOwnerDetailSchema.safeParse(withFile).success).toBe(true);
+  });
+
+  it('adds the access labels only to a view that carries them, so other views keep their shape', () => {
+    expect(toChangeProposalOwnerDetail(proposal(), facts, [], NOW)).not.toHaveProperty('accessLabels');
+    const accessLabels = { courses: [{ id: 'course-1', title: 'Intro course' }], modules: [], lessons: [{ id: 'lesson-1', title: null }] };
+    const labelled = toChangeProposalOwnerDetail(proposal(), { ...facts, accessLabels }, [], NOW);
+    expect(labelled.accessLabels).toEqual(accessLabels);
+    expect(changeProposalOwnerDetailSchema.safeParse(labelled).success).toBe(true);
+  });
+
+  it('reads what a product grants before and after only from a product access proposal', () => {
+    const after = [{ level: 'lessons', courseId: 'course-1', lessonIds: ['lesson-1'] }];
+    expect(changeProposalAccessChange({ operation: 'product.set-access', effect: { accessItems: { before: [], after } } })).toEqual({ before: [], after });
+    expect(changeProposalAccessChange({ operation: 'product.update', effect: { accessItems: { before: [], after } } })).toBeNull();
+    expect(changeProposalAccessChange({ operation: 'product.set-access', effect: { accessItems: { before: [], after: [{ level: 'chapter' }] } } })).toBeNull();
+    expect(accessItemIds([
+      { level: 'course', courseId: 'course-1', excludedModuleIds: ['module-2'] },
+      { level: 'modules', courseId: 'course-1', moduleIds: ['module-1'] },
+      { level: 'lessons', courseId: 'course-2', lessonIds: ['lesson-1'] },
+    ])).toEqual({ courseIds: ['course-1', 'course-2'], moduleIds: ['module-2', 'module-1'], lessonIds: ['lesson-1'] });
+  });
 
   it('gives the owner the full effect, the key and issuer state, the live label and the ordered events', () => {
     const detail = toChangeProposalOwnerDetail(proposal(), facts, [

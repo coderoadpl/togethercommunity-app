@@ -26,10 +26,12 @@ import {
 
 import type { Ctx } from '../context.js';
 import type { ChangeProposalRepository, ChangeProposalTransactionScope, StorageProvider } from '../ports.js';
+import { noProposedFiles } from '../testing/key-download-fakes.js';
 import {
   createChangeProposalStoreFake,
   changeProposalOwnerViewFakes,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
   type FakeChangeProposalPeople,
   emptyCatalogState,
@@ -50,7 +52,7 @@ import {
   submitChangeProposal,
   withdrawOwnChangeProposal,
   type ChangeProposalDecisionDeps,
-  type ChangeProposalKeyDeps,
+  type ChangeProposalWithdrawDeps,
   type ChangeProposalOwnerReadDeps,
   type ChangeProposalSubmitDeps,
   type ChangeProposalSummaryDeps,
@@ -175,7 +177,7 @@ const storageSpy = () => {
   const storage: StorageProvider = {
     objectUrl: (_configuration, key) => new URL(`https://storage.example.test/${key}`),
     delete: record('delete'), list: record('list'), getObject: record('getObject'), putObject: record('putObject'),
-    probe: record('probe'), probeCors: record('probeCors'), presignPut: record('presignPut'), presignGet: record('presignGet'),
+    probe: record('probe'), copyObject: record('copyObject'), digestObject: record('digestObject'), probeCors: record('probeCors'), presignPut: record('presignPut'), presignGet: record('presignGet'),
     head: record('head'), healthcheck: record('healthcheck'), test: record('test'),
   };
   return { storage, calls };
@@ -191,7 +193,7 @@ interface Harness {
   transaction: FakeChangeProposalTransaction;
   storageCalls: string[];
   submitDeps: ChangeProposalSubmitDeps;
-  keyDeps: ChangeProposalKeyDeps;
+  keyDeps: ChangeProposalWithdrawDeps;
   ownerDeps: ChangeProposalOwnerReadDeps & ChangeProposalSummaryDeps & { changeProposalPeople: FakeChangeProposalPeople };
   decisionDeps: ChangeProposalDecisionDeps;
   clock: { now: string };
@@ -216,6 +218,10 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
   state.downloadAssets.push(downloadAsset());
   state.salesLinks.push(salesLink());
   state.settings.push({ tenantId: TENANT, settings: shopSettings() });
+  state.courses.push({
+    id: 'course-intro', tenantId: TENANT, name: 'Intro course', description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false,
+    archivedAt: null, legacyId: null, createdAt: '2026-01-01T00:00:00.000Z',
+  });
   const store = createChangeProposalStoreFake(keys);
   const transaction = createChangeProposalTransactionFake(state, store, storageSecrets);
   const { storage, calls } = storageSpy();
@@ -226,6 +232,8 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
   const shopManagementKeys = { listByTenant: async (tenantId: string) => keys.filter((key) => key.tenantId === tenantId) };
   const ownerViews = changeProposalOwnerViewFakes(state, accounts);
   const notifications = createUnreadNotificationsFake(accounts);
+  const logger = { error: vi.fn<(message: string) => void>() };
+  const images = { quarantinedImages: createQuarantinedImagesFake(state, store).repository, secretResolver: storageSecrets, storage, logger, ...noProposedFiles() };
   return {
     notifications,
     state,
@@ -239,14 +247,13 @@ const harness = (keys: ShopManagementKey[] = [shopKey()], accounts: FakeProposal
       shopManagementKeys,
       changeProposalOwnerNotifier: notifications.changeProposalOwnerNotifier,
       realtimeBus: notifications.realtimeBus,
-      storage,
-      logger: { error: vi.fn<(message: string) => void>() },
+      ...images,
       ids,
       clock: clockPort,
     },
-    keyDeps: { changeProposals: store.repository, ids, clock: clockPort },
+    keyDeps: { changeProposals: store.repository, ...images, ids, clock: clockPort },
     ownerDeps: { changeProposals: store.repository, changeProposalEvents: store.events, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, clock: clockPort },
-    decisionDeps: { changeProposals: store.repository, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, ids, clock: clockPort },
+    decisionDeps: { changeProposals: store.repository, changeProposalGroups: store.groups, shopManagementKeys, ...ownerViews, ...images, ids, clock: clockPort },
   };
 };
 
@@ -278,6 +285,7 @@ const OPERATION_INPUTS: Record<ChangeProposalOperation, unknown> = {
   'sales-link.update': { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['product-live'] },
   'sales-link.delete': { id: 'link-spring' },
   'settings.update': { name: 'Acme shop', supportEmail: 'help@acme.example.test' },
+  'product.set-access': { id: 'product-draft', accessItems: [{ level: 'course', courseId: 'course-intro' }] },
 };
 
 describe('submitChangeProposal dry run', () => {
@@ -960,7 +968,10 @@ describe('the owner notification of a submitted proposal', () => {
       { recipientUserId: OWNER, kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
       { recipientUserId: 'user-second-owner', kind: 'change-proposal', sourceKey: `change-proposal:${KEY_ID}`, readAt: null, tenantId: TENANT },
     ]);
-    expect(h.notifications.rows[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null });
+    expect(h.notifications.rows[0]?.payload).toMatchObject({
+      contextKind: 'tenant', contextId: null, authorDisplay: 'Catalogue agent', snippet: '', domain: null,
+      changeProposal: { keyName: 'Catalogue agent', groupId: null, groupTitle: null },
+    });
     const rowIds = h.notifications.rows.map((row) => row.id);
     expect(h.notifications.published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : event.kind)).toEqual([
       [OWNER, rowIds[0], 'change-proposal'],

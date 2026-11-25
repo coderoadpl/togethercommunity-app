@@ -38,7 +38,7 @@ import { createInpostPointsDirectory } from '#adapters/shipx/points.js';
 import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
-import { releaseExpiredStockReservations, withPickupPointLookupBudget, type StockRepository } from '#core/server/index.js';
+import { releaseExpiredStockReservations, sweepKeyDownloadFiles, sweepQuarantinedImages, withPickupPointLookupBudget, type StagingSweepOutcome, type StockRepository } from '#core/server/index.js';
 import { createSalesLinkRepository } from '#adapters/db/sales-links.js';
 import type { SalesLinkDeps, SalesLinkRepository, CheckoutSnapshotRepository } from '#core/server/index.js';
 import { createSurveyRepository } from '#adapters/db/surveys.js';
@@ -65,6 +65,8 @@ import {
   createChangeProposalTargetLabelReader,
 } from '#adapters/db/change-proposals.js';
 import { createChangeProposalGroupRepository } from '#adapters/db/change-proposal-groups.js';
+import { createQuarantinedImageRepository } from '#adapters/db/change-proposal-images.js';
+import { createKeyDownloadAttachRepository, createKeyDownloadFileRepository } from '#adapters/db/key-download-files.js';
 import { createChangeProposalTransaction } from '#adapters/db/change-proposal-transaction.js';
 import type {
   ChangeProposalEventRepository,
@@ -74,6 +76,9 @@ import type {
   ChangeProposalTransaction,
   ChangeProposalOwnerNotifier,
   ChangeProposalPeopleReader,
+  KeyDownloadAttachRepository,
+  KeyDownloadFileRepository,
+  QuarantinedImageRepository,
 } from '#core/server/index.js';
 import { createMarketingSignupFormRepository, createMarketingSignupTransaction } from '#adapters/db/marketing-signup-forms.js';
 import type { MarketingSignupDeps, MarketingSignupTransaction } from '#core/server/index.js';
@@ -274,6 +279,7 @@ import type {
   SecretCrypto,
   TenantSecretRepository,
   TenantSecretResolver,
+  CourseLessonIdLookup,
   CourseLessonRepository,
   LessonAttachmentRepository,
   ProductDownloadAssetRepository,
@@ -487,6 +493,10 @@ interface ShipxIntegrationDeps {
   wait(milliseconds: number): Promise<void>;
 }
 
+interface SweepTick {
+  deadlineAt?: number;
+}
+
 export interface AppDeps {
   metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
@@ -510,7 +520,7 @@ export interface AppDeps {
   productDrafts: ProductDraftRepository;
   courses: CourseRepository & CourseArchiveRepository;
   modules: CourseModuleRepository;
-  lessons: CourseLessonRepository;
+  lessons: CourseLessonRepository & CourseLessonIdLookup;
   redirects: ImportRedirectRepository;
   attachments: LessonAttachmentRepository;
   downloadAssets: ProductDownloadAssetRepository;
@@ -595,6 +605,9 @@ export interface AppDeps {
   changeProposalOwnerNotifier: ChangeProposalOwnerNotifier;
   changeProposalPeople: ChangeProposalPeopleReader;
   changeProposalTransaction: ChangeProposalTransaction;
+  quarantinedImages: QuarantinedImageRepository;
+  keyDownloadFiles: KeyDownloadFileRepository;
+  keyDownloadAttach: KeyDownloadAttachRepository;
   importContent: ImportContentRepository;
   importUsersReader: ImportUsersReader;
   importUsers: ImportUsersRepository;
@@ -695,6 +708,8 @@ export interface AppDeps {
   checkoutSnapshots?: CheckoutSnapshotRepository;
   stock: StockRepository;
   releaseExpiredStockReservations(): Promise<Result<{ released: number }, AppError>>;
+  sweepQuarantinedImages(tick?: SweepTick): Promise<Result<StagingSweepOutcome, AppError>>;
+  sweepKeyDownloadFiles(tick?: SweepTick): Promise<Result<StagingSweepOutcome, AppError>>;
   marketingSignup?: MarketingSignupDeps;
   marketingDirectoryJobs?: MarketingDirectoryJobs;
   marketingImportCronSecret?: string | undefined;
@@ -974,6 +989,22 @@ export const selectDeploymentIdentity = (
   databaseFingerprint: databaseHostFingerprint(env.DATABASE_URL),
 });
 
+const CHANGE_PROPOSAL_SWEEP_INTERVAL_MS = 50_000;
+
+/** The Node ticker fires every second; each sweep needs at most one run per minute tick. */
+const throttledSweep = (
+  clock: Clock,
+  sweep: (tick: SweepTick) => Promise<Result<StagingSweepOutcome, AppError>>,
+): (tick?: SweepTick) => Promise<Result<StagingSweepOutcome, AppError>> => {
+  let lastRunAt = Number.NEGATIVE_INFINITY;
+  return async (tick = {}) => {
+    const now = Date.parse(clock.nowIso());
+    if (now - lastRunAt < CHANGE_PROPOSAL_SWEEP_INTERVAL_MS) return ok({ tenants: 0, removed: 0, failed: 0 });
+    lastRunAt = now;
+    return sweep(tick);
+  };
+};
+
 /**
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
@@ -986,6 +1017,7 @@ export const createDeps = (
     keepAlive?: (task: Promise<unknown>) => void;
     trackBackgroundWork?: (task: Promise<unknown>) => void;
     changeProposalBounds?: ChangeProposalBoundOptions;
+    storage?: StorageProvider;
   } = {},
 ): AppDeps & { close(): Promise<void> } => {
   const { baseDomain, platformHost, singleTenantMode, tenantCreationMode } = selectTenantRouting(env);
@@ -1428,10 +1460,18 @@ export const createDeps = (
       ? { clientId: env.GOOGLE_CLIENT_ID, clientSecret: env.GOOGLE_CLIENT_SECRET }
       : null;
 
-  const storage = createS3StorageProvider(secretResolver, {
+  const storage = options.storage ?? createS3StorageProvider(secretResolver, {
     corsOrigin: env.APP_BASE_URL,
     allowPrivateEndpoints: env.STORAGE_ALLOW_PRIVATE_ENDPOINTS,
   });
+  const quarantinedImages = createQuarantinedImageRepository(db, options.changeProposalBounds);
+  const keyDownloadFiles = createKeyDownloadFileRepository(db, options.changeProposalBounds);
+  const changeProposalTransaction = createChangeProposalTransaction(
+    db,
+    logger,
+    (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
+    options.changeProposalBounds,
+  );
   const tenantDomainDeps = {
     tenantDomains,
     domainEvents: tenantDomainEvents,
@@ -1673,12 +1713,10 @@ export const createDeps = (
     changeProposalTargetLabels: createChangeProposalTargetLabelReader(db),
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, options.changeProposalBounds),
     changeProposalPeople: createChangeProposalPeopleReader(db),
-    changeProposalTransaction: createChangeProposalTransaction(
-      db,
-      logger,
-      (connection) => createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto),
-      options.changeProposalBounds,
-    ),
+    changeProposalTransaction,
+    quarantinedImages,
+    keyDownloadFiles,
+    keyDownloadAttach: createKeyDownloadAttachRepository(db),
     importContent: createImportContentRepository(db),
     importUsersReader,
     importUsers,
@@ -1795,6 +1833,9 @@ export const createDeps = (
     checkoutSnapshots: createCheckoutSnapshotRepository(db),
     stock,
     releaseExpiredStockReservations: () => releaseExpiredStockReservations({ stock, clock, logger }),
+    sweepQuarantinedImages: throttledSweep(clock, (tick) =>
+      sweepQuarantinedImages({ quarantinedImages, changeProposalTransaction, storage, secretResolver, logger, clock, ...tick })),
+    sweepKeyDownloadFiles: throttledSweep(clock, (tick) => sweepKeyDownloadFiles({ keyDownloadFiles, storage, secretResolver, logger, clock, ...tick })),
     marketingSignup: { forms: createMarketingSignupFormRepository(db, directoryDeps), transaction: createMarketingSignupTransaction(db, directoryDeps), clock, ids, tokens, hmac: emailHmac, dispatchEmail },
     marketingDirectoryJobs: createMarketingDirectoryJobs(db),
     marketingImportCronSecret: env.CRON_SECRET,

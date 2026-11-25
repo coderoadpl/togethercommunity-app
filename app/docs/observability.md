@@ -589,13 +589,21 @@ account email belongs to another identity` before it writes anything. When the
 with `the purchase account id belongs to another identity` and changes nothing.
 The reseed never adopts an identity someone else registered.
 
+The purchase account accepts only a password sign-in with the current
+password. The auth layer creates no session for `user-acme-purchase` on any
+other path (magic link, e-mail verification, passkey, Google or One Tap,
+password reset), issues it no password-reset token and links no provider login
+to it. A password sign-in re-checks the submitted password against the stored
+hash under a lock on the user row before its session stands, so a sign-in that
+verified a password rotated in the meantime ends without a session.
+
 Every reseed, and so every production deploy, runs in this order:
 
 1. **Revocation**, committed in a transaction of its own: it deletes the
    purchase account's sessions, passkeys, two-factor enrolments, provider
-   sign-ins, password login and pending password-reset tokens, turns two-factor
-   off and removes its `admin` row in `tenant-acme`. No other user's rows are
-   touched.
+   sign-ins, password login, pending password-reset tokens and pending magic
+   links for its e-mail, turns two-factor off and removes its `admin` row in
+   `tenant-acme`. No other user's rows are touched.
 2. **Guard**: the reseed guard described above.
 3. **Wipe and re-seed**: it deletes the account's sessions once more, then
    writes the password login with the current `SMOKE_PURCHASE_PASSWORD` and the
@@ -606,7 +614,25 @@ working password, but leaves the workspace content and the account's member
 row in place until a reseed succeeds. With `SMOKE_PURCHASE_PASSWORD` unset the
 account gets no grant and no working password; its `user` row stays. Rotating
 `SMOKE_PURCHASE_PASSWORD` in the deployment and in CI and deploying therefore
-takes every access back.
+takes every access back, but only through a reseed that starts. When the
+reseed route is unavailable (for example because another smoke password is
+misconfigured, logged as `Smoke tenant reseed is unavailable because …`),
+nothing is revoked, and prod-smoke reports the failing `reseed` check.
+
+Each phase takes the reseed lock on its own, so two overlapping reseed calls
+are not serialised as a pair: the later run's configuration wins only for the
+account rows it writes. Run reseeds one at a time; prod-smoke's `prod-smoke`
+concurrency group does.
+
+A purchase run as this account writes no setting, key or slot itself. The
+provider's verified test webhooks update the `stripe.testLastEventAt`
+timestamp row of `tenant-acme`. A staff refund wakes the shared refund
+dispatcher, which may also process other workspaces' already approved refund
+jobs earlier than the next minute tick; it creates none. A check that the live
+slot is empty reads the workspace's own secrets only, while a workspace inside
+an organization can inherit an organization payment key, so `tenant-acme` must
+stay outside any organization. It is today, and a successful reseed re-creates
+it without one.
 
 Staging and production must use separate Stripe sandboxes for
 `SMOKE_PURCHASE_STRIPE_TEST_KEY`: replacing an earlier test endpoint matches

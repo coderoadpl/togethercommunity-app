@@ -6,6 +6,7 @@ import {
   FormControlLabel,
   FormHelperText,
   FormLabel,
+  InputAdornment,
   OutlinedInput,
   Radio,
   RadioGroup,
@@ -13,7 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
+import { normalizeLockerPhone, pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
 
 import { CheckIcon, ChevronDownIcon, CircleAlertIcon, MapPinIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
@@ -50,6 +51,9 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
 }) => {
   const t = useTranslations();
   const lockerId = useId();
+  const phoneId = useId();
+  const [phoneTouched, setPhoneTouched] = useState(false);
+  const phoneInvalid = state.lockerPhoneValidationFailed || (phoneTouched && normalizeLockerPhone(state.lockerPhone) === null);
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
   const [codeBlurred, setCodeBlurred] = useState(false);
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
@@ -154,6 +158,26 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
       <Box id="checkout-pickup-point-check" role="status" aria-live="polite" data-testid="checkout-pickup-point-check" sx={{ minWidth: 0, mt: checkLine === null ? 0 : '3px' }}>{checkLine}</Box>
     </FormControl>
   );
+  const phoneField = (
+    <FormControl fullWidth error={phoneInvalid} sx={{ mt: '0.75rem' }}>
+      <FormLabel htmlFor={phoneId}>{t.shipping.lockerPhoneLabel}</FormLabel>
+      <OutlinedInput
+        id={phoneId}
+        type="tel"
+        autoComplete="tel-national"
+        value={state.lockerPhone}
+        disabled={disabled}
+        required
+        startAdornment={<InputAdornment position="start">+48</InputAdornment>}
+        inputProps={{ maxLength: 40, inputMode: 'tel', 'aria-describedby': `${phoneId}-hint` + (phoneInvalid ? ` ${phoneId}-error` : ''), 'data-testid': 'checkout-locker-phone' }}
+        onChange={(event) => dispatch({ type: 'lockerPhoneChanged', phone: event.target.value })}
+        onInput={() => setPhoneTouched(true)}
+        onBlur={() => setPhoneTouched(true)}
+      />
+      <FormHelperText id={`${phoneId}-hint`} error={false} sx={{ mx: 0 }}>{t.shipping.lockerPhoneHint}</FormHelperText>
+      {phoneInvalid ? <FormHelperText id={`${phoneId}-error`} role="alert" sx={{ mx: 0 }}>{t.shipping.lockerPhoneInvalid}</FormHelperText> : null}
+    </FormControl>
+  );
   const lockerChoice = picked === null ? (
     <Button ref={opener} variant="contained" size="large" fullWidth disabled={disabled} onClick={openPicker} startIcon={<MapPinIcon />} data-testid="checkout-locker-choose" sx={{ minHeight: '2.75rem' }}>
       {t.shipping.lockerChoose}
@@ -203,6 +227,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
           {codeField}
         </Stack>
       )}
+      {phoneField}
     </Box>
   ) : null;
   const lockerDialog = geowidget.status === 'map' ? (

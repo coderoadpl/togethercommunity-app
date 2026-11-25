@@ -960,6 +960,9 @@ export interface Messages {
     deliveryHeading: string;
     deliveryOptionsLabel: string;
     deliveryEstimate: (params: { min: number; max: number }) => string;
+    lockerPhoneLabel: string;
+    lockerPhoneHint: string;
+    lockerPhoneInvalid: string;
     lockerCodeLabel: string;
     lockerCodeHint: string;
     lockerChoose: string;
@@ -3407,6 +3410,7 @@ export interface Messages {
     emailHint: string;
     couponEmailHint: string;
     payBlockedDelivery: string;
+    payBlockedLockerPhone: string;
     payBlockedLocker: string;
     payBlockedLockerRejected: string;
     payBlockedPersonalizationText: string;

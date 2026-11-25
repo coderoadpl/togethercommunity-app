@@ -22,6 +22,7 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingNotFound;
     case 'tenant_not_found':
       return t.errors.headingTenantNotFound;
+    case 'locker_phone_invalid':
     case 'validation':
       return t.errors.headingValidation;
     case 'organization_managed':

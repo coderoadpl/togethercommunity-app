@@ -67,7 +67,7 @@ export const checkoutRefusal = (message: string, t: Translations): string | null
 };
 
 export const lockerRefusalError = (error: unknown): boolean =>
-  error instanceof ApiError && pickupPointRejectionReason(error.appError.details) !== null;
+  error instanceof ApiError && (error.appError.code === 'locker_phone_invalid' || pickupPointRejectionReason(error.appError.details) !== null);
 
 export const checkoutSessionError = (error: unknown, t: Translations): string =>
   (error instanceof ApiError ? checkoutRefusal(error.appError.message, t) : null) ?? localizeError(error, t);

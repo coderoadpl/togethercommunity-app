@@ -338,7 +338,7 @@ export const startCheckoutSession = async (
     ...(shipping === undefined ? {} : {
       shipping: {
         allowedCountries: shipping.allowedCountries,
-        phone: true,
+        phone: shipping.pickupPoint === null,
         option: {
           label: shipping.label,
           amountCents: shipping.amountCents,

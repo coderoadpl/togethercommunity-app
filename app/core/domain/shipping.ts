@@ -5,6 +5,25 @@ import type { ProductPersonalization } from './personalization.js';
 import type { ProductCompliance } from './product-compliance.js';
 import { err, ok, type Result } from './result.js';
 
+const SHIPX_PHONE_PATTERN = /^\d{9}$/;
+
+export const normalizeShipxPhone = (raw: string): string | null => {
+  const value = raw.trim();
+  if (!/^\+?[\d\s-]+$/.test(value)) return null;
+  const digits = value.replace(/\D/g, '');
+  if (value.startsWith('+') && !(digits.startsWith('48') && digits.length === 11)) return null;
+  if (digits.startsWith('00') && !(digits.startsWith('0048') && digits.length === 13)) return null;
+  const local = digits.length === 11 && digits.startsWith('48')
+    ? digits.slice(2)
+    : digits.length === 13 && digits.startsWith('0048') ? digits.slice(4) : digits;
+  return SHIPX_PHONE_PATTERN.test(local) ? local : null;
+};
+
+export const normalizeLockerPhone = (raw: string): string | null => {
+  const national = normalizeShipxPhone(raw);
+  return national === null ? null : `+48${national}`;
+};
+
 export const SHIPPING_ALLOWED_COUNTRIES = ['PL'] as const;
 
 export const SHIPPING_RATES_MAX = 5;
@@ -125,6 +144,7 @@ const checkoutPickupPointSchema = z.object({
 export const checkoutShippingInputSchema = z.object({
   rateId: z.string().trim().min(1).max(40),
   pickupPoint: checkoutPickupPointSchema.optional(),
+  phone: z.string().trim().max(40).optional(),
 });
 
 export type CheckoutShippingInput = z.input<typeof checkoutShippingInputSchema>;
@@ -149,6 +169,7 @@ const shippingSelectionFields = {
 export const checkoutShippingSnapshotSchema = z.object({
   ...shippingSelectionFields,
   allowedCountries: z.array(z.string().length(2)).min(1),
+  phone: z.string().refine((phone) => normalizeLockerPhone(phone) === phone, 'Phone must be a canonical Polish number').optional(),
 });
 
 export type CheckoutShippingSnapshot = z.infer<typeof checkoutShippingSnapshotSchema>;
@@ -215,7 +236,12 @@ export const resolveCheckoutShipping = (
   if (rate.pickupPoint !== 'none' && input.pickupPoint === undefined) {
     return err(validation('Choose a parcel locker for the selected delivery option'));
   }
+  const phone = rate.pickupPoint === 'inpost_locker' ? normalizeLockerPhone(input.phone ?? '') : null;
+  if (rate.pickupPoint === 'inpost_locker' && phone === null) {
+    return err(appError('locker_phone_invalid', 'Parcel lockers need a Polish mobile number (9 digits, optional +48)'));
+  }
   return ok({
+    ...(phone === null ? {} : { phone }),
     rateId: rate.id,
     label: rate.label,
     amountCents: rate.amountCents,
@@ -386,6 +412,6 @@ export const orderShippingFrom = (
       city: truncate(collected.address.city ?? '', SHIPPING_FIELD_MAX_LENGTH.city),
       country,
     },
-    phone: collected.phone === null ? null : truncate(collected.phone, SHIPPING_FIELD_MAX_LENGTH.phone),
+    phone: snapshot.phone ?? (collected.phone === null ? null : truncate(collected.phone, SHIPPING_FIELD_MAX_LENGTH.phone)),
   });
 };

@@ -6,6 +6,8 @@ import type { ProductCompliance } from './product-compliance.js';
 import {
   applyPickupPointLookup,
   checkoutShippingInputSchema,
+  checkoutShippingSnapshotSchema,
+  normalizeLockerPhone,
   deliveryMethodAllowed,
   hasActiveParcelLockerRate,
   inpostPointRejection,
@@ -123,6 +125,35 @@ describe('checkout shipping resolution', () => {
     } });
   });
 
+  it.each(['500000000', '+48500000000', '0048500000000', '48500000000', '+48 500 000 000', '500-000-000'])('accepts and canonicalizes the locker phone %s', (phone) => {
+    expect(normalizeLockerPhone(phone)).toBe('+48500000000');
+    const input = checkoutShippingInputSchema.parse({ rateId: 'locker', phone, pickupPoint: { provider: 'inpost', code: 'ABC01M' } });
+    const result = resolveCheckoutShipping([{ deliveryMethod: 'shipping' }], rates, input);
+    expect(result).toMatchObject({ ok: true, value: { phone: '+48500000000' } });
+    if (!result.ok || result.value === null) throw new Error('Expected locker shipping');
+    expect(checkoutShippingSnapshotSchema.parse(result.value).phone).toBe('+48500000000');
+    expect(checkoutShippingSnapshotSchema.omit({ phone: true }).parse(result.value)).not.toHaveProperty('phone');
+  });
+
+  it.each([undefined, '', '+44 7700 900000', '50000000', '5000000000', '+44 7700900', 'abc500000000'])('refuses the invalid locker phone %s', (phone) => {
+    expect(resolveCheckoutShipping([{ deliveryMethod: 'shipping' }], rates, { rateId: 'locker', phone, pickupPoint: { provider: 'inpost', code: 'ABC01M' } }))
+      .toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
+  });
+
+  it('ignores a foreign phone for courier delivery', () => {
+    const result = resolveCheckoutShipping([{ deliveryMethod: 'shipping' }], rates, { rateId: 'courier', phone: '+44 7700 900000' });
+    expect(result).toMatchObject({ ok: true, value: { rateId: 'courier' } });
+    if (!result.ok) throw new Error('Expected courier shipping');
+    expect(result.value).not.toHaveProperty('phone');
+  });
+
+  it('bounds phone input and requires canonical snapshot storage', () => {
+    expect(checkoutShippingInputSchema.parse({ rateId: 'locker', phone: ' 500000000 ' }).phone).toBe('500000000');
+    expect(checkoutShippingInputSchema.safeParse({ rateId: 'locker', phone: '5'.repeat(41) }).success).toBe(false);
+    expect(checkoutShippingSnapshotSchema.shape.phone.safeParse('500000000').success).toBe(false);
+    expect(checkoutShippingSnapshotSchema.shape.phone.safeParse(undefined).success).toBe(true);
+  });
+
   it('reports a missing delivery selection with its own error code', () => {
     expect(resolveCheckoutShipping([{ deliveryMethod: 'shipping' }], rates, undefined)).toMatchObject({ ok: false, error: { code: 'shipping_required' } });
   });
@@ -143,7 +174,7 @@ describe('checkout shipping resolution', () => {
 
   it('drops an unstorable map name or address the buyer sends and keeps the locker code', () => {
     const parsed = checkoutShippingInputSchema.parse({
-      rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m', name: `Kiosk${nul}`, address: `Main Street ${loneHigh}` },
+      rateId: 'locker', phone: '500000000', pickupPoint: { provider: 'inpost', code: 'waw01m', name: `Kiosk${nul}`, address: `Main Street ${loneHigh}` },
     });
     expect(parsed.pickupPoint).toMatchObject({ provider: 'inpost', code: 'WAW01M' });
     expect(parsed.pickupPoint?.name).toBeUndefined();
@@ -159,6 +190,12 @@ describe('checkout shipping resolution', () => {
 describe('order shipping from collected details', () => {
   const snapshot = { rateId: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 23 as const, carrier: 'other' as const, pickupPoint: null, allowedCountries: ['PL'] };
   const collected = { name: 'Jane Buyer', phone: null, address: { line1: 'Garden Street 5', line2: '', postalCode: '00-950', city: 'Warsaw', country: 'pl', state: null } };
+
+  it('prefers the validated snapshot phone and retains the collected courier phone otherwise', () => {
+    const details = { ...collected, phone: '+44 7700 900000' };
+    expect(orderShippingFrom({ ...snapshot, phone: '+48500000000' }, details)).toMatchObject({ ok: true, value: { phone: '+48500000000' } });
+    expect(orderShippingFrom(snapshot, details)).toMatchObject({ ok: true, value: { phone: '+44 7700 900000' } });
+  });
 
   it('combines the frozen rate with the collected address', () => {
     expect(orderShippingFrom(snapshot, collected)).toEqual({ ok: true, value: {

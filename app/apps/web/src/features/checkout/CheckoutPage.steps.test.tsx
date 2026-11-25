@@ -461,6 +461,9 @@ describe('checkout step one', () => {
     expect(locker.closest('.MuiPaper-root')?.nextElementSibling?.contains(code)).toBe(true);
     expect(following(code, screen.getByRole('radio', { name: new RegExp(`^Courier — ${pln(1999).replace('.', '\\.')}`, 'u') }))).toBe(true);
     await userEvent.type(code, 'waw01m');
+    expect(pay).toBeDisabled();
+    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerPhone);
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(pay).toBeEnabled();
     expect(screen.getByTestId('checkout-pay-reason')).toBeEmptyDOMElement();
     expect(pay).toHaveTextContent(exact(en.checkout.goToPayment({ price: pln(6399) })));

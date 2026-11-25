@@ -339,6 +339,9 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     ...(appliedCoupon === undefined ? {} : { couponCode }),
   });
   const refuseLocker = (code: string) => (error: unknown) => {
+    if (error instanceof ApiError && error.appError.code === 'locker_phone_invalid') {
+      dispatchCheckout({ type: 'lockerPhoneValidationFailed', phone: checkoutState.lockerPhone });
+    }
     const refusal = error instanceof ApiError ? lockerRefusal(code, error.appError.details) : null;
     if (refusal !== null) dispatchCheckout({ type: 'lockerCheckChanged', check: refusal });
   };
@@ -623,7 +626,8 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
     personalization.blocked || couponResolving || testModeFreeOrder || paymentUnavailable;
   const payBlockedReason = soldOut || pending ? null
     : delivery.status === 'incomplete' ? delivery.missing === 'rate' ? t.checkout.payBlockedDelivery
-      : delivery.missing === 'pickup_point_rejected' ? t.checkout.payBlockedLockerRejected : t.checkout.payBlockedLocker
+      : delivery.missing === 'locker_phone' ? t.checkout.payBlockedLockerPhone
+        : delivery.missing === 'pickup_point_rejected' ? t.checkout.payBlockedLockerRejected : t.checkout.payBlockedLocker
       : personalization.reason === 'text' ? t.checkout.payBlockedPersonalizationText
         : personalization.reason === 'condition' ? t.checkout.payBlockedPersonalizationCondition
           : couponResolving ? t.checkout.payBlockedCoupon

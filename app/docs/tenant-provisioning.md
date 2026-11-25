@@ -61,11 +61,16 @@ pnpm --silent run cli --api-url https://platform.example \
 | `storageConfigured` | A stored storage configuration exists. |
 | `lastProbeOk` | The latest persisted storage CORS results are nonempty, all successful, and no older than the stored configuration. |
 | `lastProbeAt` | Timestamp of that persisted CORS evidence, or null. |
-| `stripeConfigured` | Both restricted-key and webhook-secret records exist in a Stripe slot. |
+| `stripeConfigured` | Both restricted-key and webhook-secret records exist in a Stripe slot. A slot whose group is taken from an organization counts as not configured. |
 | `mode` | `live` takes precedence when both slots are configured; otherwise `test`, or null. |
-| `webhookEndpointRegistered` | The selected slot has a stored webhook endpoint registration ID. |
+| `webhookEndpointRegistered` | The selected slot has a stored webhook endpoint registration ID; false while its group is taken from an organization. |
 | `legalUrlsSet` | Both terms and privacy URLs are non-null. |
 | `publishedProducts` | Number of published products. |
+
+A slot whose group is taken from an organization is never selected for `mode`,
+because no organization webhook endpoint exists yet; see
+[Workspaces linked to an organization](payments.md#workspaces-linked-to-an-organization).
+The answer has no further field for this.
 
 For live launch, all booleans should be true, `mode` should be `live`, and the
 published product count should be positive. Storage and payment setup are optional

@@ -453,9 +453,10 @@ pnpm --silent run cli org secret delete smtp.password --org holding
 ```
 
 The generic setter accepts the iFirma, KSeF, SES, SMTP, Resend and ShipX keys.
-The Stripe keys and the telemetry connection are stored only through their
-dedicated flows, and webhook secrets, endpoint ids, storage, video and Meta
-conversions credentials stay per workspace, so these are `validation` errors.
+It refuses the Stripe keys and the telemetry connection, and no command or
+route stores an organization's Stripe key yet; webhook secrets, endpoint ids,
+storage, video and Meta conversions credentials stay per workspace. Each
+refusal is a `validation` error.
 Deleting a secret is a `conflict` while a workspace of the organization takes
 that key's group from the organization. Each change is recorded as `secret.set`
 or `secret.deleted` with the key name and its configuration group, never any

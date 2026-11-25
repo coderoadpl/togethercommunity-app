@@ -1,4 +1,6 @@
 import { sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { stripeModeFromKey, type StripeMode } from '#core/domain/index.js';
@@ -10,6 +12,7 @@ import { createTenantSecretResolver } from '../crypto/tenant-secret-resolver.js'
 import { createEffectiveTenantConfigReader } from './organizations.js';
 import { createPaymentSourceReader } from './payment-source.js';
 import { createTenantSecretRepository } from './repositories.js';
+import * as schema from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const databaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -133,6 +136,20 @@ describe('payment source over the database', () => {
         });
       }
     }
+  });
+
+  it('runs no statement on tenant_secrets while answering a workspace without a source row that holds its own payment rows', async () => {
+    const statements: string[] = [];
+    const pool = new pg.Pool({ connectionString: database.url });
+    try {
+      const recordingReader = createPaymentSourceReader(drizzle(pool, { schema, logger: { logQuery: (query) => { statements.push(query); } } }), crypto);
+      expect([await recordingReader.read('acme', 'live'), await recordingReader.read('linked-idle', 'test')]).toEqual([{ source: 'workspace' }, { source: 'workspace' }]);
+    } finally {
+      await pool.end();
+    }
+    expect(statements.length).toBeGreaterThan(0);
+    expect(statements.every((statement) => statement.includes('"tenant_config_sources"'))).toBe(true);
+    expect(statements.filter((statement) => statement.includes('tenant_secrets'))).toEqual([]);
   });
 
   it('reports an unreadable inherited key as present without a mode', async () => {

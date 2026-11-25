@@ -47,7 +47,7 @@ const orders = [
   }),
   listed({
     id: 'order-demo-coupon', createdAt: '2026-11-22T21:31:00.000Z', memberName: 'Robin Park', memberEmail: 'robin.park@example.com', amountCents: 12720, discountCents: 3180,
-    productTitle: 'Starter bundle', couponCode: 'AUTUMN20-PARTNER-WORKSHOP-EARLYBIRD-2026', couponId: 'coupon-demo',
+    productTitle: 'Starter bundle', couponCode: 'AUTUMN20', couponId: 'coupon-demo',
     lines: [bundle[0], bundle[1], bundle[2]],
   }),
   listed({

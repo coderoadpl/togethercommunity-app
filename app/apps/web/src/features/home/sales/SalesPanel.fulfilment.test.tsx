@@ -88,6 +88,7 @@ describe('sales fulfilment', () => {
     expect(chips.map((chip) => chip.textContent)).toEqual([en.shipping.fulfilmentStatuses.to_pack, en.shipping.fulfilmentStatuses.shipped]);
     expect(screen.getByRole('columnheader', { name: en.shipping.fulfilmentColumn })).toBeInTheDocument();
     expect(screen.queryByTestId('sales-packing-list')).toBeNull();
+    expect(screen.queryByText(en.shipping.packingListFilterHint)).not.toBeInTheDocument();
 
     await chooseFilter(en.shipping.fulfilmentFilter, en.shipping.fulfilmentStatuses.to_pack);
     await waitFor(() => expect(listQueries.at(-1)?.get('fulfilmentStatus')).toBe('to_pack'));
@@ -105,6 +106,7 @@ describe('sales fulfilment', () => {
     await waitFor(() => expect(click).toHaveBeenCalledTimes(2));
     expect(packingQueries.at(-1)?.get('mode')).toBe('test');
     expect(screen.queryByTestId('sales-packing-list-live-only')).toBeNull();
+    expect(screen.getByText(en.shipping.packingListFilterHint)).toBeVisible();
 
     await chooseFilter(en.sales.mode, en.integrations.stripeLiveMode);
     await waitFor(() => expect(listQueries.at(-1)?.get('mode')).toBe('live'));
@@ -112,6 +114,7 @@ describe('sales fulfilment', () => {
     await waitFor(() => expect(click).toHaveBeenCalledTimes(3));
     expect(packingQueries.at(-1)?.get('mode')).toBe('live');
     expect(screen.queryByTestId('sales-packing-list-live-only')).toBeNull();
+    expect(screen.getByText(en.shipping.packingListFilterHint)).toBeVisible();
   });
 });
 

@@ -192,7 +192,7 @@ describe('orders grid', () => {
     expect(screen.queryAllByTestId('sales-billing-caption')).toEqual([]);
   });
 
-  it('hides the invoice data column below the widest screens and shows it as a caption under the invoice state', async () => {
+  it('hides the billing data column below the widest screens and shows it as a caption under the invoice state', async () => {
     const user = userEvent.setup();
     vi.stubGlobal('matchMedia', (query: string) => ({
       matches: query.includes('max-width') && !query.includes('599'), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined,
@@ -261,6 +261,7 @@ describe('orders grid', () => {
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     await userEvent.click(screen.getByTestId('sales-export-json'));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(en.shipping.packingListFilterHint)).toBeVisible();
     await userEvent.click(screen.getByTestId('sales-packing-list'));
     await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(3));
     expect(recorded.exports.map((query) => [...query.entries()].sort())).toEqual([

@@ -1269,6 +1269,7 @@ export const pl: Messages = {
     packingListDownload: 'Pobierz listę do spakowania (CSV)',
     packingListDownloading: 'Przygotowuję listę do spakowania…',
     packingListLiveOnly: 'Tylko zamówienia produkcyjne',
+    packingListFilterHint: 'Lista do spakowania uwzględnia tylko status realizacji i tryb zamówień.',
     markShipped: 'Oznacz jako wysłane',
     shipCarrier: 'Przewoźnik',
     shipTracking: 'Numer przesyłki',

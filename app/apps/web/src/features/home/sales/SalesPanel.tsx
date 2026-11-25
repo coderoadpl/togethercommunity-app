@@ -461,6 +461,7 @@ export const SalesPanel = () => {
                   <Button variant="outlined" disabled={packing} onClick={() => void downloadPackingList(fulfilment)} data-testid="sales-packing-list">
                     {packing ? t.shipping.packingListDownloading : t.shipping.packingListDownload}
                   </Button>
+                  <Typography variant="caption" color="text.secondary">{t.shipping.packingListFilterHint}</Typography>
                   {listFilters.mode === undefined ? (
                     <Typography variant="caption" color="text.secondary" data-testid="sales-packing-list-live-only">{t.shipping.packingListLiveOnly}</Typography>
                   ) : null}

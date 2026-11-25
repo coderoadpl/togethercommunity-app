@@ -1047,6 +1047,7 @@ export interface Messages {
     packingListDownload: string;
     packingListDownloading: string;
     packingListLiveOnly: string;
+    packingListFilterHint: string;
     markShipped: string;
     shipCarrier: string;
     shipTracking: string;

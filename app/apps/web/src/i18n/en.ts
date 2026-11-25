@@ -1223,6 +1223,7 @@ export const en: Messages = {
     packingListDownload: 'Download packing list (CSV)',
     packingListDownloading: 'Preparing packing list…',
     packingListLiveOnly: 'Live orders only',
+    packingListFilterHint: 'The packing list uses only fulfilment status and order mode.',
     markShipped: 'Mark as shipped',
     shipCarrier: 'Carrier',
     shipTracking: 'Tracking number',
@@ -1718,7 +1719,7 @@ export const en: Messages = {
     invoiceAny: 'All',
     invoiceWith: 'With an invoice',
     invoiceWithout: 'Without an invoice',
-    invoiceData: 'Invoice data',
+    invoiceData: 'Billing data',
     billings: { company: 'Company', private: 'Private person', none: 'No data' },
     billingHints: {
       company: 'Billing data with a NIP is recorded for this order.',

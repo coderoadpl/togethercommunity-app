@@ -1118,7 +1118,8 @@ export const createAuthPort = (auth: Auth): AuthPort => ({
     if (!session) return null;
     if (isPasswordOnlyIdentity(session.user.id)) {
       const { internalAdapter } = await auth.$context;
-      const credential = (await internalAdapter.findAccounts(session.user.id)).find((candidate) => candidate.providerId === 'credential');
+      const credential = (await internalAdapter.findAccounts(session.user.id))
+        .find((candidate) => candidate.providerId === 'credential' && typeof candidate.password === 'string' && candidate.password !== '');
       // A session issued before the current password was set must not outlive a rotation that never reached the reseed.
       if (credential === undefined || new Date(session.session.createdAt).getTime() < new Date(credential.updatedAt).getTime()) {
         await internalAdapter.deleteSession(session.session.token);

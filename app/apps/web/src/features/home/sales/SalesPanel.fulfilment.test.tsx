@@ -360,3 +360,37 @@ it('shows a distinct label-ready chip while keeping the order in the to-pack fil
   expect(chips[1]).toHaveClass('MuiChip-colorInfo');
   expect(chips[2]).toHaveClass('MuiChip-colorSuccess');
 });
+
+it('shows a refreshed ready label on the Delivery card and dispatches with its stored number', async () => {
+  const trackingNumber = 'LABEL1234';
+  const shipBodies: unknown[] = [];
+  let current = order('o1', 'to_pack');
+  server.use(
+    http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: current, invoice: null } })),
+    http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({ ok: true, data: {
+      available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium',
+      shipment: {
+        shipxShipmentId: '1001', status: 'confirmed', trackingNumber, environment: 'production', createAttemptedAt: null,
+        boughtAt: '2026-11-08T10:00:00.000Z', labelFetchedAt: null, createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+      },
+    } })),
+    http.post('/api/orders/o1/ship', async ({ request }) => {
+      shipBodies.push(await request.json());
+      current = { ...current, fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber, shippedAt: '2026-11-08T12:00:00.000Z', shippedBy: 'staff-1' } };
+      return HttpResponse.json({ ok: true, data: { order: current } });
+    }),
+  );
+  await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+  expect(await screen.findByTestId('order-label-ready')).toHaveTextContent('Label ready');
+  expect(screen.getByTestId('order-label-ready')).toHaveClass('MuiChip-colorInfo');
+  expect(screen.queryByTestId('order-shipx-create')).toBeNull();
+  expect(screen.queryByText(en.shipping.shippedAt)).toBeNull();
+  expect(screen.queryByText(en.shipping.shippedBy)).toBeNull();
+  expect(screen.getByTestId('order-shipx-label')).toBeVisible();
+  expect(screen.getByTestId('order-shipx-status')).toHaveTextContent('confirmed');
+  expect(screen.getByLabelText(en.shipping.shipTracking)).toHaveValue(trackingNumber);
+  await userEvent.click(screen.getByTestId('order-ship'));
+  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.shipping.shipConfirm }));
+  await waitFor(() => expect(shipBodies).toEqual([{ orderId: 'o1', carrier: 'inpost', trackingNumber }]));
+  expect(await screen.findByTestId('order-shipped')).toHaveClass('MuiChip-colorSuccess');
+});

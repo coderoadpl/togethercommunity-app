@@ -813,6 +813,18 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   steps += 1;
 
+  const oneStepPurchase = expectOk(await cli([
+    '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipx-dispatch@example.org', '--product', shippedProduct.id,
+    '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
+  ], buyerHome), 'one-step InPost purchase', simulatePurchaseOutputSchema);
+  assert(oneStepPurchase.orderId !== null, 'The one-step purchase should return its order id');
+  const oneStepShipment = expectOk(await cli([
+    '--tenant', 'alfa', 'order', 'shipx', 'create', oneStepPurchase.orderId, '--mark-shipped',
+  ], alfaHome), 'one-step InPost dispatch', shipxContracts.shipxCreate.output);
+  assert(oneStepShipment.order.fulfilmentStatus === 'shipped'
+    && oneStepShipment.order.shipment?.trackingNumber === oneStepShipment.shipment.trackingNumber,
+  'The explicit one-step flow should dispatch with the stored tracking number');
+
   const engraving = {
     label: 'Add an engraving',
     description: 'Engraved by hand before shipping.',

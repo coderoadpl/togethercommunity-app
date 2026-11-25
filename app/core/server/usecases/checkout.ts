@@ -16,6 +16,7 @@ import {
   notFound,
   ok,
   productLines,
+  rateNeedsPolishMobile,
   resolveCheckoutBranding,
   stripeKeyModeConflicts,
   validation,
@@ -338,7 +339,7 @@ export const startCheckoutSession = async (
     ...(shipping === undefined ? {} : {
       shipping: {
         allowedCountries: shipping.allowedCountries,
-        phone: shipping.pickupPoint === null,
+        phone: !rateNeedsPolishMobile(shipping),
         option: {
           label: shipping.label,
           amountCents: shipping.amountCents,

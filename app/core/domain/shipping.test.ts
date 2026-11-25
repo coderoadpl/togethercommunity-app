@@ -193,7 +193,9 @@ describe('order shipping from collected details', () => {
 
   it('prefers the validated snapshot phone and retains the collected courier phone otherwise', () => {
     const details = { ...collected, phone: '+44 7700 900000' };
-    expect(orderShippingFrom({ ...snapshot, phone: '+48500000000' }, details)).toMatchObject({ ok: true, value: { phone: '+48500000000' } });
+    const inpostSnapshot = { ...snapshot, carrier: 'inpost' as const, phone: '+48500000000' };
+    expect(orderShippingFrom(inpostSnapshot, collected)).toMatchObject({ ok: true, value: { phone: '+48500000000' } });
+    expect(orderShippingFrom(inpostSnapshot, details)).toMatchObject({ ok: true, value: { phone: '+48500000000' } });
     expect(orderShippingFrom(snapshot, details)).toMatchObject({ ok: true, value: { phone: '+44 7700 900000' } });
   });
 

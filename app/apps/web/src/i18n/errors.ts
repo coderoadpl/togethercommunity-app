@@ -117,7 +117,7 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
     case 'shipping_required':
       return t.errors.messageShippingRequired;
     case 'locker_phone_invalid':
-      return t.shipping.lockerPhoneInvalid;
+      return t.shipping.inpostPhoneInvalid;
     case 'sold_out':
       return t.errors.messageSoldOut;
     case 'delivery_correction_shipped':

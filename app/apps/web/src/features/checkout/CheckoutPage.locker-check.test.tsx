@@ -429,8 +429,7 @@ describe('typed parcel locker code check', () => {
     await userEvent.click(screen.getByRole('radio', { name: /^Courier/u }));
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(h.sessions).toHaveLength(1));
-    expect(h.sessions[0]).toMatchObject({ shipping: { rateId: 'courier' } });
-    expect(h.sessions[0]).not.toHaveProperty('shipping.pickupPoint');
+    expect(h.sessions[0]).toHaveProperty('shipping', { rateId: 'courier', phone: '+48500000000' });
     release();
   });
 

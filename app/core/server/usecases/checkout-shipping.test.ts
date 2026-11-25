@@ -36,6 +36,7 @@ const course: Product = { ...accessory, id: 'course', slug: 'course', title: 'Co
 const rates: ShippingRate[] = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 2 } },
   { id: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 8, carrier: 'other', pickupPoint: 'none', active: true },
+  { id: 'inpost-courier', label: 'InPost courier', amountCents: 1999, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'none', active: true },
   { id: 'retired', label: 'Retired option', amountCents: 999, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: false },
 ];
 
@@ -247,10 +248,33 @@ describe('checkout with shipping', () => {
     expect(h.pickupPoints.lookups).toEqual([]);
   });
 
-  it('keeps Stripe phone collection for courier delivery and ignores a supplied foreign phone', async () => {
+  it.each([undefined, '+44 7700 900000'])('rejects the InPost courier phone %s before writing a snapshot or creating a payment session', async (phone) => {
     const h = harness();
     const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
-      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'courier', phone: '+44 7700 900000' },
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'inpost-courier', phone },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: false, error: {
+      code: 'locker_phone_invalid', message: 'InPost deliveries need a Polish mobile number (9 digits, optional +48)',
+    } });
+    expect(h.calls).toEqual([]);
+    expect(h.snapshots).toEqual([]);
+  });
+
+  it('disables Stripe phone collection and freezes the canonical phone for an InPost courier', async () => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'inpost-courier', phone: '+48 500 000 000' },
+    }, h.deps);
+    expect(result.ok).toBe(true);
+    expect(h.calls[0]?.shipping?.phone).toBe(false);
+    expect(h.snapshots[0]?.shipping).toMatchObject({ rateId: 'inpost-courier', pickupPoint: null, phone: '+48500000000' });
+    expect(h.pickupPoints.lookups).toEqual([]);
+  });
+
+  it.each([undefined, '+44 7700 900000'])('keeps Stripe phone collection and ignores input phone %s for another carrier', async (phone) => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'courier', phone },
     }, h.deps);
     expect(result.ok).toBe(true);
     expect(h.calls[0]?.shipping?.phone).toBe(true);

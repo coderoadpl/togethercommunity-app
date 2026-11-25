@@ -52,7 +52,7 @@ describe('checkout state', () => {
 const withPhone = () => reduceCheckoutState(createCheckoutState(''), { type: 'lockerPhoneChanged', phone: '500000000' });
 
 describe('delivery selection', () => {
-  it('requires a Polish phone for lockers, persists it between rates, and ignores it for couriers', () => {
+  it('requires a Polish phone for lockers, persists it between rates, and ignores it for another carrier', () => {
     const locker = { ...createCheckoutState(''), shippingRateId: 'locker', pickupPointCode: 'ABC01M' };
     expect(selectDelivery(locker, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'locker_phone' });
     const foreign = reduceCheckoutState(locker, { type: 'lockerPhoneChanged', phone: '+44 7700 900000' });

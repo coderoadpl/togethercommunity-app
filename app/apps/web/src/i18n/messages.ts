@@ -963,6 +963,9 @@ export interface Messages {
     lockerPhoneLabel: string;
     lockerPhoneHint: string;
     lockerPhoneInvalid: string;
+    courierPhoneLabel: string;
+    courierPhoneHint: string;
+    inpostPhoneInvalid: string;
     lockerCodeLabel: string;
     lockerCodeHint: string;
     lockerChoose: string;

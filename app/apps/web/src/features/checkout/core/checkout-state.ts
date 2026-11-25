@@ -5,6 +5,7 @@ import {
   pickupPointCodeValid,
   pickupPointDetails,
   pickupPointRejectionReason,
+  rateNeedsPolishMobile,
   type CheckoutShippingInput,
   type ParcelLockerLookup,
   type PublicShippingRate,
@@ -112,26 +113,24 @@ export const selectDelivery = (
   if (!input.required) return { status: 'not_required' };
   const rate = input.rates.find((candidate) => candidate.id === state.shippingRateId);
   if (rate === undefined) return { status: 'incomplete', missing: 'rate' };
-  if (rate.pickupPoint === 'none') return { status: 'ready', shipping: { rateId: rate.id } };
-  if (!pickupPointCodeValid(state.pickupPointCode)) return { status: 'incomplete', missing: 'pickup_point' };
-  const code = normalizePickupPointCode(state.pickupPointCode);
-  const picked = pickedPickupPoint(state);
-  if (lockerRejection(state) !== null) return { status: 'incomplete', missing: 'pickup_point_rejected' };
-  const phone = normalizeLockerPhone(state.lockerPhone);
-  if (phone === null || state.lockerPhoneValidationFailed) return { status: 'incomplete', missing: 'locker_phone' };
-  return {
-    status: 'ready',
-    shipping: {
-      rateId: rate.id,
-      phone,
-      pickupPoint: {
-        provider: 'inpost',
-        code,
-        ...(picked?.name == null ? {} : { name: picked.name }),
-        ...(picked?.address == null ? {} : { address: picked.address }),
-      },
-    },
-  };
+  const shipping: CheckoutShippingInput = { rateId: rate.id };
+  if (rate.pickupPoint !== 'none') {
+    if (!pickupPointCodeValid(state.pickupPointCode)) return { status: 'incomplete', missing: 'pickup_point' };
+    if (lockerRejection(state) !== null) return { status: 'incomplete', missing: 'pickup_point_rejected' };
+    const picked = pickedPickupPoint(state);
+    shipping.pickupPoint = {
+      provider: 'inpost',
+      code: normalizePickupPointCode(state.pickupPointCode),
+      ...(picked?.name == null ? {} : { name: picked.name }),
+      ...(picked?.address == null ? {} : { address: picked.address }),
+    };
+  }
+  if (rateNeedsPolishMobile(rate)) {
+    const phone = normalizeLockerPhone(state.lockerPhone);
+    if (phone === null || state.lockerPhoneValidationFailed) return { status: 'incomplete', missing: 'locker_phone' };
+    shipping.phone = phone;
+  }
+  return { status: 'ready', shipping };
 };
 
 export const deliveryPickupPointCode = (delivery: DeliverySelection): string | null =>

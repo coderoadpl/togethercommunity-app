@@ -29,6 +29,7 @@ const offer = (deliveryMethod: 'pickup' | 'shipping') => ({
 const shippingRates = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', deliveryEstimateDays: { min: 1, max: 2 } },
   { id: 'courier', label: 'Courier', amountCents: 1999, carrier: 'other', pickupPoint: 'none' },
+  { id: 'inpost-courier', label: 'InPost courier', amountCents: 1999, carrier: 'inpost', pickupPoint: 'none' },
 ];
 
 const serve = (input: {
@@ -173,17 +174,46 @@ describe('checkout delivery step', () => {
     expect(bodies[0]).toMatchObject({ productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
   });
 
-  it('hides the locker input for a courier rate and sends only the rate', async () => {
+  it('requires a Polish phone for an InPost courier and shows the courier hint and server refusal', async () => {
+    const bodies: unknown[] = [];
+    serve({ onSession: (body) => bodies.push(body), sessionErrorCode: 'locker_phone_invalid' });
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('radio', { name: /^InPost courier/u }));
+    expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+    const phone = screen.getByLabelText(en.shipping.courierPhoneLabel);
+    const pay = screen.getByTestId('checkout-pay-cta');
+    expect(phone).toHaveAttribute('autocomplete', 'tel-national');
+    expect(phone).toBeRequired();
+    expect(screen.getByText('+48')).toBeVisible();
+    expect(phone).toHaveAccessibleDescription(en.shipping.courierPhoneHint);
+    expect(pay).toBeDisabled();
+    fireEvent.input(phone, { target: { value: '+44 7700 900000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.inpostPhoneInvalid);
+    expect(pay).toBeDisabled();
+    expect(bodies).toEqual([]);
+    fireEvent.change(phone, { target: { value: '+48 500 000 000' } });
+    expect(pay).toBeEnabled();
+    await userEvent.click(pay);
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.shipping.inpostPhoneInvalid);
+    expect(pay).toBeDisabled();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toHaveProperty('shipping', { rateId: 'inpost-courier', phone: '+48500000000' });
+  });
+
+  it('hides the Together phone and locker inputs for another carrier and sends only the rate', async () => {
     const bodies: unknown[] = [];
     serve({ onSession: (body) => bodies.push(body) });
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
     expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.shipping.lockerPhoneLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.shipping.courierPhoneLabel)).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'courier' } });
-    expect(bodies[0]).not.toHaveProperty('shipping.pickupPoint');
+    expect(bodies[0]).toHaveProperty('shipping', { rateId: 'courier' });
   });
 
   it('loads the parcel locker map in the picker on demand and fills the code from the point chosen on the map', async () => {

@@ -14,7 +14,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import { normalizeLockerPhone, pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
+import { normalizeLockerPhone, pickupPointCodeValid, rateNeedsPolishMobile, type PublicShippingRate } from '#core/domain/index.js';
 
 import { CheckIcon, ChevronDownIcon, CircleAlertIcon, MapPinIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
@@ -55,6 +55,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
   const [phoneTouched, setPhoneTouched] = useState(false);
   const phoneInvalid = state.lockerPhoneValidationFailed || (phoneTouched && normalizeLockerPhone(state.lockerPhone) === null);
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
+  const usesLocker = selected?.pickupPoint === 'inpost_locker';
   const [codeBlurred, setCodeBlurred] = useState(false);
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
   const check = typedLockerCheck(state);
@@ -158,9 +159,9 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
       <Box id="checkout-pickup-point-check" role="status" aria-live="polite" data-testid="checkout-pickup-point-check" sx={{ minWidth: 0, mt: checkLine === null ? 0 : '3px' }}>{checkLine}</Box>
     </FormControl>
   );
-  const phoneField = (
+  const phoneField = selected !== null && rateNeedsPolishMobile(selected) ? (
     <FormControl fullWidth error={phoneInvalid} sx={{ mt: '0.75rem' }}>
-      <FormLabel htmlFor={phoneId}>{t.shipping.lockerPhoneLabel}</FormLabel>
+      <FormLabel htmlFor={phoneId}>{usesLocker ? t.shipping.lockerPhoneLabel : t.shipping.courierPhoneLabel}</FormLabel>
       <OutlinedInput
         id={phoneId}
         type="tel"
@@ -174,10 +175,10 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
         onInput={() => setPhoneTouched(true)}
         onBlur={() => setPhoneTouched(true)}
       />
-      <FormHelperText id={`${phoneId}-hint`} error={false} sx={{ mx: 0 }}>{t.shipping.lockerPhoneHint}</FormHelperText>
-      {phoneInvalid ? <FormHelperText id={`${phoneId}-error`} role="alert" sx={{ mx: 0 }}>{t.shipping.lockerPhoneInvalid}</FormHelperText> : null}
+      <FormHelperText id={`${phoneId}-hint`} error={false} sx={{ mx: 0 }}>{usesLocker ? t.shipping.lockerPhoneHint : t.shipping.courierPhoneHint}</FormHelperText>
+      {phoneInvalid ? <FormHelperText id={`${phoneId}-error`} role="alert" sx={{ mx: 0 }}>{usesLocker ? t.shipping.lockerPhoneInvalid : t.shipping.inpostPhoneInvalid}</FormHelperText> : null}
     </FormControl>
-  );
+  ) : null;
   const lockerChoice = picked === null ? (
     <Button ref={opener} variant="contained" size="large" fullWidth disabled={disabled} onClick={openPicker} startIcon={<MapPinIcon />} data-testid="checkout-locker-choose" sx={{ minHeight: '2.75rem' }}>
       {t.shipping.lockerChoose}
@@ -207,7 +208,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
       </Button>
     </CheckoutLockerChosen>
   );
-  const lockerPicker = selected !== null && selected.pickupPoint === 'inpost_locker' ? (
+  const lockerPicker = usesLocker ? (
     <Box sx={layout === 'cards' ? { pt: '0.25rem', pb: entry.kind === 'map' && !codeShown ? 0 : '0.5rem' } : { mt: '0.2rem', mb: '0.5rem' }} data-testid="checkout-locker-picker" {...rowAction('pick')}>
       {entry.kind === 'map' ? (
         <Stack useFlexGap spacing="0.25rem" sx={{ alignItems: 'flex-start' }}>
@@ -301,7 +302,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
                     />
                   </CheckoutPriceOption>
                 )}
-                {rate.id === selected?.id ? lockerPicker : null}
+                {rate.id === selected?.id ? (lockerPicker ?? phoneField) : null}
               </Fragment>
             ))}
           </RadioGroup>

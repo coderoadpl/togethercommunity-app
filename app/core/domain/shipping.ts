@@ -56,6 +56,8 @@ export const shippingCarrierSchema = z.enum(['inpost', 'other']);
 
 export type ShippingCarrier = z.infer<typeof shippingCarrierSchema>;
 
+export const rateNeedsPolishMobile = (rate: { carrier: ShippingCarrier }): boolean => rate.carrier === 'inpost';
+
 const pickupPointKindSchema = z.enum(['none', 'inpost_locker']);
 
 const deliveryEstimateDaysSchema = z
@@ -244,9 +246,10 @@ export const resolveCheckoutShipping = (
   if (rate.pickupPoint !== 'none' && input.pickupPoint === undefined) {
     return err(validation('Choose a parcel locker for the selected delivery option'));
   }
-  const phone = rate.pickupPoint === 'inpost_locker' ? normalizeLockerPhone(input.phone ?? '') : null;
-  if (rate.pickupPoint === 'inpost_locker' && phone === null) {
-    return err(appError('locker_phone_invalid', 'Parcel lockers need a Polish mobile number (9 digits, optional +48)'));
+  const needsPhone = rateNeedsPolishMobile(rate);
+  const phone = needsPhone ? normalizeLockerPhone(input.phone ?? '') : null;
+  if (needsPhone && phone === null) {
+    return err(appError('locker_phone_invalid', 'InPost deliveries need a Polish mobile number (9 digits, optional +48)'));
   }
   return ok({
     ...(phone === null ? {} : { phone }),

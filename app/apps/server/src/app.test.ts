@@ -72,6 +72,7 @@ import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-rout
 import {
   err,
   emailEventSchema,
+  listLayoutSchema,
   orderListItemSchema,
   salesLinkSchema,
   couponSchema,
@@ -558,6 +559,11 @@ const deps = (input: {
       record: async (tenantId, { seenAt, ...rejection }) => ({ tenantId, ...rejection, firstSeenAt: seenAt, lastSeenAt: seenAt, attempts: 1, resolvedAt: null }),
       resolve: async () => undefined,
       listUnresolved: async () => [],
+    },
+    listLayouts: {
+      get: async () => null,
+      put: async () => undefined,
+      delete: async () => undefined,
     },
     purchases: {
       createMemberGrant: async (purchase) => ({
@@ -13381,5 +13387,46 @@ describe('checkout personalisation through the public routes', () => {
     expect(response.status).toBe(200);
     expect(h.orders[0]?.lines?.[0]).toMatchObject({ productId: 'print', personalization: { ...setting, text: 'For Alex', requestedAt: h.base.clock.nowIso(), conditionAcceptedAt: h.base.clock.nowIso() } });
     expect(h.orders[0]?.lines?.[1]).not.toHaveProperty('personalization');
+  });
+});
+
+describe('saved list layout routes', () => {
+  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json' };
+  const path = API_PATHS.getListLayout.replace(':listId', 'orders');
+  const layout = { version: 1, columns: [{ field: 'createdAt', visible: true, width: 180 }], sort: null, filters: { billing: 'requested' } };
+  const storeApp = (scope: 'member' | 'staff') => {
+    const rows = new Map<string, unknown>();
+    const listLayouts: AppDeps['listLayouts'] = {
+      get: async (tenantId, userId, listId) => {
+        const stored = rows.get(`${tenantId}|${userId}|${listId}`);
+        return stored === undefined ? null : listLayoutSchema.parse(stored);
+      },
+      put: async (tenantId, userId, listId, value) => { rows.set(`${tenantId}|${userId}|${listId}`, value); },
+      delete: async (tenantId, userId, listId) => { rows.delete(`${tenantId}|${userId}|${listId}`); },
+    };
+    return { app: scopedApp(scope, { overrides: { listLayouts } }), rows };
+  };
+
+  it('saves, reads and resets the signed-in staff user\'s layout in this workspace', async () => {
+    const { app, rows } = storeApp('staff');
+    expect(await (await app.request(path, { headers })).json()).toEqual({ ok: true, data: { layout: null } });
+    const saved = await app.request(path, { method: 'PUT', headers, body: JSON.stringify({ layout }) });
+    expect(saved.status).toBe(200);
+    expect([...rows.keys()]).toHaveLength(1);
+    expect([...rows.keys()][0]).toMatch(new RegExp(`^${acme.id}\\|[^|]+\\|orders$`));
+    expect(await (await app.request(path, { headers })).json()).toEqual({ ok: true, data: { layout } });
+    expect((await app.request(path, { method: 'DELETE', headers })).status).toBe(200);
+    expect(rows.size).toBe(0);
+  });
+
+  it('refuses a member, an unknown list and a malformed layout', async () => {
+    const member = storeApp('member');
+    expect((await member.app.request(path, { headers })).status).toBe(403);
+    expect((await member.app.request(path, { method: 'PUT', headers, body: JSON.stringify({ layout }) })).status).toBe(403);
+    const staff = storeApp('staff');
+    expect((await staff.app.request(API_PATHS.getListLayout.replace(':listId', 'members'), { headers })).status).toBe(400);
+    expect((await staff.app.request(path, { method: 'PUT', headers, body: JSON.stringify({ layout: { ...layout, version: 2 } }) })).status).toBe(400);
+    expect((await staff.app.request(path, { method: 'PUT', headers: { ...headers, 'content-type': 'text/plain' }, body: JSON.stringify({ layout }) })).status).toBe(400);
+    expect(member.rows.size + staff.rows.size).toBe(0);
   });
 });

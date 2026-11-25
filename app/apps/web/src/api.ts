@@ -5,7 +5,7 @@ import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { correctOrderPersonalizationMutation, orderVerificationQuery, issueOrderLineMutation, ordersInvalidates, orderVerificationInvalidates, packingListQuery, shipOrderMutation } from '#core/client/index.js';
 import { configureShipxMutation, createShipxShipmentMutation, discardShipxAttemptMutation, downloadShipxLabelMutation, refreshedShipxShipmentQuery, shipxSettingsInvalidates, shipxSettingsQuery, shipxShipmentInvalidates, shipxShipmentQuery } from '#core/client/index.js';
 import { salesLinkActions } from '#core/client/index.js';
-import { surveyActions } from '#core/client/index.js';
+import { listLayoutActions, surveyActions } from '#core/client/index.js';
 import { telemetryStoreInvalidates, telemetryStoreQuery, connectTelemetryMutation, probeTelemetryMutation, disconnectTelemetryMutation } from '#core/client/index.js';
 import { context, trace } from '@opentelemetry/api';
 
@@ -385,6 +385,7 @@ export const bindActions = (apiClient: ApiClient, authOverrides: Pick<AuthClient
   metaCapi: metaCapiActions(apiClient),
   salesLinks: salesLinkActions(apiClient),
   surveys: surveyActions(apiClient),
+  listLayouts: listLayoutActions(apiClient),
   directory: marketingDirectoryActions(apiClient),
   health: healthQuery(apiClient),
   me: meQuery(apiClient),

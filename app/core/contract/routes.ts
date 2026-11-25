@@ -14,6 +14,7 @@ import { adjustStockInputSchema, enableStockTrackingInputSchema, stockThresholdI
 import { orderRefundJobViewSchema, orderRefundTotalsSchema, orderStaffRefundViewSchema } from '#core/domain/index.js';
 import { SALES_LINK_ROUTES } from './sales-links.js';
 import { SURVEY_ROUTES } from './surveys.js';
+import { LIST_LAYOUT_ROUTES } from './list-layouts.js';
 import { campaignWithoutStatisticsSchema } from '#core/domain/telemetry-report.js';
 import { telemetryConnectionSchema, telemetryStoreViewSchema } from '#core/domain/telemetry.js';
 import { adoptStripeSubscriptionInputSchema, adoptStripeSubscriptionOutputSchema, listStripeSubscriptionsOutputSchema } from '#core/domain/index.js';
@@ -2056,6 +2057,7 @@ export const API_ROUTES = {
   ...MARKETING_CONTACT_ROUTES,
   ...MARKETING_SIGNUP_ROUTES,
   ...SURVEY_ROUTES,
+  ...LIST_LAYOUT_ROUTES,
   ...SALES_LINK_ROUTES,
   ...ORDER_VERIFICATION_ROUTES,
   ...ORDER_FULFILMENT_ROUTES,
@@ -2435,6 +2437,9 @@ export const API_PATHS = {
   getPublicSurvey: API_ROUTES.getPublicSurvey.path,
   submitSurvey: API_ROUTES.submitSurvey.path,
   previewSurveyEnding: API_ROUTES.previewSurveyEnding.path,
+  getListLayout: API_ROUTES.getListLayout.path,
+  saveListLayout: API_ROUTES.saveListLayout.path,
+  resetListLayout: API_ROUTES.resetListLayout.path,
 
   operatorTenantProvision: API_ROUTES.operatorTenantProvision.path,
   operatorTenantReadiness: API_ROUTES.operatorTenantReadiness.path,

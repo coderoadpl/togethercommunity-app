@@ -1,4 +1,4 @@
-import type { Language } from '#core/domain/index.js';
+import type { Language, ListLayoutId } from '#core/domain/index.js';
 import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
@@ -2347,6 +2347,13 @@ export const surveyActions = (api: ApiClient) => ({
   export: (tenantId: string, input: Parameters<ApiClient['exportSurveyResponses']>[0]) => defineQuery({ queryKey: ['surveys', tenantId, 'export', input] as const, call: ({ signal }) => api.exportSurveyResponses(input, signal) }),
   preview: defineMutation({ mutationKey: ['surveys', 'preview'], call: (input: Parameters<ApiClient['previewSurveyEnding']>[0]) => api.previewSurveyEnding(input) }),
   invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
+});
+
+export const listLayoutActions = (api: ApiClient) => ({
+  get: (tenantId: string, listId: ListLayoutId) => defineQuery({ queryKey: ['list-layouts', tenantId, listId] as const, call: ({ signal }) => api.getListLayout({ listId }, signal) }),
+  save: defineMutation({ mutationKey: ['list-layouts', 'save'], call: (input: Parameters<ApiClient['saveListLayout']>[0]) => api.saveListLayout(input) }),
+  reset: defineMutation({ mutationKey: ['list-layouts', 'reset'], call: (input: Parameters<ApiClient['resetListLayout']>[0]) => api.resetListLayout(input) }),
+  invalidates: (tenantId: string, listId: ListLayoutId) => ({ queryKey: ['list-layouts', tenantId, listId] as const }),
 });
 
 export const probeStripePermissionsMutation = (api: ApiClient) =>

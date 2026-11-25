@@ -174,6 +174,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/sales-links' || path.startsWith('/api/sales-links/')) return method === 'GET' ? 'product:read' : 'product:write';
   if (path.startsWith('/api/public/surveys/')) return 'offer:read';
   if (path === '/api/surveys' || path.startsWith('/api/surveys/')) return method === 'GET' ? 'survey:read' : 'survey:write';
+  if (path === '/api/panel/list-layouts/:listId') return 'order:read';
   if (path.startsWith('/legal/')) return 'legal:read';
   if (path.startsWith('/courses/')) return 'offer:read';
   if (

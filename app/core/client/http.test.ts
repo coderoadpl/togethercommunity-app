@@ -851,3 +851,21 @@ it('sends the invoice, billing and sort parameters to the order list and the exp
     'https://api.example.test/api/orders/export?format=csv&invoice=without&billing=company&sortBy=amountCents&sortDirection=asc',
   ]);
 });
+
+it('reads, saves and resets a saved list layout on the panel route', async () => {
+  const layout = { version: 1 as const, columns: [{ field: 'createdAt', visible: true }], sort: null, filters: {} };
+  const calls: Array<{ url: string; method: string | undefined; body: unknown }> = [];
+  const answers = [{ layout: null }, { layout }, { reset: true }];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input, init) => {
+    calls.push({ url: String(input), method: init?.method, body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body });
+    return jsonResponse({ ok: true, data: answers.shift() });
+  } });
+  expect(await client.getListLayout({ listId: 'orders' })).toEqual({ ok: true, value: { layout: null } });
+  expect(await client.saveListLayout({ listId: 'orders', layout })).toEqual({ ok: true, value: { layout } });
+  expect(await client.resetListLayout({ listId: 'orders' })).toEqual({ ok: true, value: { reset: true } });
+  expect(calls).toEqual([
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'GET', body: null },
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'PUT', body: { layout } },
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'DELETE', body: null },
+  ]);
+});

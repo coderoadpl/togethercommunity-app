@@ -8,7 +8,7 @@ export type ListLayoutId = z.infer<typeof listLayoutIdSchema>;
 
 const listLayoutKeySchema = z.string().min(1).max(64);
 
-export const listLayoutColumnSchema = z.object({
+const listLayoutColumnSchema = z.object({
   field: listLayoutKeySchema.regex(/^[a-zA-Z0-9_.-]+$/),
   visible: z.boolean(),
   width: z.number().int().min(40).max(1600).optional(),
@@ -23,4 +23,3 @@ export const listLayoutSchema = z.object({
 }).strict();
 
 export type ListLayout = z.infer<typeof listLayoutSchema>;
-export type ListLayoutColumn = z.infer<typeof listLayoutColumnSchema>;

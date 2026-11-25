@@ -1076,6 +1076,7 @@ export interface Messages {
     markShipped: string;
     markShippedTest: string;
     createConfirmBody: (params: { service: string; size: string }) => string;
+    createConfirmBodyShipped: (params: { service: string; size: string; email: string }) => string;
     createConfirmBodyTest: (params: { service: string; size: string }) => string;
     createConfirm: string;
     parcelTemplateOverrideLabel: string;
@@ -1100,6 +1101,7 @@ export interface Messages {
       lostLock: string;
       leaseHeld: string;
       manualShipped: (params: { trackingNumber: string }) => string;
+      orderLeftPackingList: (params: { trackingNumber: string }) => string;
       environmentMismatch: (params: { environment: string; settingsEnvironment: string }) => string;
       organizationMismatch: string;
       receiverInvalid: { phone: string; name: string; building_number: string; locker_code: string };

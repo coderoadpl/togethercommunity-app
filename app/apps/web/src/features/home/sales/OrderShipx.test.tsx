@@ -38,7 +38,7 @@ describe('OrderShipx', () => {
     renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/Parcel locker shipment, size Large/)).toBeVisible();
+    expect(within(dialog).getByText('InPost creates and charges a Parcel locker shipment, size Large (C, 41 × 38 × 64 cm). The label will be ready to print; the order stays to pack until you mark it as shipped.')).toBeVisible();
     expect(within(dialog).getByRole('checkbox', { name: 'Mark as shipped right away and e-mail the buyer' })).not.toBeChecked();
     expect(onCreate).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
@@ -55,10 +55,14 @@ describe('OrderShipx', () => {
     expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined, false);
   });
 
-  it('says that a test order is created in the InPost sandbox', async () => {
+  it('keeps the sandbox confirmation with or without the one-step opt-in', async () => {
     renderWithProviders(<OrderShipx {...props} order={{ ...toPack, mode: 'test' }} view={{ ...ready, environment: 'sandbox' }} />);
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
-    expect(within(await screen.findByRole('dialog')).getByText(/InPost sandbox creates/)).toBeVisible();
+    const dialog = within(await screen.findByRole('dialog'));
+    const body = 'Test order: the InPost sandbox creates a Parcel locker shipment, size Large (C, 41 × 38 × 64 cm). Nothing is charged and no e-mail is sent.';
+    expect(dialog.getByText(body)).toBeVisible();
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Mark as shipped right away (no e-mail is sent)' }));
+    expect(dialog.getByText(body)).toBeVisible();
   });
 
   it('downloads the label of a bought shipment through the API client', async () => {
@@ -163,6 +167,7 @@ describe('OrderShipx', () => {
       ['lost lock', failed('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' }), pl.shipx.failures.lostLock],
       ['lease held', failed('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }), pl.shipx.failures.leaseHeld],
       ['manual ship', failed('fulfilment_conflict', 'The order was marked as shipped meanwhile; the InPost shipment 520000011395200025754311 exists as well, reconcile it in Manager Paczek', { state: 'manual_shipped', trackingNumber: '520000011395200025754311', shipxShipmentId: '1001' }), pl.shipx.failures.manualShipped({ trackingNumber: '520000011395200025754311' })],
+      ['off packing list', failed('conflict', 'The order left the packing list meanwhile; cancel the InPost label LABEL1234 in Manager Paczek', { trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }), pl.shipx.failures.orderLeftPackingList({ trackingNumber: 'LABEL1234' })],
       ['environment mismatch', failed('conflict', 'The InPost shipment was created in the ShipX sandbox environment, but this order uses the production connection; finish the shipment in Manager Paczek', { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' }), pl.shipx.failures.environmentMismatch({ environment: pl.shipx.environments.sandbox, settingsEnvironment: pl.shipx.environments.production })],
       ['organization mismatch', failed('conflict', 'The InPost shipment belongs to a different ShipX organization than the one in the settings; restore it or finish the shipment in Manager Paczek', { state: 'organization_mismatch' }), pl.shipx.failures.organizationMismatch],
       ['missing sandbox connection', failed('integration_not_configured', 'Save the InPost ShipX sandbox organization id and token in Settings → Shipping', { state: 'setup_missing', reason: 'credentials_missing', environment: 'sandbox' }), pl.shipx.unavailableReasons.credentials_missing.sandbox],
@@ -202,12 +207,20 @@ it('passes the one-step opt-in only when checked', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
   const dialog = await screen.findByRole('dialog');
   await userEvent.click(within(dialog).getByRole('checkbox'));
+  expect(within(dialog).getByText(`InPost creates and charges a Parcel locker shipment, size Large (C, 41 × 38 × 64 cm). The order is then marked as shipped and ${toPack.memberEmail} receives the tracking e-mail.`)).toBeVisible();
+  expect(within(dialog).queryByText(/order stays to pack/)).toBeNull();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
   expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined, true);
 });
 
 it('never offers another create for a bought label on an order still to pack', () => {
   renderWithProviders(<OrderShipx {...props} view={{ ...ready, shipment: shipment() }} />);
+  expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
+});
+
+it('honours a bought label on the order even when the ShipX view offers create', () => {
+  renderWithProviders(<OrderShipx {...props} order={{ ...toPack, label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }} />);
   expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
 });

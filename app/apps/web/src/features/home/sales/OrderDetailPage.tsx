@@ -2,14 +2,14 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, AlertTitle, Box, Button, Chip, Link, Stack, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   SALES_LINK_TIME_ZONE,
   capabilitiesForPrincipal,
   isActiveStaffRefundStatus,
-  orderLineLabel,
-  orderLabel,
   orderFulfilmentDisplay,
+  orderLabel,
+  orderLineLabel,
   staffRefundPreviewReadable,
   type OrderLine,
   type ParcelTemplate,
@@ -90,6 +90,17 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   });
   const inpostOrder = detail.data?.order.shipping?.carrier === 'inpost';
   const shipx = useQuery({ ...actions[canShip ? 'shipxRefreshedShipment' : 'shipxShipment'](orderId), enabled: inpostOrder });
+  const queriedLabel = orderLabel(shipx.data?.shipment);
+  const detailLabel = detail.data?.order.label;
+  const discoveredTracking = detail.data !== undefined && detailLabel == null ? queriedLabel?.trackingNumber : undefined;
+  const lastInvalidatedLabel = useRef<string | null>(null);
+  useEffect(() => {
+    if (discoveredTracking === undefined) return;
+    const labelKey = `${orderId}:${discoveredTracking}`;
+    if (lastInvalidatedLabel.current === labelKey) return;
+    lastInvalidatedLabel.current = labelKey;
+    void queryClient.invalidateQueries(actions.ordersInvalidates('list'));
+  }, [discoveredTracking, orderId, queryClient]);
   const createShipment = useMutation({
     ...actions.shipxCreate,
     onSettled: async () => {
@@ -139,7 +150,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     );
   }
 
-  const order = { ...detail.data.order, label: shipx.data === undefined ? detail.data.order.label : orderLabel(shipx.data.shipment) };
+  const order = { ...detail.data.order, label: queriedLabel ?? detailLabel };
   const fulfilmentDisplay = orderFulfilmentDisplay(order);
   const attributionRows = [
     [t.sales.utmSource, order.attribution?.utmSource],

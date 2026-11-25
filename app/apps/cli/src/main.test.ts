@@ -2319,6 +2319,12 @@ describe('orders list CLI text', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\t2 × Paperback; Poster\tbuyer@example.com\t'));
   });
 
+  it('prints label_ready for a to-pack order with a bought label', async () => {
+    h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, fulfilmentStatus: 'to_pack', label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }], total: 1, page: 1, pageSize: 20, sources: [] }));
+    await run('orders', 'list', '--fulfilment', 'to_pack');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tlabel_ready\t'));
+  });
+
   it('shows the client reference only of an order that has one', async () => {
     h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, clientReference: 'shop-cart-8812' }, { ...order, id: 'order-87654321' }], total: 2, page: 1, pageSize: 20, sources: [] }));
     await run('orders', 'list');
@@ -2657,6 +2663,16 @@ describe('InPost ShipX CLI', () => {
     h.shipxCreate.mockResolvedValue(err(appError('shipx_rejected', 'InPost rejected the shipment data')));
     await run('--json', 'orders', 'shipx', 'create', 'order-number');
     expect(process.exitCode).toBe(29);
+  });
+
+  it.each([
+    ['shipped', { carrier: 'other', trackingNumber: 'MANUAL0001' }, 'shipped: order-number (other MANUAL0001); InPost label LABEL1234 was bought as well, reconcile it in Manager Paczek'],
+    ['shipped', { carrier: 'inpost', trackingNumber: 'LABEL1234' }, 'shipped: order-number (inpost LABEL1234)'],
+    [null, null, 'label bought; order is off the packing list: order-number (inpost LABEL1234)'],
+  ])('describes a bought label for fulfilment status %s', async (fulfilmentStatus, dispatchedShipment, expected) => {
+    h.shipxCreate.mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus, shipment: dispatchedShipment }, shipment: { trackingNumber: 'LABEL1234' } }));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(logSpy).toHaveBeenCalledWith(expected);
   });
 
   it('passes a chosen parcel template and rejects an unknown one before calling the server', async () => {

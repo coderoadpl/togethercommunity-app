@@ -181,12 +181,14 @@ export type ShipxOrderView = z.infer<typeof shipxOrderViewSchema>;
 
 const SHIPX_RECEIVER_GAPS = ['phone', 'name', 'building_number', 'locker_code'] as const;
 
+export const shipxBoughtLabelDetailsSchema = z.strictObject({ trackingNumber: z.string(), shipxShipmentId: z.string() });
+
 export const shipxErrorStateSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('pending'), shipmentId: z.string().nullable(), status: z.string().nullable() }),
   z.object({ state: z.literal('unconfirmed'), attemptedAt: z.string().optional(), cause: z.string().optional() }),
   z.object({ state: z.literal('lost_lock') }),
   z.object({ state: z.literal('lease_held') }),
-  z.object({ state: z.literal('manual_shipped'), trackingNumber: z.string(), shipxShipmentId: z.string() }),
+  z.object({ state: z.literal('manual_shipped'), ...shipxBoughtLabelDetailsSchema.shape }),
   z.object({ state: z.literal('environment_mismatch'), environment: shipxEnvironmentSchema, settingsEnvironment: shipxEnvironmentSchema }),
   z.object({ state: z.literal('organization_mismatch') }),
   z.object({ state: z.literal('setup_missing'), reason: z.enum(SHIPX_SETUP_GAPS), environment: shipxEnvironmentSchema }),

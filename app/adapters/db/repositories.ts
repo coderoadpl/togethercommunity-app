@@ -1,4 +1,3 @@
-import { orderShipments } from './shipx-schema.js';
 import { lockEmailEventErasure, scrubMemberEmailEvents } from './email-event-erasure.js';
 import { metaCapiConsentEvidence, metaCapiOutbox } from './meta-capi-schema.js';
 import { orderRefundJobs } from './order-refund-job-schema.js';
@@ -44,8 +43,8 @@ import {
   notificationSchema,
   orderSchema,
   ok,
-  orderListItemSchema,
   orderLabel,
+  orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
   productDownloadAssetSchema,
@@ -249,6 +248,7 @@ import {
   twoFactor,
   user,
 } from './schema.js';
+import { orderShipments } from './shipx-schema.js';
 
 const parseStaffRole = (raw: string): StaffRole | null => {
   const parsed = staffRoleSchema.safeParse(raw);

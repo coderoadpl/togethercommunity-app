@@ -1,4 +1,5 @@
 import {
+  shipxBoughtLabelDetailsSchema,
   shipxErrorDetailsSchema,
   shipxErrorStateSchema,
   shipxRejectionErrorSchema,
@@ -54,6 +55,8 @@ export const localizeShipxError = (error: unknown, t: Messages): { message: stri
   const details = errorDetailsOf(error);
   const state = shipxErrorStateSchema.safeParse(details);
   if (state.success) return { message: stateMessage(state.data, code, t), detail: null };
+  const boughtLabel = code === 'conflict' ? shipxBoughtLabelDetailsSchema.safeParse(details) : null;
+  if (boughtLabel?.success === true) return { message: t.shipx.failures.orderLeftPackingList(boughtLabel.data), detail: null };
   const rejection = code === 'shipx_rejected' ? shipxErrorDetailsSchema.safeParse(details) : null;
   if (rejection?.success !== true) return { message: localizePanelError(error, t), detail: null };
   return { message: rejectionMessage(rejection.data, t), detail: vendorDetail(rejection.data) };

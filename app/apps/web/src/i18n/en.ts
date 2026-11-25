@@ -1251,7 +1251,8 @@ export const en: Messages = {
     createConfirmTitle: 'Create the InPost shipment?',
     markShipped: 'Mark as shipped right away and e-mail the buyer',
     markShippedTest: 'Mark as shipped right away (no e-mail is sent)',
-    createConfirmBody: ({ service, size }) => `InPost creates and charges a ${service} shipment, size ${size}. The label is ready; the order stays to pack until you mark it as shipped.`,
+    createConfirmBody: ({ service, size }) => `InPost creates and charges a ${service} shipment, size ${size}. The label will be ready to print; the order stays to pack until you mark it as shipped.`,
+    createConfirmBodyShipped: ({ service, size, email }) => `InPost creates and charges a ${service} shipment, size ${size}. The order is then marked as shipped and ${email} receives the tracking e-mail.`,
     createConfirmBodyTest: ({ service, size }) => `Test order: the InPost sandbox creates a ${service} shipment, size ${size}. Nothing is charged and no e-mail is sent.`,
     createConfirm: 'Create shipment',
     parcelTemplateOverrideLabel: 'Parcel size for this shipment',
@@ -1281,6 +1282,7 @@ export const en: Messages = {
       lostLock: 'Another request took over the InPost shipment for this order. Refresh the order in a moment.',
       leaseHeld: 'Another request is working on the InPost shipment for this order. Refresh the order in a moment.',
       manualShipped: ({ trackingNumber }) => `The order was marked as shipped meanwhile, and the InPost shipment ${trackingNumber} exists as well. Reconcile it in Manager Paczek.`,
+      orderLeftPackingList: ({ trackingNumber }) => `The order left the packing list. Cancel the InPost label ${trackingNumber} in Manager Paczek.`,
       environmentMismatch: ({ environment, settingsEnvironment }) => `The InPost shipment was created in the ShipX environment “${environment}”, but this order uses “${settingsEnvironment}”. Finish the shipment in Manager Paczek.`,
       organizationMismatch: 'The InPost shipment belongs to a different ShipX organization than the one in the settings. Restore it or finish the shipment in Manager Paczek.',
       receiverInvalid: {

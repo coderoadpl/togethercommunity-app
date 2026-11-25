@@ -7,8 +7,8 @@ import {
   largestParcelTemplate,
   notFound,
   ok,
-  orderShipmentAllowed,
   orderLabel,
+  orderShipmentAllowed,
   productLines,
   SHIPX_LEGACY_SECRET_KEYS,
   SHIPX_ENVIRONMENTS,
@@ -19,6 +19,7 @@ import {
   SHIPX_SLOT_SECRET_KEYS,
   SHIPX_STATUS_UNCONFIRMED,
   shipxAttemptUnconfirmed,
+  shipxBoughtLabelDetailsSchema,
   shipxCreateInputSchema,
   shipxEnvironmentForMode,
   shipxErrorStateSchema,
@@ -505,6 +506,18 @@ const reconcileRemote = async (
   return saveRemote(run, found.value, { type: 'shipment_adopted', details: { status: found.value.status } }, deps);
 };
 
+const orderAfterLabelPurchase = async (
+  run: ShipmentRun,
+  label: { trackingNumber: string; shipxShipmentId: string },
+  orderDetails: CreateInpostShipmentDeps['orderDetails'],
+): Promise<Result<{ order: OrderListItem }, AppError>> => {
+  const order = await orderDetails.findById(run.tenantId, run.order.id);
+  if (order === null) return err(notFound('Order was not found'));
+  if (order.fulfilmentStatus === 'to_pack') return ok({ order });
+  if (order.fulfilmentStatus === 'shipped') return err(appError('fulfilment_conflict', 'Order has already been shipped'));
+  return err(appError('conflict', `The order left the packing list meanwhile; cancel the InPost label ${label.trackingNumber} in Manager Paczek`, label));
+};
+
 const runShipment = async (
   ctx: Ctx,
   run: ShipmentRun,
@@ -540,13 +553,11 @@ const runShipment = async (
   }
   if (trackingNumber === null) return err(pendingPayment(shipmentId, null));
 
-  const current = await deps.orderDetails.findById(run.tenantId, run.order.id);
-  if (current === null) return err(notFound('Order was not found'));
-  const shipped = markShipped
+  const order = markShipped
     ? await shipOrder(ctx, { orderId: run.order.id, carrier: 'inpost', trackingNumber }, deps.ship)
-    : ok({ order: current });
-  if (!shipped.ok) {
-    if (shipped.error.code !== 'fulfilment_conflict') return shipped;
+    : await orderAfterLabelPurchase(run, { trackingNumber, shipxShipmentId: shipmentId }, deps.orderDetails);
+  if (!order.ok) {
+    if (order.error.code !== 'fulfilment_conflict') return order;
     return err(shipxStateError(
       'fulfilment_conflict',
       `The order was marked as shipped meanwhile; the InPost shipment ${trackingNumber} exists as well, reconcile it in Manager Paczek`,
@@ -555,7 +566,7 @@ const runShipment = async (
   }
   const shipment = await deps.shipxShipments.findByOrder(run.tenantId, run.order.id);
   if (shipment === null) return err(notFound('The InPost shipment was not found'));
-  return ok({ order: { ...shipped.value.order, label: orderLabel(shipment) }, shipment: publicShipment(shipment) });
+  return ok({ order: { ...order.value.order, label: orderLabel(shipment) }, shipment: publicShipment(shipment) });
 };
 
 const OUTCOME_BY_STATE: Record<ShipxErrorState['state'], ShipxOperationOutcome> = {
@@ -573,6 +584,7 @@ const OUTCOME_BY_STATE: Record<ShipxErrorState['state'], ShipxOperationOutcome> 
 const operationOutcome = (result: Result<unknown, AppError>, released: boolean): ShipxOperationOutcome => {
   if (released) return 'released';
   if (result.ok) return 'bought';
+  if (result.error.code === 'conflict' && shipxBoughtLabelDetailsSchema.safeParse(result.error.details).success) return 'bought';
   const state = shipxErrorStateSchema.safeParse(result.error.details);
   return state.success ? OUTCOME_BY_STATE[state.data.state] : 'failed';
 };

@@ -1,12 +1,14 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
+import { QueryClient } from '@tanstack/react-query';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { OrderListItem } from '#core/domain/index.js';
 
+import { actions } from '../../../api.js';
 import { en } from '../../../i18n/en.js';
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
@@ -350,30 +352,60 @@ describe('orders cancelled because they sold out', () => {
 
 
 it('shows a distinct label-ready chip while keeping the order in the to-pack filter', async () => {
-  server.use(http.get('/api/orders', () => HttpResponse.json({ ok: true, data: {
-    orders: [order('pack', 'to_pack'), { ...order('label', 'to_pack'), label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }, order('sent', 'shipped')],
-    total: 3, page: 1, pageSize: 25, sources: [],
-  } })));
+  const listQueries: URLSearchParams[] = [];
+  const labelOrder = { ...order('label', 'to_pack'), label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } };
+  server.use(http.get('/api/orders', ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    listQueries.push(params);
+    const orders = params.get('fulfilmentStatus') === 'to_pack'
+      ? [labelOrder]
+      : [order('pack', 'to_pack'), labelOrder, order('sent', 'shipped')];
+    return HttpResponse.json({ ok: true, data: { orders, total: orders.length, page: 1, pageSize: 25, sources: [] } });
+  }));
   await renderAt('/panel/sales', SalesPanel);
   const chips = await screen.findAllByTestId('sales-fulfilment-chip');
   expect(chips.map((chip) => chip.textContent)).toEqual(['To pack', 'Label ready', 'Shipped']);
-  expect(chips[1]).toHaveClass('MuiChip-colorInfo');
   expect(chips[2]).toHaveClass('MuiChip-colorSuccess');
+  await userEvent.click(screen.getByRole('combobox', { name: en.shipping.fulfilmentFilter }));
+  await userEvent.click(await screen.findByRole('option', { name: en.shipping.fulfilmentStatuses.to_pack }));
+  await waitFor(() => expect(listQueries.at(-1)?.get('fulfilmentStatus')).toBe('to_pack'));
+  await waitFor(() => expect(screen.getAllByTestId('sales-row')).toHaveLength(1));
+  const row = screen.getByTestId('sales-row');
+  expect(within(row).getByTestId('sales-fulfilment-chip')).toHaveTextContent('Label ready');
+  expect(within(row).getByTestId('sales-fulfilment-chip')).toHaveClass('MuiChip-colorInfo');
+});
+
+it('keeps the stored label when the ShipX query returns stale data', async () => {
+  const label = { carrier: 'inpost', trackingNumber: 'LABEL1234' };
+  server.use(
+    http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: { ...order('o1', 'to_pack'), label }, invoice: null } })),
+    http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({ ok: true, data: {
+      available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null,
+    } })),
+  );
+  const { queryClient } = await renderAt('/panel/sales/$orderId', () => <OrderDetailPage orderId="o1" />);
+  await waitFor(() => expect(queryClient.getQueryData(actions.shipxShipment('o1').queryKey)).toMatchObject({ shipment: null }));
+  expect(screen.getByTestId('order-label-ready')).toHaveTextContent('Label ready');
+  expect(screen.queryByTestId('order-shipx-create')).toBeNull();
+  expect(screen.getByLabelText(en.shipping.shipTracking)).toHaveValue(label.trackingNumber);
+  expect(screen.getByLabelText(en.shipping.shipTracking)).toBeDisabled();
 });
 
 it('shows a refreshed ready label on the Delivery card and dispatches with its stored number', async () => {
   const trackingNumber = 'LABEL1234';
+  const invalidateQueries = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+  const refreshed = vi.fn(() => HttpResponse.json({ ok: true, data: {
+    available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium',
+    shipment: {
+      shipxShipmentId: '1001', status: 'confirmed', trackingNumber, environment: 'production', createAttemptedAt: null,
+      boughtAt: '2026-11-08T10:00:00.000Z', labelFetchedAt: null, createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
+    },
+  } }));
   const shipBodies: unknown[] = [];
   let current = order('o1', 'to_pack');
   server.use(
     http.get('/api/orders/o1', () => HttpResponse.json({ ok: true, data: { order: current, invoice: null } })),
-    http.post('/api/orders/o1/shipx/refresh', () => HttpResponse.json({ ok: true, data: {
-      available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium',
-      shipment: {
-        shipxShipmentId: '1001', status: 'confirmed', trackingNumber, environment: 'production', createAttemptedAt: null,
-        boughtAt: '2026-11-08T10:00:00.000Z', labelFetchedAt: null, createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
-      },
-    } })),
+    http.post('/api/orders/o1/shipx/refresh', refreshed),
     http.post('/api/orders/o1/ship', async ({ request }) => {
       shipBodies.push(await request.json());
       current = { ...current, fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber, shippedAt: '2026-11-08T12:00:00.000Z', shippedBy: 'staff-1' } };
@@ -389,6 +421,8 @@ it('shows a refreshed ready label on the Delivery card and dispatches with its s
   expect(screen.getByTestId('order-shipx-label')).toBeVisible();
   expect(screen.getByTestId('order-shipx-status')).toHaveTextContent('confirmed');
   expect(screen.getByLabelText(en.shipping.shipTracking)).toHaveValue(trackingNumber);
+  expect(invalidateQueries.mock.calls).toEqual([[{ queryKey: ['sales', 'orders'] }]]);
+  expect(refreshed).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByTestId('order-ship'));
   await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: en.shipping.shipConfirm }));
   await waitFor(() => expect(shipBodies).toEqual([{ orderId: 'o1', carrier: 'inpost', trackingNumber }]));

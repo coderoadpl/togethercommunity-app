@@ -129,7 +129,20 @@ creation no longer marks an order as shipped or e-mails the buyer.
 The shop management key command has the same opt-in:
 `shop orders shipx create <orderId> --mark-shipped`.
 
-Without that flag, dispatch the parcel later with
+Both create commands print one line on success, based on the returned order:
+
+- `label ready; order still to pack: <orderId> (inpost <label tracking>)`
+- `shipped: <orderId> (<dispatch carrier> <dispatch tracking>)`
+- `label bought; order is off the packing list: <orderId> (inpost <label tracking>)`
+
+If the shipped order has a different dispatch tracking number, the line also
+says `; InPost label <label tracking> was bought as well, reconcile it in Manager Paczek`.
+The plain `orders list` and `shop orders list` output shows `label_ready` in the
+fulfilment column for a to-pack order with a bought label. Use
+`--fulfilment to_pack` to include these orders; the stored status is still
+`to_pack`.
+
+Without the `--mark-shipped` flag, dispatch the parcel later with
 `order ship <orderId> --carrier inpost --tracking <storedTrackingNumber>`
 (or `shop orders ship` with a key). Only dispatch writes the fulfilment event
 and queues the buyer's shipment e-mail; test orders never send it. Repeating

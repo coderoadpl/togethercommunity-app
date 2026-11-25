@@ -35,6 +35,7 @@ import {
   keyDownloadAttachInputSchema,
   notFound,
   ok,
+  orderFulfilmentDisplay,
   parcelTemplateSchema,
   priceKindSchema,
   priceMajorSchema,
@@ -62,6 +63,7 @@ import { changeProposalAppliedLine } from './change-proposal-output.js';
 import { imageUploadInput, productImagesFileOption } from './image-files.js';
 import { emit, orderStatusLabel } from './output.js';
 import { readStdin, secretInput } from './secret-input.js';
+import { shipxCreateLine } from './shipx-output.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { formatProductStock } from './stock-commands.js';
 
@@ -312,7 +314,7 @@ const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
 });
 
 const orderLine = (order: OrderListItem): string =>
-  `${order.createdAt}\t${orderStatusLabel(order)}\t${order.mode ?? 'live'}\t${order.fulfilmentStatus ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
+  `${order.createdAt}\t${orderStatusLabel(order)}\t${order.mode ?? 'live'}\t${orderFulfilmentDisplay(order) ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
 
 const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
@@ -763,8 +765,7 @@ export const registerShopKeyCommands = (
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxShipment({ orderId }), shipxOrderLines));
   keyed(shipx.command('create <orderId>').description('Create and pay the InPost label; keep the order to pack by default')
     .option('--mark-shipped', 'also mark the order as shipped and email the buyer', false))
-    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ markShipped: z.boolean().default(false) })]), (client, [orderId, options]) => client.shipxCreate({ orderId, markShipped: options.markShipped }), (data) =>
-      `${data.order.fulfilmentStatus === 'shipped' ? 'shipped' : 'label ready; order still to pack'}: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`));
+    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ markShipped: z.boolean().default(false) })]), (client, [orderId, options]) => client.shipxCreate({ orderId, markShipped: options.markShipped }), shipxCreateLine));
   keyed(shipx.command('refresh <orderId>').description('Read the live ShipX status of a shipment not yet paid, store it and show the order'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxRefresh({ orderId }), shipxOrderLines));
   keyed(shipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek; this never cancels a shipment in ShipX'))

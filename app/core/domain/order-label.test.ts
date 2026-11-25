@@ -13,6 +13,12 @@ describe('derived order labels', () => {
     for (const status of ['created', 'offers_prepared', 'offer_selected']) expect(orderLabel({ ...bought, status })).toBeNull();
   });
 
+  it.each(['', '  A  ', 'X'.repeat(65)])('does not derive a label from invalid tracking %j', (trackingNumber) => {
+    const label = orderLabel({ ...bought, trackingNumber });
+    expect(label).toBeNull();
+    expect(orderFulfilmentDisplay({ fulfilmentStatus: 'to_pack', label })).toBe('to_pack');
+  });
+
   it('changes only the display of to-pack orders, never stored fulfilment', () => {
     const label = orderLabel(bought);
     expect(orderFulfilmentDisplay({ fulfilmentStatus: 'to_pack', label })).toBe('label_ready');

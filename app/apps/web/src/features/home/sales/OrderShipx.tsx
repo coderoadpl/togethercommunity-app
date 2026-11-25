@@ -30,15 +30,20 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const [parcelTemplate, setParcelTemplate] = useState<ParcelTemplate | undefined>(undefined);
   if (view === undefined || view.service === null) return null;
   const shipment = view.shipment;
-  const labelReady = shipment?.shipxShipmentId != null && shipxShipmentBought(shipment);
+  const labelReady = order.label != null || (shipment?.shipxShipmentId != null && shipxShipmentBought(shipment));
   const unconfirmed = shipment !== null && shipxAttemptUnconfirmed(shipment);
   const discardable = shipment !== null && shipment.shipxShipmentId === null;
-  const awaitingPayment = shipment?.shipxShipmentId != null && !shipxShipmentBought(shipment) && view.reason === null;
+  const awaitingPayment = shipment?.shipxShipmentId != null && !labelReady && view.reason === null;
   const failure = error === null ? null : localizeShipxError(error, t);
   const service = t.shipx.services[view.service];
   const createsShipment = shipment?.shipxShipmentId == null && !unconfirmed;
   const chosenTemplate = createsShipment ? parcelTemplate : undefined;
   const size = t.shipx.parcelTemplates[chosenTemplate ?? view.parcelTemplate];
+  const createConfirmBody = order.mode === 'test'
+    ? t.shipx.createConfirmBodyTest({ service, size })
+    : markShipped
+      ? t.shipx.createConfirmBodyShipped({ service, size, email: order.memberEmail })
+      : t.shipx.createConfirmBody({ service, size });
   const showCreate = canCreate && view.available && !labelReady;
   const reason = canCreate ? hintReason(view.reason) : null;
   const hint = reason === null ? null : t.shipx.unavailableReasons[reason][view.environment];
@@ -91,14 +96,12 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
         </Alert>
       )}
       <ConfirmDialog
-        open={confirming === 'create'}
+        open={showCreate && confirming === 'create'}
         title={t.shipx.createConfirmTitle}
         body={(
           <>
             {createsShipment ? parcelTemplateField : null}
-            <Typography>{order.mode === 'test'
-              ? t.shipx.createConfirmBodyTest({ service, size })
-              : t.shipx.createConfirmBody({ service, size })}</Typography>
+            <Typography>{createConfirmBody}</Typography>
             <FormControlLabel
               control={<Checkbox checked={markShipped} onChange={(_event, checked) => setMarkShipped(checked)} />}
               label={order.mode === 'test' ? t.shipx.markShippedTest : t.shipx.markShipped}
@@ -117,7 +120,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
         confirmTestId="order-shipx-confirm"
       />
       <ConfirmDialog
-        open={confirming === 'discard'}
+        open={showCreate && confirming === 'discard'}
         title={unconfirmed ? t.shipx.discardConfirmTitle : t.shipx.discardClaimConfirmTitle}
         body={(
           <>

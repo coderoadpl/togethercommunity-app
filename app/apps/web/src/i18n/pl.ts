@@ -1297,7 +1297,8 @@ export const pl: Messages = {
     createConfirmTitle: 'Utworzyć przesyłkę InPost?',
     markShipped: 'Oznacz od razu jako wysłane i wyślij e-mail kupującemu',
     markShippedTest: 'Oznacz od razu jako wysłane (bez wysyłania e-maila)',
-    createConfirmBody: ({ service, size }) => `InPost utworzy i opłaci przesyłkę: ${service}, gabaryt ${size}. Etykieta będzie gotowa, a zamówienie pozostanie do spakowania, dopóki nie oznaczysz go jako wysłane.`,
+    createConfirmBody: ({ service, size }) => `InPost utworzy i opłaci przesyłkę: ${service}, gabaryt ${size}. Etykieta będzie gotowa do wydruku, a zamówienie pozostanie do spakowania, dopóki nie oznaczysz go jako wysłanego.`,
+    createConfirmBodyShipped: ({ service, size, email }) => `InPost utworzy i opłaci przesyłkę: ${service}, gabaryt ${size}. Zamówienie zostanie od razu oznaczone jako wysłane, a ${email} dostanie e-mail z numerem przesyłki.`,
     createConfirmBodyTest: ({ service, size }) => `Zamówienie testowe: przesyłkę utworzy sandbox InPost (${service}, gabaryt ${size}). Nic nie zostanie pobrane i nie wyślemy e-maila.`,
     createConfirm: 'Utwórz przesyłkę',
     parcelTemplateOverrideLabel: 'Gabaryt paczki tej przesyłki',
@@ -1327,6 +1328,7 @@ export const pl: Messages = {
       lostLock: 'Inne żądanie przejęło przesyłkę InPost tego zamówienia. Odśwież zamówienie za chwilę.',
       leaseHeld: 'Inne żądanie obsługuje teraz przesyłkę InPost tego zamówienia. Odśwież zamówienie za chwilę.',
       manualShipped: ({ trackingNumber }) => `Zamówienie zostało w międzyczasie oznaczone jako wysłane, a przesyłka InPost ${trackingNumber} też istnieje. Uzgodnij ją w Managerze Paczek.`,
+      orderLeftPackingList: ({ trackingNumber }) => `Zamówienie zniknęło z listy do spakowania. Anuluj etykietę InPost ${trackingNumber} w Managerze Paczek.`,
       environmentMismatch: ({ environment, settingsEnvironment }) => `Przesyłka InPost powstała w środowisku ShipX „${environment}”, a to zamówienie używa „${settingsEnvironment}”. Dokończ przesyłkę w Managerze Paczek.`,
       organizationMismatch: 'Przesyłka InPost należy do innej organizacji ShipX niż ta w ustawieniach. Przywróć ją albo dokończ przesyłkę w Managerze Paczek.',
       receiverInvalid: {

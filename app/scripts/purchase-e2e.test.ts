@@ -48,7 +48,7 @@ const productionEnv = {
 };
 
 const ignoredStaffEnv = {
-  PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION: 'unused-production-password',
+  PURCHASE_E2E_STAFF_PASSWORD_STAGING: 'unused-staging-password',
   PURCHASE_E2E_STAFF_EMAIL: 'unused-staff@example.com',
   VERCEL_AUTOMATION_BYPASS_SECRET: 'unused-production-bypass',
 };

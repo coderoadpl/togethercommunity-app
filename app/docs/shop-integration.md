@@ -277,8 +277,8 @@ command; see [Shop management keys](shop-management-keys.md#product-covers-galle
 The public offer returns `images` for every product, `[]` when the product has
 no gallery. Resolve each `url` against the workspace origin like `coverUrl`,
 show the images in the returned order, and fall back to `coverUrl` when
-`images` is empty or missing (an offer recorded before the gallery existed has
-no `images` field).
+`images` is empty or missing (an offer served by the previous release has no
+`images` field).
 
 ## 5. Add an active one-time price, stock and publication
 

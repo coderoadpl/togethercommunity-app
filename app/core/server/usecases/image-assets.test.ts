@@ -435,6 +435,31 @@ describe('image assets', () => {
   });
 
   it.each([
+    `image-asset-candidates/tenant-2/product-image/${ASSET_ID}.png`,
+    `image-assets/tenant-2/product-image/${ASSET_ID}.png`,
+    `image-asset-candidates/${TENANT_ID}/product-cover/${ASSET_ID}.png`,
+  ])('rejects a gallery image completion key of another workspace or kind', async (key) => {
+    const { deps } = testDeps();
+    const result = await completeProductImageUpload(ownerCtx, { key }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('never publishes a gallery image candidate that a propose-mode key started', async () => {
+    const { deps } = testDeps();
+    const findUpload = vi.fn<typeof deps.quarantinedImages.findUpload>(async () => ({
+      apiKeyId: 'key-1', objectKey: 'image-asset-quarantine/upload', createdAt: '2026-01-01T00:00:00.000Z', completed: null,
+    }));
+    deps.quarantinedImages = { ...deps.quarantinedImages, findUpload };
+    const put = vi.spyOn(deps.storage, 'putObject');
+    const key = `image-asset-candidates/${TENANT_ID}/product-image/${ASSET_ID}.png`;
+
+    expect(await completeProductImageUpload(ownerCtx, { key }, deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(findUpload).toHaveBeenCalledWith(TENANT_ID, key);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ['course-cover', completeCourseCoverUpload],
     ['product-cover', completeProductCoverUpload],
     ['product-image', completeProductImageUpload],

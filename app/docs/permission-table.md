@@ -1123,7 +1123,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | staff-role | `core/server/usecases/progress.ts:79` | `const allOpening = ctx.identity.staffRole !== null ? locations : locations.filter(opensForMember);` |
 | staff-role | `core/server/usecases/progress.ts:209` | `if (ctx.identity.staffRole === null && lessonId !== undefined) {` |
 | staff-role | `core/server/usecases/resolve-identity.ts:92` | `staffRole: staffGrant?.staffRole ?? null,` |
-| staff-role | `core/server/usecases/shop-machine-auth.ts:124` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
+| staff-role | `core/server/usecases/shop-machine-auth.ts:125` | `if (grant?.staffRole !== 'owner' \|\| grant.tenant.id !== tenant.id) return err(invalidKey());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:13` | `if (ctx.identity.staffRole === null \|\| ctx.impersonation !== undefined) return err(forbidden());` |
 | staff-role | `core/server/usecases/stripe-test-session.ts:25` | `if (identity === null \|\| identity.staffRole === null \|\| cookie === undefined) return false;` |
 | staff-role | `core/server/usecases/tenant-settings.ts:45` | `if (ctx.identity.staffRole === null) return err(forbidden('Staff role is required'));` |

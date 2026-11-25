@@ -800,6 +800,7 @@ export const selectSmokeTenantReseed = (
     | 'PRODUCTION_DATABASE_FINGERPRINT'
   >,
   create: (passwords: SmokeTenantPasswords) => Omit<SmokeTenantReseedDeps, 'environment'>,
+  logger: { warn(message: string): void },
 ): SmokeTenantReseedDeps | undefined => {
   const resolved = resolveSmokeTenantPasswords({
     production: targetsProductionData(reseedMarkers(env)),
@@ -810,7 +811,10 @@ export const selectSmokeTenantReseed = (
       purchase: env.SMOKE_PURCHASE_PASSWORD,
     },
   });
-  if (!resolved.ok) return undefined;
+  if (!resolved.ok) {
+    logger.warn(`Smoke tenant reseed is unavailable because ${resolved.reason}`);
+    return undefined;
+  }
   return {
     ...create(resolved.passwords),
     environment: env.APP_ENV ?? env.NODE_ENV ?? 'development',
@@ -1217,11 +1221,12 @@ export const createDeps = (
             secretCrypto,
             ids,
             clock,
+            logger,
           },
         },
       }),
     };
-  });
+  }, logger);
   const sanitizeStagingSecrets: SanitizeStagingSecretsDeps = {
     ...reseedMarkers(env),
     secrets: createTenantSecretScan(db),

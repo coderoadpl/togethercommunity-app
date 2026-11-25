@@ -714,6 +714,7 @@ describe('smoke tenant reseed composition', () => {
     ids: { nextId: () => 'id-1' },
     clock: { nowIso: () => '2026-09-05T12:00:00.000Z' },
   });
+  const quiet = { warn: () => undefined };
 
   const database = {
     DATABASE_URL: 'postgres://together:together@db.internal:5432/together',
@@ -733,6 +734,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
+      quiet,
     );
 
     expect(create).toHaveBeenCalledWith({
@@ -756,6 +758,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_PURCHASE_PASSWORD: 'production-only-purchase-password',
       },
       create,
+      quiet,
     );
 
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ purchase: 'production-only-purchase-password' }));
@@ -763,6 +766,7 @@ describe('smoke tenant reseed composition', () => {
 
   it('composes nothing on production when the purchase password is the shared demo password', () => {
     const create = vi.fn(adapters);
+    const log = { warn: vi.fn<(message: string) => void>() };
 
     expect(selectSmokeTenantReseed(
       {
@@ -774,8 +778,10 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_PURCHASE_PASSWORD: 'demo-password-15',
       },
       create,
+      log,
     )).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
+    expect(log.warn).toHaveBeenCalledWith('Smoke tenant reseed is unavailable because SMOKE_PURCHASE_PASSWORD must not be the shared demo password');
   });
 
   it.each([
@@ -795,6 +801,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
+      quiet,
     )).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
   });
@@ -812,6 +819,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
+      quiet,
     );
 
     expect(create).toHaveBeenCalledWith({ member: 'demo-password-15', creator: 'demo-password-15', purchase: null });
@@ -831,6 +839,7 @@ describe('smoke tenant reseed composition', () => {
         SMOKE_PURCHASE_PASSWORD: undefined,
       },
       create,
+      quiet,
     )).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
   });

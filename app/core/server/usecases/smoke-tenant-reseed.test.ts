@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   err,
@@ -224,6 +224,31 @@ describe('reseedSmokeTenant test payments', () => {
       status: 'succeeded',
       detail: 'test payments failed: internal',
     })]);
+  });
+
+  it('logs a fixed message without provider text when removing the new endpoint fails', async () => {
+    const payments = testPaymentsHarness(async () => ok({ webhookEndpointId: 'we_test', webhookSecret: 'whsec_test' }));
+    payments.tenantSecrets.failNextBatchAt(1);
+    const warn = vi.fn<(message: string) => void>();
+    const harness = deps(reseeded);
+
+    const result = await reseedSmokeTenant({
+      ...harness.deps,
+      testPayments: {
+        ...payments.testPayments,
+        configure: {
+          ...payments.testPayments.configure,
+          logger: { warn },
+          payment: {
+            ...payments.testPayments.configure.payment,
+            deleteWebhookEndpoint: async () => err(validation('No such webhook endpoint: https://acme.example.test/api/webhooks/stripe/tenant-acme?mode=test')),
+          },
+        },
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { testPayments: 'failed' } });
+    expect(warn).toHaveBeenCalledExactlyOnceWith('[stripe] Could not remove the test webhook endpoint after its secrets failed to store');
   });
 
   it('never writes the live slot, even when handed a live key', async () => {

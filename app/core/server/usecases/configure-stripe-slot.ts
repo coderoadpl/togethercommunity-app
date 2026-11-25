@@ -13,6 +13,7 @@ import { buildTenantSecret, stripeWebhookUrl, type TenantSecretDeps } from './te
 
 export interface ConfigureStripeDeps extends TenantSecretDeps, TenantUrlDeps {
   payment: PaymentProvider;
+  logger?: { warn(message: string): void };
 }
 
 export interface ConfigureStripeResult {
@@ -41,10 +42,13 @@ export const configureStripeSlot = async (
   });
   if (!configured.ok) return configured;
   const cleanup = async (): Promise<void> => {
-    await deleteWebhookEndpoint({
+    const removed = await deleteWebhookEndpoint({
       restrictedKey,
       webhookEndpointId: configured.value.webhookEndpointId,
-    });
+    }).catch(() => null);
+    if (removed === null || !removed.ok) {
+      deps.logger?.warn(`[stripe] Could not remove the ${mode} webhook endpoint after its secrets failed to store`);
+    }
   };
   try {
     const records = [

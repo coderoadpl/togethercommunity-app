@@ -13,7 +13,9 @@ import {
   createOrganizationWorkspaceRepository,
   createTenantConfigSourceRepository,
 } from '#adapters/db/organizations.js';
+import { createEffectivePaymentConfigReader } from '#adapters/db/effective-payment-config.js';
 import type {
+  EffectivePaymentConfigReader,
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
@@ -609,6 +611,7 @@ export interface AppDeps {
   tenantSecrets: TenantSecretRepository;
   secretCrypto: SecretCrypto;
   secretResolver: TenantSecretResolver;
+  paymentConfig?: EffectivePaymentConfigReader;
   payment: PaymentProvider;
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
   invoices: InvoiceRepository;
@@ -1697,6 +1700,7 @@ export const createDeps = (
     secretCrypto,
     telemetryStore,
     secretResolver,
+    paymentConfig: createEffectivePaymentConfigReader(db, secretCrypto),
     payment,
     checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),
     invoices: invoiceRepository,

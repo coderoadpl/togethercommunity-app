@@ -17,7 +17,6 @@ import {
   ok,
   productLines,
   resolveCheckoutBranding,
-  stripeKeyModeConflicts,
   validation,
   type AppError,
   type CheckoutCartInput,
@@ -26,6 +25,7 @@ import {
   type Product,
   type ProductPrice,
   type Result,
+  type StripeMode,
   type Tenant,
 } from '#core/domain/index.js';
 
@@ -34,6 +34,7 @@ import type {
   CouponCheckoutSessionRepository,
   CouponRedemptionRepository,
   CouponRepository,
+  EffectivePaymentConfigReader,
   IdGenerator,
   PaymentProvider,
   OrderRepository,
@@ -52,6 +53,7 @@ import type { StockRepository } from '../stock-ports.js';
 import { captureCouponCheckout, ensureCheckoutCouponPromotion, validateSelectionCoupon } from './checkout-coupon.js';
 import { resolveCheckoutReturnAddresses, resolveSalesLinkPrices, salesLinkVariantEligible, selectSalesLinkVariants, withCheckoutPersonalizations, withCheckoutShipping, type CheckoutSelection } from './checkout-selection.js';
 import { buildCheckoutLines, captureCheckoutSelection, paymentLines } from './checkout-lines.js';
+import { checkoutPaymentsReady, paymentConfigReader } from './payment-config.js';
 import { cleanUpFailedCheckout, ensureProductsInStock, releaseCheckoutStock, reserveCheckoutStock, withCheckoutStockHold, type CheckoutStockDeps } from './stock.js';
 
 export interface CheckoutDeps {
@@ -61,6 +63,7 @@ export interface CheckoutDeps {
   products: ProductRepository;
   prices: ProductPriceRepository;
   tenantSecrets: TenantSecretRepository;
+  paymentConfig?: EffectivePaymentConfigReader | undefined;
   payment: PaymentProvider;
   orders?: OrderRepository;
   coupons?: CouponRepository;
@@ -79,19 +82,25 @@ export type { CheckoutSelection } from './checkout-selection.js';
 
 const TERMS_REQUIRED_MESSAGE = 'Accepting the terms and privacy policy is required';
 
+const STRIPE_NOT_CONFIGURED_MESSAGE = 'Stripe is not configured for this tenant';
+
+type PaymentConfigDeps = Pick<CheckoutDeps, 'tenantSecrets' | 'secretCrypto' | 'paymentConfig'>;
+
+const readPaymentConfig = (tenantId: string, mode: StripeMode, deps: PaymentConfigDeps) =>
+  paymentConfigReader(deps.paymentConfig, deps.tenantSecrets, deps.secretCrypto).read(tenantId, mode);
+
 export const getPaymentConfig = async (
   tenantId: string,
-  deps: Pick<CheckoutDeps, 'tenantSecrets' | 'secretCrypto'>,
-  mode: 'live' | 'test' = 'live',
-): Promise<Result<{ stripeConfigured: boolean }, AppError>> => {
-  const [key, webhookSecret] = await Promise.all([
-    deps.tenantSecrets.findByKey(tenantId, mode === 'test' ? 'stripe.testRestrictedKey' : 'stripe.restrictedKey'),
-    deps.tenantSecrets.findByKey(tenantId, mode === 'test' ? 'stripe.testWebhookSecret' : 'stripe.webhookSecret'),
-  ]);
-  if (key === null || webhookSecret === null) return ok({ stripeConfigured: false });
-  const decrypted = deps.secretCrypto?.decrypt(key);
-  const conflicts = decrypted !== undefined && decrypted.ok && stripeKeyModeConflicts(decrypted.value, mode);
-  return ok({ stripeConfigured: !conflicts });
+  deps: PaymentConfigDeps,
+  mode: StripeMode = 'live',
+): Promise<Result<{ stripeConfigured: boolean }, AppError>> =>
+  ok({ stripeConfigured: checkoutPaymentsReady(await readPaymentConfig(tenantId, mode, deps), mode) });
+
+// A workspace without Stripe still completes free orders, so only an inherited configuration is refused before the snapshot and stock hold.
+const inheritedPaymentsRefusal = async (tenantId: string, mode: StripeMode, deps: PaymentConfigDeps): Promise<AppError | null> => {
+  if (deps.paymentConfig === undefined) return null;
+  const config = await deps.paymentConfig.read(tenantId, mode);
+  return config.source === 'organization' && !checkoutPaymentsReady(config, mode) ? validation(STRIPE_NOT_CONFIGURED_MESSAGE) : null;
 };
 
 export const testCheckoutRejection = (
@@ -227,6 +236,9 @@ export const startCheckoutSession = async (
   free: boolean;
 }, AppError>> => {
   const { product, price } = selection;
+  const mode = testSession?.mode ?? 'live';
+  const inheritedRefusal = await inheritedPaymentsRefusal(tenant.id, mode, deps);
+  if (inheritedRefusal !== null) return err(inheritedRefusal);
   const fields = attributionSchema.parse(input.attribution);
   if (fields !== undefined && deps.clock === undefined) return err(validation('Checkout clock is not configured'));
   const attribution = fields === undefined || deps.clock === undefined ? undefined : { ...fields, capturedAt: deps.clock.nowIso() };
@@ -236,7 +248,6 @@ export const startCheckoutSession = async (
   const { totalCents, currency, lines, checkoutSnapshotId } = captured.value;
   const shippingCents = captured.value.shippingCents ?? 0;
   const shipping = selection.shipping;
-  const mode = testSession?.mode ?? 'live';
   if (mode === 'test') {
     const rejected = testCheckoutRejection(input, selection);
     if (rejected !== null) return err(rejected);
@@ -315,7 +326,7 @@ export const startCheckoutSession = async (
   if (input.couponCode === undefined) {
     const configured = await getPaymentConfig(tenant.id, deps, mode);
     if (!configured.ok) return configured;
-    if (!configured.value.stripeConfigured) return err(validation('Stripe is not configured for this tenant'));
+    if (!configured.value.stripeConfigured) return err(validation(STRIPE_NOT_CONFIGURED_MESSAGE));
   }
   if (stripeTerms !== undefined && stripeTerms.termsAcceptanceMessage.length > 1200) {
     return err(validation('Checkout terms acceptance text exceeds 1200 characters'));

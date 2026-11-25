@@ -14,7 +14,9 @@ import {
   assertTargetIdentity,
   FIXTURE,
   orderProblems,
+  PURCHASE_CHECKS,
   purchaseE2eOptionsFromEnv,
+  SMOKE_TENANT_PURCHASE_EMAIL,
   runPurchaseE2e,
   type OrderView,
   type PurchaseE2eOptions,
@@ -33,6 +35,15 @@ import {
 
 const PRODUCTION_FINGERPRINT = 'b1bfbb98b4f7';
 const STAGING_FINGERPRINT = 'a71c3d05e9f2';
+
+const productionEnv = {
+  STRIPE_TEST_RESTRICTED_KEY_PRODUCTION: 'rk_test_production',
+  STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION: 'pk_test_production',
+  PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION: 'purchase-admin-password',
+  PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
+  PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
+  PURCHASE_E2E_ENVIRONMENT: 'production',
+};
 
 const stagingEnv = {
   STRIPE_TEST_RESTRICTED_KEY_STAGING: 'rk_test_staging',
@@ -82,7 +93,7 @@ const options: PurchaseE2eOptions = {
   platformDomain: 'togethercommunity.app',
 };
 
-const HOST_PROBLEM = 'PURCHASE_E2E_BASE_URL must be the https origin of the acme fixture workspace on a staging host of the platform domain';
+const HOST_PROBLEM = 'PURCHASE_E2E_BASE_URL: the base URL must be the https origin of the acme fixture workspace on a staging host of the platform domain';
 
 const lockerOrder: OrderView = {
   id: 'order-1',
@@ -102,6 +113,7 @@ const lockerExpectation = {
   amountCents: FIXTURE.parcelPriceCents + FIXTURE.rateCents,
   productIds: ['product-parcel'],
   shippingCents: FIXTURE.rateCents,
+  rateId: FIXTURE.rateId,
   lockerCode: 'WAW01M',
   salesLinkId: null,
 };
@@ -132,17 +144,41 @@ describe('purchaseE2eOptionsFromEnv', () => {
     });
   });
 
-  it('refuses production until an owner decision names its credential', () => {
+  it('reads only the production values, signs in as the purchase admin and never sends the bypass', () => {
+    expect(purchaseE2eOptionsFromEnv({
+      ...stagingEnv,
+      ...productionEnv,
+    })).toMatchObject({
+      options: {
+        environment: 'production',
+        baseUrl: 'https://acme.togethercommunity.app',
+        keys: { restricted: 'rk_test_production', publishable: 'pk_test_production' },
+        staff: { email: SMOKE_TENANT_PURCHASE_EMAIL, password: 'purchase-admin-password' },
+        bypassSecret: null,
+        databaseFingerprint: { expected: PRODUCTION_FINGERPRINT, production: PRODUCTION_FINGERPRINT },
+      },
+    });
+  });
+
+  it('refuses production without its own values even when the staging ones are set', () => {
     expect(purchaseE2eOptionsFromEnv({
       ...stagingEnv,
       PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'production',
     })).toEqual({
       problems: [
-        HOST_PROBLEM,
-        'PURCHASE_E2E_ENVIRONMENT=production is refused until a recorded owner decision names the credential a production run may use',
+        'STRIPE_TEST_RESTRICTED_KEY_PRODUCTION is not configured',
+        'STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION is not configured',
+        'PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION is not configured',
       ],
     });
+  });
+
+  it('refuses a staging host for production and the production host for staging', () => {
+    expect(purchaseE2eOptionsFromEnv({ ...productionEnv, PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app' }))
+      .toEqual({ problems: ['PURCHASE_E2E_BASE_URL: the base URL must be the https origin of the production acme fixture workspace'] });
+    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app' }))
+      .toEqual({ problems: [HOST_PROBLEM] });
   });
 
   it('refuses staging without its keys or the bypass', () => {
@@ -177,6 +213,8 @@ describe('purchaseE2eOptionsFromEnv', () => {
     'http://acme.staging.togethercommunity.app',
     'https://acme.staging.example.net',
     'https://acme.togethercommunity.app',
+    'https://acme.staging.togethercommunity.app:8443',
+    'https://acme.staging.togethercommunity.app/path',
   ])('refuses %s', (baseUrl) => {
     expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, PURCHASE_E2E_BASE_URL: baseUrl })).toEqual({ problems: [HOST_PROBLEM] });
   });
@@ -184,11 +222,11 @@ describe('purchaseE2eOptionsFromEnv', () => {
   it('names every missing input', () => {
     expect(purchaseE2eOptionsFromEnv({ PURCHASE_E2E_ENVIRONMENT: '' })).toEqual({
       problems: [
+        'PURCHASE_E2E_ENVIRONMENT must be staging or production',
         'PURCHASE_E2E_BASE_URL is not configured',
-        'PURCHASE_E2E_ENVIRONMENT must be staging',
         'STRIPE_TEST_RESTRICTED_KEY_STAGING is not configured',
         'STRIPE_TEST_PUBLISHABLE_KEY_STAGING is not configured',
-        'VERCEL_AUTOMATION_BYPASS_SECRET is not configured',
+        'PURCHASE_E2E_STAFF_PASSWORD_STAGING is not configured',
         'PRODUCTION_DATABASE_FINGERPRINT is not configured',
       ],
     });
@@ -303,6 +341,15 @@ describe('assertTargetIdentity', () => {
     expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('production', true)), 'staging', fingerprints); }).toThrow('health reports environment "production"');
   });
 
+  it('accepts production only on the pinned production database', () => {
+    const production = { expected: PRODUCTION_FINGERPRINT, production: PRODUCTION_FINGERPRINT };
+    expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('production', true)), 'production', production); }).not.toThrow();
+    expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('production', true, 'c0ffee000000')), 'production', production); })
+      .toThrow('production answers from database c0ffee000000');
+    expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('production', false)), 'production', production); })
+      .toThrow('health reports production=false for a production run');
+  });
+
   it('refuses a staging deployment on the production database', () => {
     expect(() => { assertTargetIdentity(healthOutputSchema.parse(health('staging', false, PRODUCTION_FINGERPRINT)), 'staging', { expected: null, production: PRODUCTION_FINGERPRINT }); })
       .toThrow('staging answers from the production database');
@@ -330,6 +377,24 @@ describe('orderProblems', () => {
     ]);
   });
 
+  it('accepts a paid courier order with its address and no locker', () => {
+    expect(orderProblems({
+      ...lockerOrder,
+      amountCents: FIXTURE.parcelPriceCents + FIXTURE.courierRateCents,
+      lines: [
+        { productId: 'product-parcel', productType: 'physical', grossCents: FIXTURE.parcelPriceCents },
+        { productId: `shipping:${FIXTURE.courierRateId}`, productType: 'shipping', grossCents: FIXTURE.courierRateCents },
+      ],
+      shipping: { pickupPoint: null, address: { country: 'PL' } },
+    }, {
+      ...lockerExpectation,
+      amountCents: FIXTURE.parcelPriceCents + FIXTURE.courierRateCents,
+      shippingCents: FIXTURE.courierRateCents,
+      rateId: FIXTURE.courierRateId,
+      lockerCode: null,
+    })).toEqual([]);
+  });
+
   it('reports a live or unpaid order', () => {
     expect(orderProblems({ ...lockerOrder, mode: 'live', status: 'failed' }, lockerExpectation)).toEqual([
       'mode live, expected test',
@@ -338,7 +403,7 @@ describe('orderProblems', () => {
   });
 
   it('reports delivery on a digital order', () => {
-    expect(orderProblems(lockerOrder, { ...lockerExpectation, productIds: ['product-parcel'], shippingCents: null, lockerCode: null })).toEqual([
+    expect(orderProblems(lockerOrder, { ...lockerExpectation, productIds: ['product-parcel'], shippingCents: null, rateId: null, lockerCode: null })).toEqual([
       'a digital order carries delivery',
     ]);
   });
@@ -389,6 +454,9 @@ describe('runPurchaseE2e', () => {
     ['another workspace', { baseUrl: 'https://studio.staging.togethercommunity.app' }],
     ['a live key', { keys: { restricted: 'rk_live_example', publishable: 'pk_test_example' } }],
     ['no production fingerprint', { databaseFingerprint: { expected: null, production: null } }],
+    ['a production run with the bypass', { environment: 'production' as const, baseUrl: 'https://acme.togethercommunity.app', staff: { email: SMOKE_TENANT_PURCHASE_EMAIL, password: 'x' } }],
+    ['a production run as the owner', { environment: 'production' as const, baseUrl: 'https://acme.togethercommunity.app', bypassSecret: null }],
+    ['a production run on a staging host', { environment: 'production' as const, bypassSecret: null, staff: { email: SMOKE_TENANT_PURCHASE_EMAIL, password: 'x' } }],
   ])('sends no request at all for %s', async (_name, override) => {
     const { calls, request } = recordingFetch(() => jsonResponse({ ok: true, data: health('staging', false) }));
     const result = await runPurchaseE2e({ ...options, ...override }, request);
@@ -401,7 +469,7 @@ describe('runPurchaseE2e', () => {
     const { calls, request } = recordingFetch(() => jsonResponse({ ok: true, data: health('production', true) }));
     const result = await runPurchaseE2e(options, request);
     expect(result.failing).toEqual(['target-identity']);
-    expect(result.checks.filter((check) => check.status === 'skipped')).toHaveLength(13);
+    expect(result.checks.filter((check) => check.status === 'skipped')).toHaveLength(PURCHASE_CHECKS.length - 1);
     expect(calls.map((call) => `${call.method} ${call.url.pathname}`)).toEqual(['GET /api/health']);
   });
 

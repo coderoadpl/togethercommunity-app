@@ -238,6 +238,7 @@ const providerEventSchema = z.object({
   id: z.string().regex(/^evt_/),
   type: z.string(),
   livemode: z.literal(false),
+  pending_webhooks: z.number().int().optional(),
   data: z.object({
     object: z.object({
       id: z.string(),
@@ -265,6 +266,17 @@ export const listRecentEvents = async (
   const list = providerEventListSchema.parse(await providerCall(request, { key, method: 'GET', path: '/v1/events', params }));
   return list.data.map((raw) => ({ event: providerEventSchema.parse(raw), raw }));
 };
+
+const webhookEndpointListSchema = z.object({
+  data: z.array(z.object({ id: z.string(), url: z.string().url(), api_version: z.string().nullable(), livemode: z.literal(false) })),
+  has_more: z.boolean(),
+});
+
+export const listWebhookEndpoints = async (
+  request: Fetch,
+  key: string,
+): Promise<z.output<typeof webhookEndpointListSchema>['data']> =>
+  webhookEndpointListSchema.parse(await providerCall(request, { key, method: 'GET', path: '/v1/webhook_endpoints', params: { limit: '100' } })).data;
 
 export const eventPaymentIntent = (event: ProviderEvent): string | null => idOf(event.data.object.payment_intent);
 

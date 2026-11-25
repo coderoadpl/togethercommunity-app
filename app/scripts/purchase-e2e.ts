@@ -29,6 +29,7 @@ import {
   generateForwardingSecret,
   LEGACY_ACCOUNT_API_VERSION,
   listRecentEvents,
+  listWebhookEndpoints,
   listPaymentRefunds,
   paymentIntentOf,
   replayCheckoutSession,
@@ -41,7 +42,7 @@ import {
 
 type Fetch = typeof fetch;
 
-export type PurchaseE2eEnvironment = 'staging';
+export type PurchaseE2eEnvironment = 'staging' | 'production';
 
 export interface PurchaseE2eOptions {
   baseUrl: string;
@@ -77,6 +78,9 @@ export const FIXTURE = {
   rateId: 'purchase-e2e-locker',
   rateLabel: 'Purchase test parcel locker',
   rateCents: 1299,
+  courierRateId: 'purchase-e2e-courier',
+  courierRateLabel: 'Purchase test courier',
+  courierRateCents: 1599,
   digitalProductId: 'product-acme-course',
   digitalPriceCents: 9900,
   stockFloor: 5,
@@ -93,8 +97,11 @@ export const PURCHASE_CHECKS = [
   'coupon-refused-in-test-mode',
   'digital-purchase',
   'locker-purchase',
+  'courier-purchase',
   'sales-link-purchase',
   'webhook-signature-seen',
+  'provider-delivery',
+  'webhook-endpoint-version',
   'stock-untouched',
   'payload-replay',
   'full-refund',
@@ -124,7 +131,11 @@ const CLOCK_SKEW_MS = 30_000;
 
 const BYPASS_HEADER = 'x-vercel-protection-bypass';
 
-const RUN_ORDERS = 3;
+const RUN_ORDERS = 4;
+
+export const SMOKE_TENANT_PURCHASE_EMAIL = 'kontakt+smoke-purchase@togethercommunity.app';
+
+const TEST_SLOT_SECRET_KEYS = ['stripe.testRestrictedKey', 'stripe.testWebhookSecret', 'stripe.testWebhookEndpointId'] as const;
 
 const TEST_COUPON_REFUSAL = 'Test checkout requires a paid price without a coupon';
 
@@ -138,11 +149,11 @@ const valueOf = <T>(result: Result<T, AppError>, name: string): T => {
 const createRun = () => {
   const checks: PurchaseE2eCheck[] = [];
   return {
-    step: async <T>(name: PurchaseCheckName, probe: () => Promise<T>): Promise<T | null> => {
+    step: async <T>(name: PurchaseCheckName, probe: () => Promise<T>, describe?: (value: T) => string): Promise<T | null> => {
       const startedAt = Date.now();
       try {
         const value = await probe();
-        checks.push({ name, status: 'ok', ms: Date.now() - startedAt, detail: null });
+        checks.push({ name, status: 'ok', ms: Date.now() - startedAt, detail: describe === undefined ? null : describe(value) });
         return value;
       } catch (cause) {
         checks.push({ name, status: 'failed', ms: Date.now() - startedAt, detail: cause instanceof Error ? cause.message : String(cause) });
@@ -173,11 +184,16 @@ export const assertTargetIdentity = (
   if (health.environment !== environment) {
     throw new Error(`health reports environment "${health.environment}", the run targets ${environment}`);
   }
-  if (health.production) throw new Error('health reports a production deployment');
+  if (health.production !== (environment === 'production')) {
+    throw new Error(`health reports production=${String(health.production)} for a ${environment} run`);
+  }
   const observed = health.databaseFingerprint;
   if (observed === null) throw new Error('health reported no database fingerprint');
   if (environment === 'staging' && observed === fingerprints.production) {
     throw new Error(`staging answers from the production database (fingerprint ${observed})`);
+  }
+  if (environment === 'production' && observed !== fingerprints.production) {
+    throw new Error(`production answers from database ${observed}, not the pinned production database`);
   }
   if (fingerprints.expected !== null && observed !== fingerprints.expected) {
     throw new Error(`expected database fingerprint ${fingerprints.expected}, received ${observed}`);
@@ -207,6 +223,7 @@ export interface OrderExpectation {
   amountCents: number;
   productIds: readonly string[];
   shippingCents: number | null;
+  rateId: string | null;
   lockerCode: string | null;
   salesLinkId: string | null;
 }
@@ -225,10 +242,10 @@ export const orderProblems = (order: OrderView, expected: OrderExpectation): str
   if (expected.shippingCents === null) {
     if (shippingLines.length > 0 || order.shipping != null) problems.push('a digital order carries delivery');
   } else {
-    if (shippingLines.length !== 1 || shippingLines[0]?.productId !== `shipping:${FIXTURE.rateId}` || shippingLines[0].grossCents !== expected.shippingCents) {
-      problems.push(`shipping line ${JSON.stringify(shippingLines)}, expected one shipping:${FIXTURE.rateId} line of ${String(expected.shippingCents)}`);
+    if (shippingLines.length !== 1 || shippingLines[0]?.productId !== `shipping:${String(expected.rateId)}` || shippingLines[0].grossCents !== expected.shippingCents) {
+      problems.push(`shipping line ${JSON.stringify(shippingLines)}, expected one shipping:${String(expected.rateId)} line of ${String(expected.shippingCents)}`);
     }
-    if (order.shipping?.pickupPoint?.code !== expected.lockerCode) {
+    if ((order.shipping?.pickupPoint?.code ?? null) !== expected.lockerCode) {
       problems.push(`parcel locker ${String(order.shipping?.pickupPoint?.code ?? null)}, expected ${String(expected.lockerCode)}`);
     }
     if (order.shipping?.address.country !== TEST_BUYER_ADDRESS.country) {
@@ -259,7 +276,7 @@ export const runPurchaseE2e = async (
 ): Promise<PurchaseE2eResult> => {
   const request: Fetch = (input, init) => unguardedRequest(input, { ...init, redirect: 'error' });
   const run = createRun();
-  const refused = stagingTargetProblems(options);
+  const refused = purchaseTargetProblems(options);
   if (refused.length > 0) {
     await run.step('target-identity', () => Promise.reject(new Error(refused.join('; '))));
     run.skipRest('the run refuses this target before any request');
@@ -297,6 +314,9 @@ export const runPurchaseE2e = async (
     if (me.data.tenant.staffRole !== 'owner' && me.data.tenant.staffRole !== 'admin') {
       throw new Error(`the staff account holds ${me.data.tenant.staffRole ?? 'no'} role; test checkout needs an owner or admin`);
     }
+    if (options.environment === 'production' && me.data.tenant.staffRole !== 'admin') {
+      throw new Error('a production run signs in only as the purchase fixture admin, never as an owner');
+    }
     return signedIn.token;
   });
   if (token === null) {
@@ -329,6 +349,7 @@ export const runPurchaseE2e = async (
   webhookUrl.searchParams.set('mode', 'test');
 
   const forwardEvents = async (wanted: (event: ProviderEvent) => boolean): Promise<void> => {
+    if (options.environment === 'production') return;
     for (const { event, raw } of await listRecentEvents(request, options.keys.restricted, eventsSinceSeconds)) {
       if (forwardedEventIds.has(event.id) || !wanted(event)) continue;
       const payloadRaw = JSON.stringify(raw);
@@ -354,6 +375,11 @@ export const runPurchaseE2e = async (
     if (secrets.stripeMode !== null || secrets.secrets.some((secret) => secret.key === 'stripe.restrictedKey')) {
       throw new Error('the live payment slot holds a key, so a checkout the server did not take as a test would reach it; the run stops before configuring anything');
     }
+    if (options.environment === 'production') {
+      const missing = TEST_SLOT_SECRET_KEYS.filter((key) => !secrets.secrets.some((secret) => secret.key === key));
+      if (missing.length > 0) throw new Error(`the reseed did not configure the test slot: ${missing.join(', ')} missing`);
+      return true;
+    }
     const result = valueOf(await api.configureStripe({ mode: 'test', restrictedKey: options.keys.restricted }), 'test slot configuration');
     if (result.mode !== 'test') throw new Error(`the configuration landed in the ${result.mode} slot`);
     valueOf(await api.setTenantSecret({ key: 'stripe.testWebhookSecret', value: forwardingSecret }), 'forwarding signing secret');
@@ -364,7 +390,7 @@ export const runPurchaseE2e = async (
     return run.result();
   }
 
-  const fixtures = await run.step('fixtures', () => ensureFixtures(api, origin));
+  const fixtures = await run.step('fixtures', () => (options.environment === 'production' ? findFixtures(api) : ensureFixtures(api, origin)));
   if (fixtures === null) {
     run.skipRest('the fixtures are missing');
     return run.result();
@@ -410,6 +436,7 @@ export const runPurchaseE2e = async (
     }
   };
 
+  const paidSessionIds: string[] = [];
   const purchase = async (
     body: Record<string, unknown>,
     expected: OrderExpectation,
@@ -420,6 +447,7 @@ export const runPurchaseE2e = async (
     if (!checkout.ok) throw new Error(`checkout failed with ${checkout.error.code}: ${checkout.error.message}`);
     const sessionId = checkoutSessionIdFromUrl(checkout.data.url);
     const session = await completeTestCheckout(request, options.keys, sessionId, { ...TEST_BUYER_ADDRESS, email: options.staff.email }, expected.amountCents);
+    paidSessionIds.push(sessionId);
     onPaid(sessionId);
     const order = await waitForPaidOrder(sessionId);
     const amountCents = session.amount_total ?? -1;
@@ -433,7 +461,7 @@ export const runPurchaseE2e = async (
 
   const digital = await run.step('digital-purchase', () => purchase(
     { productId: FIXTURE.digitalProductId },
-    { amountCents: FIXTURE.digitalPriceCents, productIds: [FIXTURE.digitalProductId], shippingCents: null, lockerCode: null, salesLinkId: null },
+    { amountCents: FIXTURE.digitalPriceCents, productIds: [FIXTURE.digitalProductId], shippingCents: null, rateId: null, lockerCode: null, salesLinkId: null },
   ));
 
   const shipping = { rateId: FIXTURE.rateId, pickupPoint: { provider: 'inpost', code: options.lockerCode } };
@@ -441,8 +469,20 @@ export const runPurchaseE2e = async (
   let lockerSessionId: string | null = null;
   const locker = await run.step('locker-purchase', () => purchase(
     { productId: fixtures.parcelId, shipping },
-    { amountCents: lockerAmountCents, productIds: [fixtures.parcelId], shippingCents: FIXTURE.rateCents, lockerCode: options.lockerCode, salesLinkId: null },
+    { amountCents: lockerAmountCents, productIds: [fixtures.parcelId], shippingCents: FIXTURE.rateCents, rateId: FIXTURE.rateId, lockerCode: options.lockerCode, salesLinkId: null },
     (sessionId) => { lockerSessionId = sessionId; },
+  ));
+
+  await run.step('courier-purchase', () => purchase(
+    { productId: fixtures.parcelId, shipping: { rateId: FIXTURE.courierRateId } },
+    {
+      amountCents: FIXTURE.parcelPriceCents + FIXTURE.courierRateCents,
+      productIds: [fixtures.parcelId],
+      shippingCents: FIXTURE.courierRateCents,
+      rateId: FIXTURE.courierRateId,
+      lockerCode: null,
+      salesLinkId: null,
+    },
   ));
 
   await run.step('sales-link-purchase', () => purchase(
@@ -451,6 +491,7 @@ export const runPurchaseE2e = async (
       amountCents: FIXTURE.parcelPriceCents + FIXTURE.digitalPriceCents + FIXTURE.rateCents,
       productIds: [fixtures.parcelId, FIXTURE.digitalProductId],
       shippingCents: FIXTURE.rateCents,
+      rateId: FIXTURE.rateId,
       lockerCode: options.lockerCode,
       salesLinkId: fixtures.salesLinkId,
     },
@@ -463,6 +504,34 @@ export const runPurchaseE2e = async (
       throw new Error(`the last signature-verified test event is ${view.stripeTestLastEventAt ?? 'absent'}, older than this run`);
     }
   });
+
+  if (options.environment === 'staging') {
+    run.skip('provider-delivery', 'the protected staging host receives forwarded events');
+  } else {
+    await run.step('provider-delivery', async () => {
+      const deadline = timing.now() + timing.webhookTimeoutMs;
+      while (true) {
+        const events = await listRecentEvents(request, options.keys.restricted, eventsSinceSeconds);
+        const pending = paidSessionIds.filter((sessionId) => {
+          const delivered = events.find(({ event }) => event.type === 'checkout.session.completed' && event.data.object.id === sessionId);
+          return delivered === undefined || delivered.event.pending_webhooks !== 0;
+        });
+        if (pending.length === 0) return paidSessionIds.length;
+        if (timing.now() >= deadline) throw new Error(`the provider still has undelivered events for ${pending.join(', ')}`);
+        await timing.wait(timing.pollIntervalMs);
+      }
+    }, (count) => `${String(count)} checkout events delivered by the provider`);
+  }
+
+  await run.step('webhook-endpoint-version', async () => {
+    const endpoint = (await listWebhookEndpoints(request, options.keys.restricted))
+      .find((candidate) => candidate.url.startsWith(webhookUrl.origin + webhookUrl.pathname) && new URL(candidate.url).searchParams.get('mode') === 'test');
+    if (endpoint === undefined) throw new Error('the provider lists no test-mode endpoint of the fixture workspace');
+    if (endpoint.api_version !== STRIPE_WEBHOOK_API_VERSION) {
+      throw new Error(`the test-mode endpoint receives API version ${String(endpoint.api_version)}, the app pins ${STRIPE_WEBHOOK_API_VERSION}`);
+    }
+    return endpoint.api_version;
+  }, (version) => `endpoint API version ${version}`);
 
   await run.step('stock-untouched', async () => {
     const after = valueOf(await api.getProductStock(fixtures.parcelId), 'stock read').stock;
@@ -539,10 +608,28 @@ export const runPurchaseE2e = async (
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
+type Fixtures = { parcelId: string; salesLinkId: string; stock: { onHand: number; reserved: number } | null };
+
+const findFixtures = async (api: ApiClient): Promise<Fixtures> => {
+  const settings = valueOf(await api.getTenantSettings(), 'settings read').settings;
+  const rateIds = (settings.shippingRates ?? []).filter((rate) => rate.active).map((rate) => rate.id);
+  const missingRates = [FIXTURE.rateId, FIXTURE.courierRateId].filter((id) => !rateIds.includes(id));
+  if (missingRates.length > 0) throw new Error(`the reseed seeded no delivery rate ${missingRates.join(', ')}`);
+  const { products } = valueOf(await api.listProducts(), 'product list');
+  const parcel = products.find((product) => product.slug === FIXTURE.parcelSlug && product.published);
+  if (parcel === undefined) throw new Error(`the reseed seeded no published ${FIXTURE.parcelSlug}`);
+  const { salesLinks } = valueOf(await api.listSalesLinks({}), 'sales link list');
+  const link = salesLinks.find((candidate) => candidate.slug === FIXTURE.bundleSlug && candidate.active);
+  if (link === undefined) throw new Error(`the reseed seeded no active ${FIXTURE.bundleSlug}`);
+  const stock = valueOf(await api.getProductStock(parcel.id), 'stock read').stock;
+  if (stock === null || stock.available < RUN_ORDERS) throw new Error(`${FIXTURE.parcelSlug} has no stock for this run`);
+  return { parcelId: parcel.id, salesLinkId: link.id, stock };
+};
+
 const ensureFixtures = async (
   api: ApiClient,
   origin: string,
-): Promise<{ parcelId: string; salesLinkId: string; stock: { onHand: number; reserved: number } | null }> => {
+): Promise<Fixtures> => {
   const settings = valueOf(await api.getTenantSettings(), 'settings read').settings;
   const rate = {
     id: FIXTURE.rateId,
@@ -553,9 +640,18 @@ const ensureFixtures = async (
     pickupPoint: 'inpost_locker',
     active: true,
   } as const;
-  const otherRates = (settings.shippingRates ?? []).filter((candidate) => candidate.id !== FIXTURE.rateId);
+  const courier = {
+    id: FIXTURE.courierRateId,
+    label: FIXTURE.courierRateLabel,
+    amountCents: FIXTURE.courierRateCents,
+    vatRatePercent: 23,
+    carrier: 'inpost',
+    pickupPoint: 'none',
+    active: true,
+  } as const;
+  const otherRates = (settings.shippingRates ?? []).filter((candidate) => candidate.id !== FIXTURE.rateId && candidate.id !== FIXTURE.courierRateId);
   valueOf(await api.updateTenantSettings({
-    shippingRates: [...otherRates, rate],
+    shippingRates: [...otherRates, rate, courier],
     ...(settings.termsUrl === null ? { termsUrl: new URL('/terms', origin).toString() } : {}),
     ...(settings.privacyUrl === null ? { privacyUrl: new URL('/privacy', origin).toString() } : {}),
   }), 'settings update');
@@ -612,24 +708,29 @@ const provided = (env: Environment, name: string): string | null => {
 const DEFAULT_LOCKER_CODE = 'WAW01M';
 const DEFAULT_PLATFORM_DOMAIN = 'togethercommunity.app';
 
-const fixtureOrigin = (baseUrl: string, platformDomain: string): boolean => {
+const fixtureOrigin = (baseUrl: string, platformDomain: string, environment: PurchaseE2eEnvironment): boolean => {
   if (!URL.canParse(baseUrl)) return false;
   const url = new URL(baseUrl);
-  return url.protocol === 'https:'
-    && url.hostname.startsWith(`${SMOKE_TENANT_SLUG}.`)
-    && url.hostname.endsWith(`.${platformDomain}`)
-    && url.hostname !== `${SMOKE_TENANT_SLUG}.${platformDomain}`;
+  const productionHost = `${SMOKE_TENANT_SLUG}.${platformDomain}`;
+  if (url.protocol !== 'https:' || url.port !== '' || url.pathname !== '/') return false;
+  return environment === 'production'
+    ? url.hostname === productionHost
+    : url.hostname.startsWith(`${SMOKE_TENANT_SLUG}.`) && url.hostname.endsWith(`.${platformDomain}`) && url.hostname !== productionHost;
 };
 
-const HOST_PROBLEM = `the base URL must be the https origin of the ${SMOKE_TENANT_SLUG} fixture workspace on a staging host of the platform domain`;
+const hostProblem = (environment: string): string => environment === 'production'
+  ? `the base URL must be the https origin of the production ${SMOKE_TENANT_SLUG} fixture workspace`
+  : `the base URL must be the https origin of the ${SMOKE_TENANT_SLUG} fixture workspace on a staging host of the platform domain`;
 
-export const stagingTargetProblems = (
-  options: Pick<PurchaseE2eOptions, 'environment' | 'baseUrl' | 'platformDomain' | 'keys' | 'databaseFingerprint'>,
+export const purchaseTargetProblems = (
+  options: Pick<PurchaseE2eOptions, 'environment' | 'baseUrl' | 'platformDomain' | 'keys' | 'databaseFingerprint' | 'bypassSecret' | 'staff'>,
 ): string[] => {
   const environment: string = options.environment;
+  if (environment !== 'staging' && environment !== 'production') return ['the environment must be staging or production'];
   return [
-    ...(environment === 'staging' ? [] : [PRODUCTION_REFUSAL]),
-    ...(fixtureOrigin(options.baseUrl, options.platformDomain) ? [] : [HOST_PROBLEM]),
+    ...(fixtureOrigin(options.baseUrl, options.platformDomain, options.environment) ? [] : [hostProblem(environment)]),
+    ...(environment === 'production' && options.bypassSecret !== null ? ['a production run never sends the deployment bypass'] : []),
+    ...(environment === 'production' && options.staff.email !== SMOKE_TENANT_PURCHASE_EMAIL ? [`a production run signs in only as ${SMOKE_TENANT_PURCHASE_EMAIL}`] : []),
     ...[
       testModeKeyProblem('the restricted key', 'restricted', options.keys.restricted),
       testModeKeyProblem('the publishable key', 'publishable', options.keys.publishable),
@@ -639,51 +740,50 @@ export const stagingTargetProblems = (
 };
 const DEFAULT_TEST_ORDER_CAP = 300;
 
-const PRODUCTION_REFUSAL = 'PURCHASE_E2E_ENVIRONMENT=production is refused until a recorded owner decision names the credential a production run may use';
-
 export const purchaseE2eOptionsFromEnv = (env: Environment): { options: PurchaseE2eOptions } | { problems: string[] } => {
   const problems: string[] = [];
   const platformDomain = provided(env, 'PURCHASE_E2E_PLATFORM_DOMAIN') ?? DEFAULT_PLATFORM_DOMAIN;
+  const environment = provided(env, 'PURCHASE_E2E_ENVIRONMENT');
+  if (environment !== 'staging' && environment !== 'production') problems.push('PURCHASE_E2E_ENVIRONMENT must be staging or production');
+  const target: PurchaseE2eEnvironment | null = environment === 'staging' || environment === 'production' ? environment : null;
+  const suffix = target === 'production' ? 'PRODUCTION' : 'STAGING';
   const baseUrl = provided(env, 'PURCHASE_E2E_BASE_URL');
   if (baseUrl === null) problems.push('PURCHASE_E2E_BASE_URL is not configured');
-  else if (!fixtureOrigin(baseUrl, platformDomain)) {
-    problems.push(`PURCHASE_E2E_BASE_URL must be the https origin of the ${SMOKE_TENANT_SLUG} fixture workspace on a staging host of the platform domain`);
-  }
-  const environment = provided(env, 'PURCHASE_E2E_ENVIRONMENT');
-  if (environment === 'production') problems.push(PRODUCTION_REFUSAL);
-  else if (environment !== 'staging') problems.push('PURCHASE_E2E_ENVIRONMENT must be staging');
+  else if (target !== null && !fixtureOrigin(baseUrl, platformDomain, target)) problems.push(`PURCHASE_E2E_BASE_URL: ${hostProblem(target)}`);
   const keyOf = (name: string, kind: 'restricted' | 'publishable'): string | null => {
     const value = provided(env, name);
     const problem = testModeKeyProblem(name, kind, value);
     if (problem !== null) problems.push(problem);
     return problem === null ? value : null;
   };
-  const restricted = keyOf('STRIPE_TEST_RESTRICTED_KEY_STAGING', 'restricted');
-  const publishable = keyOf('STRIPE_TEST_PUBLISHABLE_KEY_STAGING', 'publishable');
-  const bypassSecret = provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET');
-  if (bypassSecret === null) problems.push('VERCEL_AUTOMATION_BYPASS_SECRET is not configured');
+  const restricted = keyOf(`STRIPE_TEST_RESTRICTED_KEY_${suffix}`, 'restricted');
+  const publishable = keyOf(`STRIPE_TEST_PUBLISHABLE_KEY_${suffix}`, 'publishable');
+  const bypassSecret = target === 'production' ? null : provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET');
+  if (target === 'staging' && bypassSecret === null) problems.push('VERCEL_AUTOMATION_BYPASS_SECRET is not configured');
+  const password = provided(env, `PURCHASE_E2E_STAFF_PASSWORD_${suffix}`) ?? (target === 'staging' ? DEMO_SEED_PASSWORD : null);
+  if (password === null) problems.push(`PURCHASE_E2E_STAFF_PASSWORD_${suffix} is not configured`);
   const productionFingerprint = provided(env, 'PRODUCTION_DATABASE_FINGERPRINT');
   if (productionFingerprint === null) problems.push('PRODUCTION_DATABASE_FINGERPRINT is not configured');
   const cap = Number(provided(env, 'PURCHASE_E2E_TEST_ORDER_CAP') ?? DEFAULT_TEST_ORDER_CAP);
   if (!Number.isInteger(cap) || cap <= 0) problems.push('PURCHASE_E2E_TEST_ORDER_CAP must be a positive integer');
-  if (problems.length > 0 || baseUrl === null || restricted === null || publishable === null || bypassSecret === null) {
+  if (problems.length > 0 || target === null || baseUrl === null || restricted === null || publishable === null || password === null) {
     return { problems };
   }
   return {
     options: {
       baseUrl,
-      environment: 'staging',
+      environment: target,
       bypassSecret,
       staff: {
-        email: provided(env, 'PURCHASE_E2E_STAFF_EMAIL') ?? SMOKE_TENANT_CREATOR_EMAIL,
-        password: provided(env, 'PURCHASE_E2E_STAFF_PASSWORD_STAGING') ?? DEMO_SEED_PASSWORD,
+        email: target === 'production' ? SMOKE_TENANT_PURCHASE_EMAIL : provided(env, 'PURCHASE_E2E_STAFF_EMAIL') ?? SMOKE_TENANT_CREATOR_EMAIL,
+        password,
       },
       keys: { restricted, publishable },
       lockerCode: provided(env, 'PURCHASE_E2E_LOCKER_CODE') ?? DEFAULT_LOCKER_CODE,
       runId: provided(env, 'PURCHASE_E2E_RUN_ID') ?? String(Date.now()),
       testOrderCap: cap,
       databaseFingerprint: {
-        expected: provided(env, 'PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT'),
+        expected: target === 'production' ? productionFingerprint : provided(env, 'PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT'),
         production: productionFingerprint,
       },
       platformDomain,

@@ -1,4 +1,3 @@
-import type { StripeMode } from '#core/domain/index.js';
 import {
   createWorkspacePaymentConfigReader,
   STRIPE_KEY_SLOT,
@@ -10,9 +9,6 @@ import {
 import type { Db } from './client.js';
 import { createEffectiveTenantConfigReader } from './organizations.js';
 import { createTenantSecretRepository } from './repositories.js';
-
-// No organization webhook endpoint can be registered yet, so no organization can verify events for an inheriting workspace.
-const organizationEndpointRegistered = async (_tenantId: string, _mode: StripeMode): Promise<boolean> => false;
 
 export const createEffectivePaymentConfigReader = (
   db: Db,
@@ -27,7 +23,8 @@ export const createEffectivePaymentConfigReader = (
       return {
         source: 'organization',
         keyPresent: key.value !== null,
-        webhookReady: await organizationEndpointRegistered(tenantId, mode),
+        // No organization webhook endpoint can be registered yet, so no event of an inherited mode can be verified.
+        webhookReady: false,
         keyMode: key.value === null ? null : stripeKeyModeOf(key.value, crypto),
       };
     },

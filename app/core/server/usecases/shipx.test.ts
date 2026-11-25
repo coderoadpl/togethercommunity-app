@@ -1429,3 +1429,34 @@ describe('ShipX settings', () => {
     expect(h.settings.rows.size).toBe(0);
   });
 });
+
+describe('label creation without dispatch', () => {
+  it.each([false, true])('keeps a new label to pack unless markShipped is %s', async (markShipped) => {
+    const h = harness();
+    expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toMatchObject({
+      ok: true, value: { order: { fulfilmentStatus: markShipped ? 'shipped' : 'to_pack' }, shipment: { trackingNumber: TRACKING } },
+    });
+    expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
+    if (markShipped) expect(h.ship.mock.calls[0]?.[1].email?.payload.shipment.trackingNumber).toBe(TRACKING);
+    else expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('reuses a bought label with markShipped %s and finishes its claim', async (markShipped) => {
+    const h = harness();
+    h.seed({ shipxShipmentId: '1001', status: 'confirmed', trackingNumber: TRACKING, boughtAt: NOW });
+    expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toMatchObject({
+      ok: true, value: { order: { fulfilmentStatus: markShipped ? 'shipped' : 'to_pack' } },
+    });
+    expect(h.real.calls).toEqual(noCalls);
+    expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
+    expect(h.row()?.operationToken).toBeNull();
+    expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'bought' } });
+  });
+
+  it('defaults to no fulfilment write and no buyer email', async () => {
+    const h = harness();
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true, value: { order: { fulfilmentStatus: 'to_pack' } } });
+    expect(h.ship).not.toHaveBeenCalled();
+    expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
+  });
+});

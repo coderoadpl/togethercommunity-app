@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { paymentSourcesSchema } from './config-source.js';
 import { languageSchema } from './language.js';
 import { tenantSchema } from './tenant.js';
 
@@ -27,7 +26,6 @@ export const operatorTenantReadinessSchema = z.object({
   webhookEndpointRegistered: z.boolean(),
   legalUrlsSet: z.boolean(),
   publishedProducts: z.number().int().nonnegative(),
-  paymentSources: paymentSourcesSchema.optional(),
 }).strict();
 
 export type OperatorTenantReadiness = z.infer<typeof operatorTenantReadinessSchema>;

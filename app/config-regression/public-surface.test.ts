@@ -27,6 +27,7 @@ const APPROVED_PUBLIC_SERVER_IMPORTS = [
   'getPublicSurvey',
   'submitSurvey',
   'authLinkBaseUrl',
+  'checkoutPaymentSource',
   'cleanUpFailedCheckout',
   'describeInstance',
   'ensureMember',

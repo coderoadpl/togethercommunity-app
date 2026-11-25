@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { configSourceSchema } from './config-source.js';
 import type { StaffGrantSource, StaffRole } from './identity.js';
 import { operatorTenantSlugSchema } from './operator-tenant.js';
 import { shipxEnvironmentSchema, shipxSenderSchema } from './shipx.js';
@@ -292,6 +291,8 @@ export const updateOrganizationInputSchema = z.object({
 export type UpdateOrganizationInput = z.input<typeof updateOrganizationInputSchema>;
 
 export type OrganizationUpdate = z.output<typeof updateOrganizationInputSchema>;
+
+const configSourceSchema = z.enum(['workspace', 'organization']);
 
 export const tenantConfigSourceSchema = z.object({
   tenantId: z.string().min(1),

@@ -16,6 +16,7 @@ import {
   getTenantSetupReadiness,
   type TenantSetupReadinessDeps,
 } from './tenant-setup-readiness.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 const NOW = '2026-08-01T00:00:00.000Z';
 
@@ -124,6 +125,7 @@ const deps = (input: {
   spaces?: Space[];
   sender?: TenantSesSettings | null;
 }): TenantSetupReadinessDeps => ({
+  paymentSource: workspaceOnlyPaymentSource,
   tenants: { findSettings: async () => (input.settings === undefined ? settings() : input.settings) },
   tenantSecrets: { listByTenant: async () => (input.secretKeys ?? []).map(secret) },
   spaces: { list: async () => input.spaces ?? [] },

@@ -46,6 +46,7 @@ import {
   type PaymentProvider,
   type PaymentWebhookEvent,
   type TenantSecretResolver,
+  type WorkspaceTenantSecretResolver,
 } from '#core/server/index.js';
 
 /**
@@ -80,8 +81,7 @@ const localeFor = (language: string | undefined): Stripe.Checkout.SessionCreateP
 
 export interface StripePaymentProviderConfig {
   resolver: TenantSecretResolver;
-  /** The workspace's own keys, never inherited; without it the resolver is taken as workspace-only. */
-  workspaceResolver?: TenantSecretResolver;
+  workspaceResolver: WorkspaceTenantSecretResolver;
   clientFactory?: (restrictedKey: string) => Stripe;
 }
 
@@ -888,7 +888,7 @@ export const createStripePaymentProvider = (config: StripePaymentProviderConfig)
           let payments = invoice.data.payments;
           if ((payments?.data.length ?? 0) === 0 && event.livemode === (input.mode === 'live')) {
             // Events verified here arrived at the workspace's own endpoint, so they come from its own account even while its payments are inherited.
-            const paymentClient = await clientFor(input.tenantId, input.mode, config.workspaceResolver ?? config.resolver);
+            const paymentClient = await clientFor(input.tenantId, input.mode, config.workspaceResolver);
             if (!paymentClient.ok) return paymentClient;
             const retrieved = stripeInvoiceObjectSchema.parse(await paymentClient.value.invoices.retrieve(
               invoice.data.id,

@@ -14,6 +14,7 @@ import type {
 
 import type { Ctx } from '../context.js';
 import { dismissCreatorOnboarding, getCreatorOnboarding, type OnboardingDeps } from './onboarding.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 const NOW = '2026-07-01T00:00:00.000Z';
 
@@ -132,6 +133,7 @@ const harness = (data: HarnessData = {}): { deps: OnboardingDeps; dismissals: st
   let dismissedAt = data.dismissedAt ?? null;
   const dismissals: string[] = [];
   const deps: OnboardingDeps = {
+    paymentSource: workspaceOnlyPaymentSource,
     products: { listByTenant: async () => data.products ?? [] },
     prices: {
       listActiveByProducts: async (_tenantId, productIds) =>

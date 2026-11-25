@@ -6,7 +6,6 @@ import {
   stripeModeFromKey,
   validation,
   type AppError,
-  type PaymentSources,
   type Result,
   type SetTenantSecretInput,
   type StripeMode,
@@ -20,16 +19,15 @@ import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import type {
   Clock,
-  EffectivePaymentConfigReader,
   IdGenerator,
   MarketingSesCredentialResolver,
+  PaymentSourceReader,
   SecretCrypto,
   SesOnboardingControlPlane,
   TenantSecretRepository,
   TenantSesSettingsRepository,
 } from '../ports.js';
 import { refreshTenantSesIdentityStatus } from './marketing-ses-onboarding.js';
-import { paymentConfigReader, paymentSourcesOf, workspaceSecretsFromRows } from './payment-config.js';
 import type { SesWebhookBaseUrlResolver } from './ses-webhook-url.js';
 
 export interface TenantSecretDeps {
@@ -129,8 +127,15 @@ export interface TenantSecretsView {
   stripeMode: StripeMode | null;
   stripeWebhookUrl: string;
   stripeTestLastEventAt: string | null;
-  paymentSources?: PaymentSources;
 }
+
+const readStripeMode = (rows: TenantSecret[], secretCrypto: SecretCrypto): StripeMode | null => {
+  const stored = rows.find((row) => row.key === 'stripe.restrictedKey');
+  if (stored === undefined) return null;
+  const decrypted = secretCrypto.decrypt(stored);
+  if (!decrypted.ok) return null;
+  return stripeModeFromKey(decrypted.value);
+};
 
 export const stripeWebhookUrl = (
   tenantSlug: string | null,
@@ -138,22 +143,23 @@ export const stripeWebhookUrl = (
   deps: TenantUrlDeps,
 ): string => tenantUrl(tenantSlug, `/api/webhooks/stripe/${encodeURIComponent(tenantId)}`, deps);
 
+export type TenantSecretsViewDeps = TenantSecretDeps & TenantUrlDeps & { paymentSource: PaymentSourceReader };
+
 export const getTenantSecretsMasked = async (
   ctx: Ctx,
-  deps: TenantSecretDeps & TenantUrlDeps & { paymentConfig?: EffectivePaymentConfigReader | undefined },
+  deps: TenantSecretsViewDeps,
 ): Promise<Result<TenantSecretsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
-  const rows = await deps.tenantSecrets.listByTenant(tenant.value);
-  const payments = paymentConfigReader(deps.paymentConfig, workspaceSecretsFromRows(rows), deps.secretCrypto);
-  const [live, test] = await Promise.all([payments.read(tenant.value, 'live'), payments.read(tenant.value, 'test')]);
-  const sources = paymentSourcesOf(live, test);
+  const [rows, livePaymentSource] = await Promise.all([
+    deps.tenantSecrets.listByTenant(tenant.value),
+    deps.paymentSource.read(tenant.value, 'live'),
+  ]);
   return ok({
     secrets: rows.map(masked),
     stripeTestLastEventAt: rows.find((row) => row.key === 'stripe.testLastEventAt')?.updatedAt ?? null,
-    stripeMode: live.keyMode,
+    stripeMode: livePaymentSource.source === 'workspace' ? readStripeMode(rows, deps.secretCrypto) : livePaymentSource.keyMode,
     stripeWebhookUrl: stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps),
-    ...(sources === null ? {} : { paymentSources: sources }),
   });
 };
 

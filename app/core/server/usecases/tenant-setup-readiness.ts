@@ -12,9 +12,9 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import { tenantLegalUrls } from './terms-consent.js';
-import { paymentConfigReader, paymentsReady, workspaceSecretsFromRows } from './payment-config.js';
+import { organizationPaymentsReady } from './payment-source.js';
 import type {
-  EffectivePaymentConfigReader,
+  PaymentSourceReader,
   SpaceRepository,
   TenantRepository,
   TenantSecretRepository,
@@ -24,7 +24,7 @@ import type {
 export interface TenantSetupReadinessDeps {
   tenants: Pick<TenantRepository, 'findSettings'>;
   tenantSecrets: Pick<TenantSecretRepository, 'listByTenant'>;
-  paymentConfig?: EffectivePaymentConfigReader | undefined;
+  paymentSource: PaymentSourceReader;
   spaces: Pick<SpaceRepository, 'list'>;
   sesSettings: Pick<TenantSesSettingsRepository, 'findByTenant'> | null;
 }
@@ -51,9 +51,10 @@ export const getTenantSetupReadiness = async (
   if (!tenant.ok) return tenant;
   const tenantId = tenant.value;
 
-  const [settings, secrets, spaces, senderSettings] = await Promise.all([
+  const [settings, secrets, livePaymentSource, spaces, senderSettings] = await Promise.all([
     deps.tenants.findSettings(tenantId),
     deps.tenantSecrets.listByTenant(tenantId),
+    deps.paymentSource.read(tenantId, 'live'),
     deps.spaces.list(tenantId),
     deps.sesSettings === null ? Promise.resolve(null) : deps.sesSettings.findByTenant(tenantId),
   ]);
@@ -71,11 +72,12 @@ export const getTenantSetupReadiness = async (
   const resendTransportConfigured = has('resend.apiKey');
 
   const invoicingProvider = settings?.invoicingProvider ?? null;
-  const livePayments = await paymentConfigReader(deps.paymentConfig, workspaceSecretsFromRows(secrets)).read(tenantId, 'live');
 
   return ok(
     computeTenantSetupReadiness({
-      stripeConfigured: paymentsReady(livePayments),
+      stripeConfigured: livePaymentSource.source === 'workspace'
+        ? has('stripe.restrictedKey') && has('stripe.webhookSecret')
+        : organizationPaymentsReady(livePaymentSource),
       emailSendingConfigured:
         senderIdentityConfigured
         && (sesTransportConfigured || smtpTransportConfigured || resendTransportConfigured),

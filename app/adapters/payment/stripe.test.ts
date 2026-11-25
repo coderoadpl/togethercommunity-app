@@ -19,12 +19,13 @@ import oldApiAddressPaid from './fixtures/checkout-completed-2020-03-02-address-
 import oldApiLockerFree from './fixtures/checkout-completed-2020-03-02-locker-free.json' with { type: 'json' };
 import cloverAddressPaid from './fixtures/checkout-completed-2025-09-30-address-paid.json' with { type: 'json' };
 import cloverLockerFree from './fixtures/checkout-completed-2025-09-30-locker-free.json' with { type: 'json' };
+import { withWorkspaceOnlyResolver } from '#core/server/testing/payment-source-fake.js';
 
 const webhookSecret = 'whsec_test_secret';
 const stripe = new Stripe('sk_test_unused');
-const provider = createStripePaymentProvider({
+const provider = createStripePaymentProvider(withWorkspaceOnlyResolver({
   resolver: { resolve: async () => { throw new Error('unused'); } },
-});
+}));
 
 const webhookUrl = 'https://app.example.test/api/webhooks/stripe/tenant-1';
 
@@ -49,10 +50,10 @@ const providerOverHttp = (
     }
     return respond(request);
   });
-  const created = createStripePaymentProvider({
+  const created = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => { throw new Error('unused'); } },
     clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
-  });
+  }));
   if (created.configureWebhook === undefined) throw new Error('configureWebhook missing');
   if (created.deleteWebhookEndpoint === undefined) throw new Error('deleteWebhookEndpoint missing');
   return {
@@ -85,7 +86,7 @@ const invoiceProviderOverHttp = (
 ) => {
   const requests: Request[] = [];
   const resolvedSecrets: Array<{ tenantId: string; key: string }> = [];
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async (tenantId, key) => {
       resolvedSecrets.push({ tenantId, key });
       return ok(key === 'stripe.testRestrictedKey' ? 'rk_test_unused' : 'rk_live_unused');
@@ -98,7 +99,7 @@ const invoiceProviderOverHttp = (
         return respond(request);
       }),
     }),
-  });
+  }));
   return {
     requests, resolvedSecrets,
     verify: (payloadRaw: string, mode: 'live' | 'test' = 'live', signedPayload = payloadRaw) =>
@@ -217,7 +218,7 @@ describe('configureWebhook', () => {
     const deleted: string[] = [];
     const keys: string[] = [];
     let sequence = 0;
-    const payment = createStripePaymentProvider({
+    const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
       resolver: { resolve: async () => { throw new Error('Unexpected secret lookup'); } },
       clientFactory: (key) => {
         keys.push(key);
@@ -250,7 +251,7 @@ describe('configureWebhook', () => {
           }),
         });
       },
-    });
+    }));
     const secrets = createTenantSecretRepositoryFake();
     const configure = async (tenantId: string, slot: 'live' | 'test') => {
       const result = await configureStripe({ identity: {
@@ -534,13 +535,13 @@ it('creates a coupon promotion through the Clover polymorphic promotion field', 
       ? { id: 'coupon_created', object: 'coupon' }
       : { id: 'promo_created', object: 'promotion_code' });
   };
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_unused') },
     clientFactory: (key) => new Stripe(key, {
       maxNetworkRetries: 0,
       httpClient: Stripe.createFetchHttpClient(fetchImpl),
     }),
-  });
+  }));
   if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
   expect(await payment.ensureCouponPromotion({
     tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SAVE', kind: 'percent', value: 25,
@@ -567,10 +568,10 @@ it.each([
     requests.push(request);
     return stripeJson({ id: 'promo_created', object: 'promotion_code' });
   };
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_unused') },
     clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
-  });
+  }));
   if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
   expect(await payment.ensureCouponPromotion({
     tenantId: 'tenant-a', couponId: 'coupon-1', code, kind: 'percent', value: 25,
@@ -597,10 +598,10 @@ it('lets Stripe generate the promotion code when the mapped code is already acti
       } }, 400)
       : stripeJson({ id: 'promo_generated', object: 'promotion_code' });
   };
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_unused') },
     clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
-  });
+  }));
   if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
   expect(await payment.ensureCouponPromotion({
     tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SUMMER-20', kind: 'percent', value: 25,
@@ -613,7 +614,7 @@ it('lets Stripe generate the promotion code when the mapped code is already acti
 
 it('propagates other promotion-code rejections without retrying', async () => {
   const requests: Request[] = [];
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_unused') },
     clientFactory: (key) => new Stripe(key, {
       maxNetworkRetries: 0,
@@ -622,7 +623,7 @@ it('propagates other promotion-code rejections without retrying', async () => {
         return stripeJson({ error: { type: 'invalid_request_error', code: 'parameter_invalid_string', message: 'Invalid code' } }, 400);
       }),
     }),
-  });
+  }));
   if (payment.ensureCouponPromotion === undefined) throw new Error('Coupon promotion support missing');
   expect(await payment.ensureCouponPromotion({
     tenantId: 'tenant-a', couponId: 'coupon-1', code: 'SUMMER-20', kind: 'percent', value: 25,
@@ -1103,7 +1104,7 @@ describe('verifyWebhookEvent', () => {
 it('selects the sandbox key for test checkout and cancellation', async () => {
   const slots: string[] = [];
   const keys: string[] = [];
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async (_tenantId, key) => {
       slots.push(key);
       return { ok: true, value: key === 'stripe.testRestrictedKey' ? 'rk_test_private' : 'rk_live_private' };
@@ -1113,7 +1114,7 @@ it('selects the sandbox key for test checkout and cancellation', async () => {
       return new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async () =>
         stripeJson({ id: 'cs_test', url: 'https://checkout.stripe.test/session' })) });
     },
-  });
+  }));
   expect(await payment.createCheckoutSession({ tenantId: 'tenant-1', mode: 'test', productId: 'product-1',
     productName: 'Course', priceCents: 1000, currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel' }))
     .toMatchObject({ ok: true });
@@ -1124,10 +1125,10 @@ it('selects the sandbox key for test checkout and cancellation', async () => {
 });
 
 it.each(['live', 'test'] as const)('refuses the wrong key mode before making a %s API request', async (mode) => {
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ({ ok: true, value: mode === 'test' ? 'rk_live_wrong' : 'rk_test_wrong' }) },
     clientFactory: () => { throw new Error('Must not construct a client for the wrong mode'); },
-  });
+  }));
   expect(await payment.cancelSubscription({ tenantId: 'tenant-1', mode, providerSubscriptionId: 'sub', idempotencyKey: 'cancel' }))
     .toMatchObject({ ok: false, error: { code: 'validation' } });
 });
@@ -1150,10 +1151,10 @@ it('reads adoption state using the tenant key without mutating Stripe', async ()
       items: { data: [{ current_period_end: 904608000, price: { id: 'price_existing', unit_amount: 3500,
         currency: 'eur', recurring: { interval: 'week', interval_count: 2 } } }] } });
   });
-  const adoptionProvider = createStripePaymentProvider({
+  const adoptionProvider = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async (tenantId) => { resolved.push(tenantId); return ok('rk_live_tenant'); } },
     clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
-  });
+  }));
   const result = await adoptionProvider.retrieveStripeSubscription?.('tenant-1', 'sub_existing');
   expect(result).toMatchObject({ ok: true, value: { id: 'sub_existing', status: 'past_due', cancelAtPeriodEnd: true,
     customerId: 'cus_existing', metadataTenantId: null,
@@ -1170,10 +1171,10 @@ it('reads the subscription metadata tenant for adoption', async () => {
     customer: { id: 'cus_owned', email: 'buyer@example.com' },
     items: { data: [{ current_period_end: 904608000, price: { id: 'price_owned', unit_amount: 3500,
       currency: 'eur', recurring: { interval: 'month', interval_count: 1 } } }] } }));
-  const adoptionProvider = createStripePaymentProvider({
+  const adoptionProvider = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_tenant') },
     clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
-  });
+  }));
   expect(await adoptionProvider.retrieveStripeSubscription?.('tenant-1', 'sub_owned'))
     .toMatchObject({ ok: true, value: { customerId: 'cus_owned', metadataTenantId: 'tenant-2' } });
 });
@@ -1189,10 +1190,10 @@ it('lists subscriptions with their customer and metadata tenant and the raw page
         items: { object: 'list', data: [] } },
     ] });
   });
-  const listingProvider = createStripePaymentProvider({
+  const listingProvider = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_tenant') },
     clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
-  });
+  }));
   expect(await listingProvider.listStripeSubscriptions?.('tenant-1', { startingAfter: 'sub_previous' })).toEqual(ok({ subscriptions: [
     { id: 'sub_owned', status: 'active', providerPriceId: 'price_owned', customerId: 'cus_owned', metadataTenantId: 'tenant-1' },
     { id: 'sub_legacy', status: 'past_due', providerPriceId: null, customerId: 'cus_legacy', metadataTenantId: null },
@@ -1206,10 +1207,10 @@ it('reports a permission failure as an integration diagnostic instead of throwin
     type: 'invalid_request_error', code: 'api_key_expired',
     message: 'This key does not have the required permissions.',
   } }, 403));
-  const restrictedProvider = createStripePaymentProvider({
+  const restrictedProvider = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_tenant') },
     clientFactory: (key) => new Stripe(key, { httpClient, maxNetworkRetries: 0 }),
-  });
+  }));
   expect(await restrictedProvider.listStripeSubscriptions?.('tenant-1', {}))
     .toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('required permissions') } });
   expect(await restrictedProvider.retrieveStripeSubscription?.('tenant-1', 'sub_existing'))
@@ -1252,7 +1253,7 @@ it('reassembles numerically ordered bundle product metadata chunks in a signed w
 
 const permissionProbeHarness = (failures: Record<string, { status: number; message: string; code?: string }> = {}) => {
   const requests: Request[] = [];
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async (_tenantId, key) => ok(key === 'stripe.testRestrictedKey' ? 'rk_test_probe' : 'rk_live_probe') },
     clientFactory: (key) => new Stripe(key, {
       maxNetworkRetries: 0,
@@ -1277,7 +1278,7 @@ const permissionProbeHarness = (failures: Record<string, { status: number; messa
         return stripeJson({ id: 'probe_cleanup' });
       }),
     }),
-  });
+  }));
   const run = (mode: 'live' | 'test' = 'live') => probeStripePermissions({ identity: {
     userId: 'owner-1', email: 'owner@example.test', name: 'Owner', emailVerified: true,
     tenantAccess: 'staff', tenantId: 'tenant-1', tenantSlug: 'acme', tenantName: 'Acme', staffRole: 'owner',
@@ -1649,10 +1650,10 @@ it.each([
     requests.push(new Request(input, init));
     return stripeJson({ id: 'cs_direct', object: 'checkout.session', url: 'https://checkout.stripe.com/c/pay/cs_direct' });
   };
-  const payment = createStripePaymentProvider({
+  const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok(mode === 'test' ? 'rk_test_unused' : 'rk_live_unused') },
     clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
-  });
+  }));
   expect(await payment.createCheckoutSession({ mode, tenantId: 'tenant-a', productId: 'product-1', productName: 'Course',
     priceCents: 4900, currency: 'PLN', successUrl: 'https://example.com/success', cancelUrl: 'https://example.com/',
     ...(checkout === 'subscription' ? { recurringInterval: 'month' as const } : {}),
@@ -1687,10 +1688,10 @@ it.each([
 
 const STRIPE_TERMS_URL_REFUSAL = 'You cannot collect consent to your terms of service unless a URL is set in the Stripe Dashboard. Update your public business details in the Dashboard https://dashboard.stripe.com/settings/public with a Terms of service URL to collect terms of service consent.';
 
-const refusingCheckoutProvider = (error: { type: string; message: string; param?: string }) => createStripePaymentProvider({
+const refusingCheckoutProvider = (error: { type: string; message: string; param?: string }) => createStripePaymentProvider(withWorkspaceOnlyResolver({
   resolver: { resolve: async () => ok('rk_live_unused') },
   clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(async () => stripeJson({ error }, 400)) }),
-});
+}));
 
 const termsCheckout = {
   tenantId: 'tenant-a', productId: 'product-1', productName: 'Course', priceCents: 4900, currency: 'PLN',

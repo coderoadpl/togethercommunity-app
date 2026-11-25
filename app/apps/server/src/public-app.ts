@@ -70,6 +70,7 @@ import {
   submitSurvey,
   listLessonEditions,
   authLinkBaseUrl,
+  checkoutPaymentSource,
   cleanUpFailedCheckout,
   fulfillStripeWebhook,
   validateStripeInvoiceTenant,
@@ -793,6 +794,8 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       ? await checkoutIdentity(c, deps) : await stripeTestCheckoutIdentity(c, tenant.value.tenant.id, deps);
     const testMode = identity?.tenantId === tenant.value.tenant.id &&
       hasStripeTestSession(identity, getCookie(c, 'together_stripe_test'), deps);
+    const paymentSource = await checkoutPaymentSource(tenant.value.tenant.id, testMode ? 'test' : 'live', deps);
+    if (!paymentSource.ok) return respondPublic(paymentSource);
     const cart = isCheckoutCartRequest(body);
     const termsOnPage = 'termsOnPage' in request.value.input && request.value.input.termsOnPage === true;
     const stripeTerms = cart || termsOnPage ? undefined : checkoutStripeTerms(await deps.tenants.findSettings(tenant.value.tenant.id), request.value.input.language);
@@ -842,7 +845,7 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       baseUrl,
       testMode && testEmail !== undefined ? { ...input, email: testEmail } : input,
       selection,
-      deps,
+      { ...deps, paymentSource: paymentSource.value },
       captureConsent ? checkoutConsentCaptureId : undefined,
       testMember?.ok === true ? { mode: 'test', memberId: testMember.value.id } : undefined,
       stripeTerms,

@@ -13,15 +13,16 @@ import {
   createOrganizationWorkspaceRepository,
   createTenantConfigSourceRepository,
 } from '#adapters/db/organizations.js';
-import { createEffectivePaymentConfigReader } from '#adapters/db/effective-payment-config.js';
+import { createPaymentSourceReader } from '#adapters/db/payment-source.js';
 import type {
-  EffectivePaymentConfigReader,
   OrganizationAuditRepository,
   OrganizationMemberRepository,
   OrganizationRepository,
   OrganizationSecretRepository,
   OrganizationWorkspaceRepository,
+  PaymentSourceReader,
   TenantConfigSourceRepository,
+  WorkspaceTenantSecretResolver,
 } from '#core/server/index.js';
 import type { TenantTeamRepository } from '#core/server/index.js';
 import { createProductDraftRepository } from '#adapters/db/product-drafts.js';
@@ -226,7 +227,7 @@ import { createKsefCredentialResolver } from '#adapters/crypto/ksef-credential-r
 import { createEmailHmac } from '#adapters/crypto/email-hmac.js';
 import { createEffectiveTenantSecretResolver } from '#adapters/crypto/effective-tenant-secret-resolver.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
-import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
+import { createStripePaymentProvider, type StripePaymentProviderConfig } from '#adapters/payment/stripe.js';
 import { createFakePaymentProvider } from '#adapters/payment/fake.js';
 import { createFakeInvoicing } from '#adapters/invoicing/fake.js';
 import { createIfirmaInvoicing } from '#adapters/invoicing/ifirma.js';
@@ -624,7 +625,7 @@ export interface AppDeps {
   tenantSecrets: TenantSecretRepository;
   secretCrypto: SecretCrypto;
   secretResolver: TenantSecretResolver;
-  paymentConfig?: EffectivePaymentConfigReader | undefined;
+  paymentSource: PaymentSourceReader;
   payment: PaymentProvider;
   checkoutConsentCaptures: CheckoutConsentCaptureRepository;
   invoices: InvoiceRepository;
@@ -1005,6 +1006,19 @@ const throttledSweep = (
   };
 };
 
+export const createPaymentSecretResolvers = (
+  tenantSecrets: TenantSecretRepository,
+  db: Db,
+  secretCrypto: SecretCrypto,
+): { effective: TenantSecretResolver; workspace: WorkspaceTenantSecretResolver } => {
+  const workspace = createTenantSecretResolver(tenantSecrets, secretCrypto);
+  return { workspace, effective: createEffectiveTenantSecretResolver(workspace, createEffectiveTenantConfigReader(db), secretCrypto) };
+};
+
+export const stripePaymentProviderConfig = (
+  resolvers: ReturnType<typeof createPaymentSecretResolvers>,
+): StripePaymentProviderConfig => ({ resolver: resolvers.effective, workspaceResolver: resolvers.workspace });
+
 /**
  * Composition root — the ONLY place where env decides which adapters run.
  * Platform names (vercel, neon) may appear here and in adapters, never in core.
@@ -1052,8 +1066,8 @@ export const createDeps = (
     egress: createTelemetryEgressProbe({ declaredIp: env.PLATFORM_EGRESS_IP, endpoint: env.PLATFORM_EGRESS_ECHO_URL }),
     hidesStatistics: env.TELEMETRY_FREE_PLAN_HIDES_STATS,
   };
-  const workspaceSecretResolver = createTenantSecretResolver(tenantSecrets, secretCrypto);
-  const secretResolver = createEffectiveTenantSecretResolver(workspaceSecretResolver, createEffectiveTenantConfigReader(db), secretCrypto);
+  const paymentSecretResolvers = createPaymentSecretResolvers(tenantSecrets, db, secretCrypto);
+  const secretResolver = paymentSecretResolvers.effective;
   const invoiceRepository = createInvoiceRepository(db);
   const orderRepository = createOrderRepository(db);
   const stock = createStockRepository(db);
@@ -1099,7 +1113,7 @@ export const createDeps = (
   const dispatchKsef = () => dispatchKsefJob(ksefSubmissionDeps);
   const payment =
     env.PAYMENT_PROVIDER === 'stripe'
-      ? createStripePaymentProvider({ resolver: secretResolver, workspaceResolver: workspaceSecretResolver })
+      ? createStripePaymentProvider(stripePaymentProviderConfig(paymentSecretResolvers))
       : createFakePaymentProvider(secretResolver);
   const devEmail = createDevEmailPort(db, clock);
   const email =
@@ -1737,7 +1751,7 @@ export const createDeps = (
     secretCrypto,
     telemetryStore,
     secretResolver,
-    paymentConfig: createEffectivePaymentConfigReader(db, secretCrypto),
+    paymentSource: createPaymentSourceReader(db, secretCrypto),
     payment,
     checkoutConsentCaptures: createCheckoutConsentCaptureRepository(db),
     invoices: invoiceRepository,

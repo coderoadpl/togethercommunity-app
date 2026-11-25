@@ -16,6 +16,7 @@ import {
 import type { CheckoutDeps, PaymentProvider } from '#core/server/index.js';
 
 import { createStockRepositoryFake } from '../testing/stock-fake.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 const tenant: Tenant = {
   id: 'tenant-a',
@@ -89,6 +90,7 @@ const recurringPrice: ProductPrice = {
 };
 
 const checkoutDeps = (): CheckoutDeps => ({
+  paymentSource: workspaceOnlyPaymentSource,
   products: {
     listByTenant: async () => [],
     listPublishedByTenant: async () => [],
@@ -330,6 +332,7 @@ describe('createCheckoutSession', () => {
   it('roundtrips product, email, language, metadata inputs and tenant-host return URLs', async () => {
     const calls: Parameters<PaymentProvider['createCheckoutSession']>[0][] = [];
     const deps: CheckoutDeps = {
+      paymentSource: workspaceOnlyPaymentSource,
       products: {
         listByTenant: async () => [],
         listPublishedByTenant: async () => [],
@@ -397,6 +400,7 @@ describe('createCheckoutSession', () => {
   it('marks a recurring-price return as a subscription success', async () => {
     const calls: Parameters<PaymentProvider['createCheckoutSession']>[0][] = [];
     const deps: CheckoutDeps = {
+      paymentSource: workspaceOnlyPaymentSource,
       products: {
         listByTenant: async () => [],
         listPublishedByTenant: async () => [],

@@ -2,7 +2,7 @@ import Stripe from 'stripe';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ok } from '#core/domain/index.js';
-import type { TenantSecretResolver } from '#core/server/index.js';
+import type { TenantSecretResolver, WorkspaceTenantSecretResolver } from '#core/server/index.js';
 
 import { createEffectiveTenantSecretResolver } from '../crypto/effective-tenant-secret-resolver.js';
 import { createSecretCrypto } from '../crypto/secret-crypto.js';
@@ -32,7 +32,7 @@ const renewalInvoice = JSON.stringify({
 describe('invoice lookup while verifying an event delivered to a workspace endpoint', () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
   const authorizations: Array<string | null> = [];
-  let workspaceResolver: TenantSecretResolver;
+  let workspaceResolver: WorkspaceTenantSecretResolver;
   let effectiveResolver: TenantSecretResolver;
 
   const encryptedRow = (owner: string, key: string, value: string) =>
@@ -85,10 +85,10 @@ describe('invoice lookup while verifying an event delivered to a workspace endpo
     expect(authorizations).toEqual(['Bearer rk_live_studioown']);
   });
 
-  it('uses the same key as the previous wiring for a workspace without a source row', async () => {
+  it('uses the key in force for a workspace without a source row', async () => {
     authorizations.length = 0;
+    expect(await effectiveResolver.resolve('acme', 'stripe.restrictedKey')).toEqual(ok('rk_live_acmeown'));
     expect(await verify(providerWith({ resolver: effectiveResolver, workspaceResolver }), 'acme')).toMatchObject({ ok: true });
-    expect(await verify(providerWith({ resolver: effectiveResolver }), 'acme')).toMatchObject({ ok: true });
-    expect(authorizations).toEqual(['Bearer rk_live_acmeown', 'Bearer rk_live_acmeown']);
+    expect(authorizations).toEqual(['Bearer rk_live_acmeown']);
   });
 });

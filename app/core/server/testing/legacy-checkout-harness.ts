@@ -25,6 +25,7 @@ import { createOrderRefundJobFake } from './order-refund-job-fake.js';
 import { createStockRepositoryFake } from './stock-fake.js';
 import { createInMemoryTenantDomainRepository } from './tenant-domain-fakes.js';
 import { inMemoryChangeSettings } from './tenant-settings-fake.js';
+import { workspaceOnlyPaymentSource } from './payment-source-fake.js';
 
 export const legacyNow = '2026-11-15T10:00:00.000Z';
 export const legacyBaseUrl = 'https://acme.togethercommunity.app';
@@ -131,6 +132,7 @@ export const createLegacyCheckoutHarness = (options: {
   };
 
   const checkoutDeps: CheckoutDeps & { logger: { warn(message: string): void; error(message: string): void } } = {
+    paymentSource: workspaceOnlyPaymentSource,
     products,
     prices,
     tenants,

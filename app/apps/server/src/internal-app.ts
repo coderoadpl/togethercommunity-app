@@ -2687,7 +2687,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     const result = await getTenantSetupReadiness(ctxOf(c), {
       tenants: deps.tenants,
       tenantSecrets: deps.tenantSecrets,
-      paymentConfig: deps.paymentConfig,
+      paymentSource: deps.paymentSource,
       spaces: deps.spaces,
       sesSettings: deps.marketing?.sesSettings ?? null,
     });

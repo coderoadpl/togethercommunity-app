@@ -5,14 +5,14 @@ import { ok } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { SecretCrypto, TenantSecretRepository } from '../ports.js';
-import type { TenantUrlDeps } from '../tenant-url.js';
 import {
   deleteTenantSecret,
   getTenantSecretsMasked,
   setTenantSecret,
   stripeWebhookUrl,
-  type TenantSecretDeps,
+  type TenantSecretsViewDeps,
 } from './tenant-secrets.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 const NOW = '2026-06-01T00:00:00.000Z';
 
@@ -37,7 +37,7 @@ const ctx = (staffRole: StaffRole | null, tenantId: string | null = 't1'): Ctx =
   } satisfies Identity,
 });
 
-type TestDeps = TenantSecretDeps & TenantUrlDeps;
+type TestDeps = TenantSecretsViewDeps;
 
 const harness = (rows: TenantSecret[] = []): { deps: TestDeps; rows: TenantSecret[] } => {
   const store = [...rows];
@@ -70,6 +70,7 @@ const harness = (rows: TenantSecret[] = []): { deps: TestDeps; rows: TenantSecre
   return {
     rows: store,
     deps: {
+      paymentSource: workspaceOnlyPaymentSource,
       appBaseUrl: 'https://app.example.test/base',
       baseDomain: 'example.test',
       singleTenantMode: false,

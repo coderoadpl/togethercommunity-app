@@ -1,11 +1,14 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import type { StripeMode } from '#core/domain/index.js';
-import { createWorkspacePaymentConfigReader, type EffectivePaymentConfig } from '#core/server/index.js';
+import { stripeModeFromKey, type StripeMode } from '#core/domain/index.js';
+import type { OrganizationPaymentConfig } from '#core/server/index.js';
 
+import { createEffectiveTenantSecretResolver } from '../crypto/effective-tenant-secret-resolver.js';
 import { createSecretCrypto } from '../crypto/secret-crypto.js';
-import { createEffectivePaymentConfigReader } from './effective-payment-config.js';
+import { createTenantSecretResolver } from '../crypto/tenant-secret-resolver.js';
+import { createEffectiveTenantConfigReader } from './organizations.js';
+import { createPaymentSourceReader } from './payment-source.js';
 import { createTenantSecretRepository } from './repositories.js';
 import { createTestDatabase } from './test-database-name.js';
 
@@ -22,16 +25,14 @@ const WORKSPACE_STRIPE_ROWS = {
   'stripe.testWebhookEndpointId': 'we_workspacetest',
 } as const;
 
-const notReady = (keyPresent: boolean, keyMode: StripeMode | null): EffectivePaymentConfig =>
+const inherited = (keyPresent: boolean, keyMode: StripeMode | null): OrganizationPaymentConfig =>
   ({ source: 'organization', keyPresent, webhookReady: false, keyMode });
 
-const workspaceReady = (keyMode: StripeMode): EffectivePaymentConfig =>
-  ({ source: 'workspace', keyPresent: true, webhookReady: true, keyMode });
+const WORKSPACES = ['acme', 'studio', 'akademia', 'linked-idle', 'linked-bare', 'orphan', 'wrong-mode', 'suspended-inheriting', 'suspended-own'] as const;
 
-describe('effective payment configuration over the database', () => {
+describe('payment source over the database', () => {
   let database: Awaited<ReturnType<typeof createTestDatabase>>;
-  let reader: ReturnType<typeof createEffectivePaymentConfigReader>;
-  let workspaceRule: ReturnType<typeof createWorkspacePaymentConfigReader>;
+  let reader: ReturnType<typeof createPaymentSourceReader>;
 
   const insertTenantSecrets = async (tenantId: string, values: Readonly<Record<string, string>>) => {
     for (const [key, value] of Object.entries(values)) {
@@ -53,9 +54,10 @@ describe('effective payment configuration over the database', () => {
   };
 
   beforeAll(async () => {
-    database = await createTestDatabase('together_effective_payment_config_test', databaseUrl);
+    database = await createTestDatabase('together_payment_source_test', databaseUrl);
     await database.db.execute(sql`INSERT INTO organizations (id, slug, name, status, created_at, updated_at) VALUES
       ('org-active', 'holding-active', 'Holding active', 'active', ${at}, ${at}),
+      ('org-wrong-mode', 'holding-wrong-mode', 'Holding wrong mode', 'active', ${at}, ${at}),
       ('org-suspended', 'holding-suspended', 'Holding suspended', 'suspended', ${at}, ${at})`);
     await database.db.execute(sql`INSERT INTO tenants (id, slug, name, created_at, organization_id) VALUES
       ('acme', 'acme', 'Acme', ${at}, NULL),
@@ -63,70 +65,78 @@ describe('effective payment configuration over the database', () => {
       ('akademia', 'akademia', 'Akademia', ${at}, 'org-active'),
       ('linked-idle', 'linked-idle', 'Linked idle', ${at}, 'org-active'),
       ('linked-bare', 'linked-bare', 'Linked bare', ${at}, 'org-active'),
+      ('orphan', 'orphan', 'Orphan', ${at}, NULL),
+      ('wrong-mode', 'wrong-mode', 'Wrong mode', ${at}, 'org-wrong-mode'),
       ('suspended-inheriting', 'suspended-inheriting', 'Suspended inheriting', ${at}, 'org-suspended'),
       ('suspended-own', 'suspended-own', 'Suspended own', ${at}, 'org-suspended')`);
-    for (const tenantId of ['acme', 'studio', 'akademia', 'linked-idle', 'suspended-inheriting', 'suspended-own']) {
+    for (const tenantId of ['acme', 'studio', 'akademia', 'linked-idle', 'orphan', 'wrong-mode', 'suspended-inheriting', 'suspended-own']) {
       await insertTenantSecrets(tenantId, WORKSPACE_STRIPE_ROWS);
     }
     await insertOrganizationSecret('org-active', 'stripe.restrictedKey', 'rk_live_organizationkey');
+    await insertOrganizationSecret('org-wrong-mode', 'stripe.restrictedKey', 'rk_test_inlivegroupkey');
     await insertOrganizationSecret('org-suspended', 'stripe.restrictedKey', 'rk_live_suspendedkey');
     await insertOrganizationSecret('org-suspended', 'stripe.testRestrictedKey', 'rk_test_suspendedkey');
     await inherit('studio', 'payments_live');
     await inherit('akademia', 'payments_test');
     await inherit('linked-bare', 'payments_live');
+    await inherit('orphan', 'payments_live');
+    await inherit('wrong-mode', 'payments_live');
     await inherit('suspended-inheriting', 'payments_live');
     await inherit('suspended-inheriting', 'payments_test');
-    reader = createEffectivePaymentConfigReader(database.db, crypto);
-    workspaceRule = createWorkspacePaymentConfigReader(createTenantSecretRepository(database.db), crypto);
+    reader = createPaymentSourceReader(database.db, crypto);
   });
 
   afterAll(async () => { await database?.close(); });
 
-  it.each(['acme', 'linked-idle', 'suspended-own', 'unknown-workspace'])(
-    'answers exactly the workspace rule for %s, which has no source row',
-    async (tenantId) => {
-      for (const mode of ['live', 'test'] as const) {
-        expect({ mode, answer: await reader.read(tenantId, mode) }).toEqual({ mode, answer: await workspaceRule.read(tenantId, mode) });
-      }
-    },
-  );
-
-  it('reads the workspace key, signing secret and key mode per mode', async () => {
-    expect(await reader.read('acme', 'live')).toEqual(workspaceReady('live'));
-    expect(await reader.read('acme', 'test')).toEqual(workspaceReady('test'));
-    expect(await reader.read('unknown-workspace', 'live'))
-      .toEqual({ source: 'workspace', keyPresent: false, webhookReady: false, keyMode: null });
+  it.each(['acme', 'linked-idle', 'suspended-own', 'unknown-workspace'])('answers the workspace source for %s, which has no source row', async (tenantId) => {
+    expect([await reader.read(tenantId, 'live'), await reader.read(tenantId, 'test')]).toEqual([{ source: 'workspace' }, { source: 'workspace' }]);
   });
 
-  it('answers an inherited live group from the organization key and never from the retained workspace rows', async () => {
-    expect(await reader.read('studio', 'live')).toEqual(notReady(true, 'live'));
-    expect(await reader.read('studio', 'test')).toEqual(workspaceReady('test'));
+  it('answers an inherited live group from the organization key and leaves test on the workspace', async () => {
+    expect(await reader.read('studio', 'live')).toEqual(inherited(true, 'live'));
+    expect(await reader.read('studio', 'test')).toEqual({ source: 'workspace' });
   });
 
   it('answers an inherited test group without an organization test key as absent, while live stays on the workspace', async () => {
-    expect(await reader.read('akademia', 'test')).toEqual(notReady(false, null));
-    expect(await reader.read('akademia', 'live')).toEqual(workspaceReady('live'));
+    expect(await reader.read('akademia', 'test')).toEqual(inherited(false, null));
+    expect(await reader.read('akademia', 'live')).toEqual({ source: 'workspace' });
   });
 
   it('answers an inherited group for a workspace without rows of its own', async () => {
-    expect(await reader.read('linked-bare', 'live')).toEqual(notReady(true, 'live'));
-    expect(await reader.read('linked-bare', 'test'))
-      .toEqual({ source: 'workspace', keyPresent: false, webhookReady: false, keyMode: null });
+    expect(await reader.read('linked-bare', 'live')).toEqual(inherited(true, 'live'));
+    expect(await reader.read('linked-bare', 'test')).toEqual({ source: 'workspace' });
   });
 
-  it('keeps a workspace of the same organization unaffected by another workspace source row', async () => {
-    expect(await reader.read('linked-idle', 'live')).toEqual(workspaceReady('live'));
-    expect(await reader.read('linked-idle', 'test')).toEqual(workspaceReady('test'));
+  it('answers a source row of a workspace without an organization as an absent organization key', async () => {
+    expect(await reader.read('orphan', 'live')).toEqual(inherited(false, null));
   });
 
-  it('answers an inheriting workspace of a suspended organization as not ready in both modes', async () => {
-    expect(await reader.read('suspended-inheriting', 'live')).toEqual(notReady(true, 'live'));
-    expect(await reader.read('suspended-inheriting', 'test')).toEqual(notReady(true, 'test'));
-    expect(await reader.read('suspended-own', 'live')).toEqual(workspaceReady('live'));
+  it('reports the mode of the organization key, not of the retained workspace key', async () => {
+    expect(await reader.read('wrong-mode', 'live')).toEqual(inherited(true, 'test'));
+    expect(await reader.read('suspended-inheriting', 'live')).toEqual(inherited(true, 'live'));
+    expect(await reader.read('suspended-inheriting', 'test')).toEqual(inherited(true, 'test'));
+  });
+
+  it('agrees with the effective secret resolver that the payment provider uses', async () => {
+    const workspaceResolver = createTenantSecretResolver(createTenantSecretRepository(database.db), crypto);
+    const resolver = createEffectiveTenantSecretResolver(workspaceResolver, createEffectiveTenantConfigReader(database.db), crypto);
+    for (const tenantId of WORKSPACES) {
+      for (const mode of ['live', 'test'] as const) {
+        const slot = mode === 'live' ? 'stripe.restrictedKey' : 'stripe.testRestrictedKey';
+        const answer = await reader.read(tenantId, mode);
+        const key = await resolver.resolve(tenantId, slot);
+        expect({ tenantId, mode, answer: answer.source === 'workspace' ? answer : { keyPresent: answer.keyPresent, keyMode: answer.keyMode } }).toEqual({
+          tenantId, mode,
+          answer: answer.source === 'workspace' && JSON.stringify(key) === JSON.stringify(await workspaceResolver.resolve(tenantId, slot))
+            ? { source: 'workspace' }
+            : { keyPresent: key.ok, keyMode: key.ok ? stripeModeFromKey(key.value) : null },
+        });
+      }
+    }
   });
 
   it('reports an unreadable inherited key as present without a mode', async () => {
     await database.db.execute(sql`UPDATE organization_secrets SET ciphertext = 'tampered' WHERE organization_id = 'org-active' AND key = 'stripe.restrictedKey'`);
-    expect(await reader.read('studio', 'live')).toEqual(notReady(true, null));
+    expect(await reader.read('studio', 'live')).toEqual(inherited(true, null));
   });
 });

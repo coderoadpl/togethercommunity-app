@@ -90,7 +90,6 @@ import type {
   OrganizationUpdate,
   OrganizationWorkspace,
   ConfigGroup,
-  ConfigSource,
   TenantConfigSource,
   Tenant,
   TenantApiKey,
@@ -1151,6 +1150,10 @@ export interface SecretCrypto {
 
 export interface TenantSecretResolver {
   resolve(tenantId: string, key: TenantSecretKey): Promise<Result<string, AppError>>;
+}
+
+export interface WorkspaceTenantSecretResolver extends TenantSecretResolver {
+  readonly scope: 'workspace';
 }
 
 export interface PaymentWebhookEvent {
@@ -2893,18 +2896,17 @@ export interface EffectiveTenantConfigReader {
   findInheritedSettings(tenantId: string, group: ConfigGroup): Promise<InheritedConfig<OrganizationSettings>>;
 }
 
-export interface EffectivePaymentConfig {
-  source: ConfigSource;
-  /** The key the payment provider adapter would use for this mode is stored. */
+export interface OrganizationPaymentConfig {
+  source: 'organization';
   keyPresent: boolean;
-  /** Events for this mode can be verified: the workspace's own signing secret, or an organization endpoint. */
   webhookReady: boolean;
-  /** Mode recognised from the key's prefix; null when absent, unreadable or unrecognised. */
   keyMode: StripeMode | null;
 }
 
-export interface EffectivePaymentConfigReader {
-  read(tenantId: string, mode: StripeMode): Promise<EffectivePaymentConfig>;
+export type PaymentSource = { source: 'workspace' } | OrganizationPaymentConfig;
+
+export interface PaymentSourceReader {
+  read(tenantId: string, mode: StripeMode): Promise<PaymentSource>;
 }
 
 type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;

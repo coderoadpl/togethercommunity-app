@@ -10,6 +10,8 @@ import {
 } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
+import type { PaymentSourceReader } from '../ports.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 import { deleteShopIntegrationSecret, getShopIntegrationSecrets, setShopIntegrationSecret } from './shop-integrations.js';
 import type { TenantSecretDeps } from './tenant-secrets.js';
@@ -42,7 +44,8 @@ const keyCtx = (capabilities: Ctx['capabilities']): Ctx => ({
 const harness = () => {
   const rows = new Map<string, TenantSecret>();
   const deleted: string[] = [];
-  const deps: TenantSecretDeps & { appBaseUrl: string; baseDomain: string; singleTenantMode: boolean } = {
+  const deps: TenantSecretDeps & { appBaseUrl: string; baseDomain: string; singleTenantMode: boolean; paymentSource: PaymentSourceReader } = {
+    paymentSource: workspaceOnlyPaymentSource,
     tenantSecrets: {
       listByTenant: async () => [...rows.values()],
       findByKey: async (_tenantId, key) => rows.get(key) ?? null,

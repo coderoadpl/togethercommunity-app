@@ -281,8 +281,17 @@ Settings → Secrets and variables → Actions → repository secrets:
 | `SMOKE_MEMBER_PASSWORD` | prod-smoke | Password the smoke member is seeded with **and** signed in with. Must equal the deployment's `SMOKE_MEMBER_PASSWORD` environment variable. Set exactly one of the pair and the smoke fails. |
 | `OPERATOR_SECRET_PRODUCTION` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; must equal the production deployment's `OPERATOR_SECRET`. Falls back to the deprecated `PROD_OPERATOR_SECRET` repository secret. Absent → the reseed step prints a notice and is skipped. Sent only to the tenant host, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
 
-The creator account never signs in from the workflow, so its password lives on
-the deployment only, as `SMOKE_CREATOR_PASSWORD`.
+The creator account never signs in from prod-smoke. The purchase end-to-end run
+does sign in with it on production (see
+[Purchase end-to-end on a deployed host](#purchase-end-to-end-on-a-deployed-host)),
+so its password is also the repository secret `SMOKE_CREATOR_PASSWORD`, equal to
+the deployment's `SMOKE_CREATOR_PASSWORD`. That account owns the production
+fixture workspace `tenant-acme`: whoever reads the secret can change that
+workspace's settings and payment configuration, including saving a live key in
+its live slot, and create its keys, until the next deploy reseeds the workspace;
+it reaches no other workspace. An admin role cannot replace it, because the run
+configures the payment slot and the delivery settings, which only an owner may
+write. Setting the repository secret is the owner's decision to accept this.
 
 The first three already exist for `prod-health.yml`; the smoke reuses them.
 
@@ -562,16 +571,10 @@ broken install never records a green state.
 It starts observe-only on each environment and pages only through
 `.github/actions/alert-gate`, like every other monitor. Staging sits behind
 deployment protection, so the provider can reach its webhook only when the
-staging deployment sets `STRIPE_TEST_WEBHOOK_PROTECTION_BYPASS=true`: the test
-slot's endpoint URL of `tenant-acme`, and of no other workspace, then carries the
-deployment's own `VERCEL_AUTOMATION_BYPASS_SECRET` as the query parameter the
-platform documents for third-party webhooks
-([Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation)).
-It applies only when `APP_ENV` is exactly `staging`; the live slot never carries
-it and the URL shown in Studio omits it. The secret then sits in the endpoint
-configuration of the fixture's provider sandbox, which only the owner's provider
-account can read; anyone who reads it there can pass the deployment protection of
-every deployment of the project until the secret is rotated. Staging and production each
+staging deployment opts in; see
+[Staging test-mode webhook bypass](security.md#staging-test-mode-webhook-bypass)
+for the conditions, the pinned key and where the value is stored afterwards.
+Staging and production each
 need their own provider sandbox: a test-slot configuration deletes every
 endpoint of the workspace and slot in its sandbox, and both hosts use
 `tenant-acme`.

@@ -90,6 +90,8 @@ export const envSchema = z
     VERCEL_URL: optionalNonEmptyString,
     VERCEL_BRANCH_URL: optionalNonEmptyString,
     VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
+    VERCEL_ENV: optionalNonEmptyString,
+    STRIPE_TEST_WEBHOOK_BYPASS_KEY_SHA256: optionalNonEmptyString,
     STRIPE_TEST_WEBHOOK_PROTECTION_BYPASS: z
       .enum(['true', 'false'])
       .default('false')

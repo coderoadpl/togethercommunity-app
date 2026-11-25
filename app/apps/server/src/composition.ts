@@ -487,7 +487,7 @@ interface ShipxIntegrationDeps {
 }
 
 export interface AppDeps {
-  stripeTestWebhookQuery?: string | null;
+  stripeTestWebhookQuery?: ((restrictedKey: string) => string | null) | null;
   metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;

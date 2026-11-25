@@ -20,6 +20,9 @@ import { envSchema } from './env.js';
 const baseUrl = 'http://localhost:48730';
 const acmeHost = 'acme.localhost:48730';
 const studioHost = 'studio.localhost:48730';
+const fixtureHost = 'fixture.localhost:48730';
+const PINNED_TEST_KEY = 'rk_test_pinned';
+const DEPLOYMENT_QUERY = 'x-vercel-protection-bypass=bypass-value';
 const email = 'shop-integrations-owner@example.test';
 const password = 'shop-integrations-password-15';
 const now = '2026-11-15T10:00:00.000Z';
@@ -109,6 +112,7 @@ beforeAll(async () => {
   let endpointSequence = 0;
   app = buildApp({
     ...deps,
+    stripeTestWebhookQuery: (restrictedKey) => (restrictedKey === PINNED_TEST_KEY ? DEPLOYMENT_QUERY : null),
     payment: {
       ...deps.payment,
       configureWebhook: async (input) => {
@@ -142,8 +146,8 @@ beforeAll(async () => {
   expect(signup.status).toBe(200);
   ownerId = z.object({ user: z.object({ id: z.string() }) }).parse(await signup.json()).user.id;
   await database.db.execute(`update "user" set email_verified = true where id = '${ownerId}'`);
-  for (const tenantId of ['acme', 'studio']) {
-    await database.db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Workspace', createdAt: now });
+  for (const [tenantId, slug] of [['acme', 'acme'], ['studio', 'studio'], ['tenant-acme', 'fixture']] as const) {
+    await database.db.insert(tenants).values({ id: tenantId, slug, name: 'Workspace', createdAt: now });
     await database.db.insert(tenantAdmins).values({ id: `grant-${tenantId}`, tenantId, userId: ownerId, role: 'owner' });
   }
   const signin = await app.request(`${baseUrl}${BETTER_AUTH_PASSWORD_SIGN_IN_PATH}`, {
@@ -155,6 +159,30 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => { await database?.close(); });
+
+describe('test webhook deployment query', () => {
+  const plainUrl = 'http://fixture.localhost:48730/api/webhooks/stripe/tenant-acme?mode=test';
+
+  const registeredAfter = async (response: Response): Promise<string | undefined> => {
+    expect(response.status).toBe(200);
+    expect(envelope(shopIntegrationContracts.stripeConfigure.output).parse(await response.json()).data.webhookUrl).not.toContain(DEPLOYMENT_QUERY);
+    return registeredWebhooks.at(-1)?.webhookUrl;
+  };
+
+  it('reaches the registered URL only for the fixture workspace with the pinned key, on the session and the key route', async () => {
+    const configure = (restrictedKey: string, host = fixtureHost) =>
+      ownerRequest(API_ROUTES.stripeConfigure.method, API_ROUTES.stripeConfigure.path, { mode: 'test', restrictedKey }, host);
+    expect(await registeredAfter(await configure(PINNED_TEST_KEY))).toBe(`${plainUrl}&${DEPLOYMENT_QUERY}`);
+    expect(await registeredAfter(await configure('rk_test_someone_else'))).toBe(plainUrl);
+    expect(await registeredAfter(await configure(PINNED_TEST_KEY, acmeHost))).toBe('http://acme.localhost:48730/api/webhooks/stripe/acme?mode=test');
+
+    const { secret } = await createShopKey([READ, WRITE], fixtureHost);
+    const keyedConfigure = (restrictedKey: string) =>
+      keyed(secret, 'POST', SHOP_INTEGRATION_ROUTES.stripeConfigure.path, { mode: 'test', restrictedKey }, fixtureHost);
+    expect(await registeredAfter(await keyedConfigure(PINNED_TEST_KEY))).toBe(`${plainUrl}&${DEPLOYMENT_QUERY}`);
+    expect(await registeredAfter(await keyedConfigure('rk_test_someone_else'))).toBe(plainUrl);
+  });
+});
 
 describe('shop integration routes with a shop management key', () => {
   it('configures test-mode Stripe with a unique endpoint secret and keeps the live pair and another workspace intact', async () => {

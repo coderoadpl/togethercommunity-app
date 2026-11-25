@@ -10,6 +10,7 @@ import {
   type Identity,
   type StripePermissionCheck,
   type TenantSecret,
+  validation,
 } from '#core/domain/index.js';
 
 import type { PaymentProvider } from '../ports.js';
@@ -149,26 +150,52 @@ describe('configureStripe', () => {
     }]);
   });
 
-  it('registers only the fixture workspace test endpoint with the deployment query while staff see the plain URL', async () => {
+  it('registers only the fixture workspace test endpoint of the pinned key with the deployment query while staff see the plain URL', async () => {
     const urls: string[] = [];
     const h = harness(payment(async (input) => {
       urls.push(input.webhookUrl);
       return ok({ webhookEndpointId: 'we_created', webhookSecret: 'whsec_created' });
     }));
-    h.deps.testWebhookQuery = 'x-vercel-protection-bypass=bypass-value';
+    const offered: string[] = [];
+    h.deps.testWebhookQuery = (restrictedKey) => {
+      offered.push(restrictedKey);
+      return restrictedKey === 'rk_test_pinned' ? 'x-vercel-protection-bypass=bypass-value' : null;
+    };
     const fixtureOwner = { ...identity('owner'), tenantId: 'tenant-acme' };
+    const base = 'https://acme.example.test/api/webhooks/stripe';
 
-    await expect(configureStripe({ identity: fixtureOwner }, { restrictedKey: 'rk_test_private', mode: 'test' }, h.deps))
-      .resolves.toMatchObject({ ok: true, value: { webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-acme?mode=test' } });
+    await expect(configureStripe({ identity: fixtureOwner }, { restrictedKey: 'rk_test_pinned', mode: 'test' }, h.deps))
+      .resolves.toMatchObject({ ok: true, value: { webhookUrl: `${base}/tenant-acme?mode=test` } });
+    await expect(configureStripe({ identity: fixtureOwner }, { restrictedKey: 'rk_test_someone_else', mode: 'test' }, h.deps))
+      .resolves.toMatchObject({ ok: true, value: { webhookUrl: `${base}/tenant-acme?mode=test` } });
     await expect(configureStripe({ identity: fixtureOwner }, { restrictedKey: 'rk_live_private' }, h.deps))
-      .resolves.toMatchObject({ ok: true, value: { webhookUrl: 'https://acme.example.test/api/webhooks/stripe/tenant-acme' } });
-    await expect(configureStripe({ identity: identity('owner') }, { restrictedKey: 'rk_test_private', mode: 'test' }, h.deps))
+      .resolves.toMatchObject({ ok: true, value: { webhookUrl: `${base}/tenant-acme` } });
+    await expect(configureStripe({ identity: identity('owner') }, { restrictedKey: 'rk_test_pinned', mode: 'test' }, h.deps))
       .resolves.toMatchObject({ ok: true });
     expect(urls).toEqual([
-      'https://acme.example.test/api/webhooks/stripe/tenant-acme?mode=test&x-vercel-protection-bypass=bypass-value',
-      'https://acme.example.test/api/webhooks/stripe/tenant-acme',
-      'https://acme.example.test/api/webhooks/stripe/tenant-1?mode=test',
+      `${base}/tenant-acme?mode=test&x-vercel-protection-bypass=bypass-value`,
+      `${base}/tenant-acme?mode=test`,
+      `${base}/tenant-acme`,
+      `${base}/tenant-1?mode=test`,
     ]);
+    expect(offered).toEqual(['rk_test_pinned', 'rk_test_someone_else']);
+  });
+
+  it('withholds a rejected registration message once the URL carries the deployment query', async () => {
+    const echoing = payment(async (input) => err(validation(`Stripe rejected webhook registration: invalid url ${input.webhookUrl}`)));
+    const h = harness(echoing);
+    h.deps.testWebhookQuery = () => 'x-vercel-protection-bypass=bypass-value';
+    const fixtureOwner = { ...identity('owner'), tenantId: 'tenant-acme' };
+
+    const pinned = await configureStripe({ identity: fixtureOwner }, { restrictedKey: 'rk_test_pinned', mode: 'test' }, h.deps);
+    expect(pinned).toEqual({ ok: false, error: expect.objectContaining({ code: 'validation', message: 'Stripe rejected the test webhook registration' }) });
+    expect(JSON.stringify(pinned)).not.toContain('bypass-value');
+
+    h.deps.testWebhookQuery = () => null;
+    expect(await configureStripe({ identity: fixtureOwner }, { restrictedKey: 'rk_test_other', mode: 'test' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { message: 'Stripe rejected webhook registration: invalid url https://acme.example.test/api/webhooks/stripe/tenant-acme?mode=test' },
+    });
   });
 
   it('does not persist partial configuration when Stripe rejects webhook registration', async () => {

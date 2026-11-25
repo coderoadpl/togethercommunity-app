@@ -314,7 +314,7 @@ export const runPurchaseE2e = async (
     const result = valueOf(await api.configureStripe({ mode: 'test', restrictedKey: options.keys.restricted }), 'test slot configuration');
     if (result.mode !== 'test') throw new Error(`the configuration landed in the ${result.mode} slot`);
     const secrets = valueOf(await api.listTenantSecrets(), 'tenant secrets');
-    if (secrets.stripeMode !== null) {
+    if (secrets.stripeMode !== null || secrets.secrets.some((secret) => secret.key === 'stripe.restrictedKey')) {
       throw new Error('the live payment slot holds a key, so a checkout the server did not take as a test would reach it; the run stops before any checkout');
     }
     return true;

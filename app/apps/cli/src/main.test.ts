@@ -37,6 +37,7 @@ interface Hoisted {
   shipOrderAnyway: ReturnType<typeof vi.fn>;
   correctOrderPersonalization: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
+  listPaymentEventRejections: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
   shipxRefresh: ReturnType<typeof vi.fn>;
   shipxCreate: ReturnType<typeof vi.fn>;
@@ -148,6 +149,7 @@ const h = vi.hoisted(
     shipOrderAnyway: vi.fn(),
     correctOrderPersonalization: vi.fn(),
     ordersPackingList: vi.fn(),
+    listPaymentEventRejections: vi.fn(),
     shipxShipment: vi.fn(),
     shipxRefresh: vi.fn(),
     shipxCreate: vi.fn(),
@@ -307,6 +309,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     shipOrderAnyway: h.shipOrderAnyway,
     correctOrderPersonalization: h.correctOrderPersonalization,
     ordersPackingList: h.ordersPackingList,
+    listPaymentEventRejections: h.listPaymentEventRejections,
     shipxShipment: h.shipxShipment,
     shipxRefresh: h.shipxRefresh,
     shipxCreate: h.shipxCreate,
@@ -464,6 +467,7 @@ beforeEach(() => {
   h.createOrderRefund.mockReset().mockResolvedValue(ok({ created: true, refund: { id: 'refund-1', kind: 'amount', status: 'pending', amountCents: 1250, currency: 'PLN', restocked: false, removedFromPackingList: false } }));
   h.shipOrderAnyway.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' } }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
+  h.listPaymentEventRejections.mockReset().mockResolvedValue(ok({ rejections: [] }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
@@ -1815,6 +1819,45 @@ describe('order verification commands', () => {
   });
 });
 
+describe('orders rejected-payments command', () => {
+  const rejection = {
+    tenantId: 'workspace', eventId: 'evt_1', eventType: 'checkout.session.completed', checkoutSessionId: 'cs_1',
+    reasonCode: 'validation', reasonMessage: 'Checkout snapshot not found', firstSeenAt: '2026-11-20T10:00:00.000Z',
+    lastSeenAt: '2026-11-20T12:00:00.000Z', attempts: 3, resolvedAt: null,
+  };
+
+  it('emits the unresolved records in one JSON envelope', async () => {
+    h.listPaymentEventRejections.mockResolvedValue(ok({ rejections: [rejection] }));
+    await run('--json', 'orders', 'rejected-payments');
+    expect(h.listPaymentEventRejections).toHaveBeenCalledExactlyOnceWith({});
+    expect(soleJson()).toEqual({ ok: true, data: { rejections: [rejection] } });
+  });
+
+  it('prints one line per record with its reason, sightings and ids', async () => {
+    h.listPaymentEventRejections.mockResolvedValue(ok({ rejections: [rejection] }));
+    await run('orders', 'rejected-payments', '--limit', '5');
+    expect(h.listPaymentEventRejections).toHaveBeenCalledExactlyOnceWith({ limit: 5 });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('2026-11-20T10:00:00.000Z\t2026-11-20T12:00:00.000Z\t3 attempts\tvalidation: Checkout snapshot not found\tevt_1\tcs_1');
+  });
+
+  it('says so when every payment was recorded', async () => {
+    await run('orders', 'rejected-payments');
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('no payments that could not be recorded');
+  });
+
+  it('rejects a limit that is not a positive integer before calling the API', async () => {
+    await run('--json', 'orders', 'rejected-payments', '--limit', '0');
+    expect(h.listPaymentEventRejections).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('preserves the forbidden exit code for a member', async () => {
+    h.listPaymentEventRejections.mockResolvedValue(err(appError('forbidden', 'order:reconcile is not permitted')));
+    await run('--json', 'orders', 'rejected-payments');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+});
 
 describe('consumer sales CLI parity', () => {
   it('emits one summary envelope and forwards the calendar range', async () => {

@@ -134,6 +134,8 @@ import {
   orderListItemSchema,
   orderReconciliationQuerySchema,
   paidWithoutGrantRowSchema,
+  paymentEventRejectionListQuerySchema,
+  paymentEventRejectionSchema,
   invoiceSchema,
   importBatchResponseSchema,
   importAuditEventSchema,
@@ -838,6 +840,14 @@ export type OrdersReconciliationQueryInput = z.input<typeof ordersReconciliation
 export const ordersReconciliationOutputSchema = z.object({
   rows: z.array(paidWithoutGrantRowSchema),
   checkedThrough: z.string().datetime(),
+});
+
+export const paymentEventRejectionsQuerySchema = paymentEventRejectionListQuerySchema;
+
+export type PaymentEventRejectionsQueryInput = z.input<typeof paymentEventRejectionsQuerySchema>;
+
+export const paymentEventRejectionsOutputSchema = z.object({
+  rejections: z.array(paymentEventRejectionSchema),
 });
 
 export const salesSummaryOutputSchema = z.object({
@@ -2114,6 +2124,7 @@ export const API_ROUTES = {
   productStockThreshold: { method: 'POST', path: '/api/products/stock/threshold' },
   orders: { method: 'GET', path: '/api/orders' },
   ordersReconciliation: { method: 'GET', path: '/api/orders/reconciliation' },
+  paymentEventRejections: { method: 'GET', path: '/api/orders/rejected-payments' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
   invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
   invoiceSend: { method: 'POST', path: '/api/orders/:orderId/invoice/send' },
@@ -2546,6 +2557,7 @@ export const API_PATHS = {
   productStockThreshold: API_ROUTES.productStockThreshold.path,
   orders: API_ROUTES.orders.path,
   ordersReconciliation: API_ROUTES.ordersReconciliation.path,
+  paymentEventRejections: API_ROUTES.paymentEventRejections.path,
   order: API_ROUTES.order.path,
   invoiceIssue: API_ROUTES.invoiceIssue.path,
   invoiceSend: API_ROUTES.invoiceSend.path,

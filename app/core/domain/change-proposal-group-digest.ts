@@ -85,3 +85,5 @@ export const changeProposalGroupItemsDigest = (itemIds: readonly string[]): stri
   sha256Hex(utf8(itemIds.join('\n'))).slice(0, ITEMS_DIGEST_LENGTH);
 
 export const sha256HexOfBytes = (bytes: Uint8Array): string => sha256Hex([...bytes]);
+
+export const sha256HexOfText = (text: string): string => sha256Hex(utf8(text));

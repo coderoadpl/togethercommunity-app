@@ -130,7 +130,7 @@ describe('order delivery correction HTTP route', () => {
   it('uses the path id and returns a staff-only audited order', async () => {
     const h = harness();
     const response = await h.app.request('/api/orders/live-order/delivery-details', {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: 'test-order', phone: '500 000 000' }),
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderId: 'test-order', phone: '500 000 000', expected: { phone: null } }),
     });
     expect(response.status).toBe(200);
     const body = z.object({ data: z.object({ order: orderListItemSchema, recreateShipment: z.boolean() }) }).parse(await response.json());
@@ -141,7 +141,7 @@ describe('order delivery correction HTTP route', () => {
     for (const viewer of [{ ...identity, staffRole: null, tenantAccess: 'member' as const, memberId: 'member' }, { ...identity, tenantId: 'other' }]) {
       const h = harness(undefined, viewer);
       const response = await h.app.request('/api/orders/live-order/delivery-details', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: '500000000' }),
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ phone: '500000000', expected: { phone: null } }),
       });
       expect(response.status).toBe(viewer.tenantId === 'other' ? 404 : 403);
       expect(h.correctDelivery).not.toHaveBeenCalled();

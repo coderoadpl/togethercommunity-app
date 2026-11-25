@@ -22,9 +22,24 @@ import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
 import { issueCountOf } from './order-verification-routes.js';
 import { readJson } from './read-json.js';
-import { respond } from './respond.js';
+import { respond as respondResult } from './respond.js';
 import { shipxLabelResponse, shipxOrderDeps } from './shipx-routes.js';
 import type { ShopMachineRoute } from './shop-machine-auth.js';
+
+const projectMachineOrderData = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(projectMachineOrderData);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    if (key === 'shipping' && item !== null && typeof item === 'object') {
+      return [key, Object.fromEntries(Object.entries(item).filter(([field]) => field !== 'corrections'))];
+    }
+    if (key === 'content' && typeof item === 'string' && 'mimeType' in value && typeof value.mimeType === 'string' && value.mimeType.startsWith('application/json')) {
+      return [key, JSON.stringify(projectMachineOrderData(JSON.parse(item)))];
+    }
+    return [key, projectMachineOrderData(item)];
+  }));
+};
+const respond = <T>(result: Result<T, AppError>): Response => respondResult(result.ok ? ok(projectMachineOrderData(result.value)) : result);
 
 const shipBodySchema = z.object({}).passthrough();
 
@@ -145,7 +160,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
     handler: async (c, { ctx }) => {
       const shipxDeps = shipxOrderDeps(deps);
       if (shipxDeps === null) return unavailable('InPost ShipX is unavailable');
-      return respond(await discardInpostShipmentAttempt(ctx, { orderId: orderIdParam(c) }, { ...shipxDeps, ids: deps.ids }));
+      return respond(await discardInpostShipmentAttempt(ctx, { orderId: orderIdParam(c) }, shipxDeps));
     },
   },
   {

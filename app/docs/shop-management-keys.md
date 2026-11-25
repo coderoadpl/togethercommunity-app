@@ -1711,7 +1711,7 @@ pnpm --silent run cli --tenant acme public offer
 
 # 4. Buyer: start the anonymous checkout and accept the terms, then pay at the printed URL
 pnpm --silent run cli --tenant acme checkout session --product <product-id> --email <buyer-email> \
-  --shipping-rate courier --accept-terms
+  --shipping-rate courier --shipping-phone "+48 500 000 000" --accept-terms
 
 # 5. Warehouse key
 export TOGETHER_SHOP_KEY="$WAREHOUSE_KEY"

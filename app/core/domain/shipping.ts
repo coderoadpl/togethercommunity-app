@@ -5,7 +5,7 @@ import type { ProductPersonalization } from './personalization.js';
 import type { ProductCompliance } from './product-compliance.js';
 import { err, ok, type Result } from './result.js';
 
-const SHIPX_PHONE_PATTERN = /^\d{9}$/;
+const SHIPX_PHONE_PATTERN = /^[1-9]\d{8}$/;
 
 export const normalizeShipxPhone = (raw: string): string | null => {
   const value = raw.trim();

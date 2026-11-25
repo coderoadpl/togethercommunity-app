@@ -1635,31 +1635,4 @@ describe('corrected delivery shipment handling', () => {
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
     expect(h.real.calls.create).toHaveLength(0);
   });
-  it('refuses to buy a stale remote draft after a delivery correction', async () => {
-    const h = harness({ order: corrected() });
-    h.seed({ shipxShipmentId: 'draft', status: 'offers_prepared' });
-    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { details: { deliveryCorrection: 'draft_outdated' } } });
-    expect(h.real.calls.buy).toHaveLength(0);
-    expect(h.real.calls.create).toHaveLength(0);
-  });
-  it('explicitly discards an unpaid corrected draft after checking its live state', async () => {
-    const real = createScriptedShipxClient({ polls: [(id) => ok(remoteShipment(id, { status: 'offers_prepared' }))] });
-    const h = harness({ order: corrected(), real });
-    h.seed({ shipxShipmentId: 'draft', status: 'offers_prepared' });
-    expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toEqual({ ok: true, value: { discarded: true } });
-    expect(h.row()).toBeUndefined();
-    expect(real.calls.get).toEqual(['draft']);
-    expect(real.calls.buy).toHaveLength(0);
-    expect(real.calls.create).toHaveLength(0);
-  });
-  it('keeps a corrected draft that was bought remotely or still has an unresolved payment', async () => {
-    for (const remote of [remoteShipment('draft', { status: 'confirmed', trackingNumber: 'TRACK001' }), remoteShipment('draft', { status: 'offer_selected', transactions: [{ status: 'initiated' }] })]) {
-      const real = createScriptedShipxClient({ polls: [() => ok(remote)] });
-      const h = harness({ order: corrected(), real });
-      h.seed({ shipxShipmentId: 'draft', status: 'offers_prepared' });
-      expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_bought' } });
-      expect(h.row()).toBeDefined();
-      expect(h.row()?.operationToken).toBeNull();
-    }
-  });
 });

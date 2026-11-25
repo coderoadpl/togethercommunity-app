@@ -34,6 +34,7 @@ const shippingRates = [
 
 const serve = (input: {
   deliveryMethod?: 'pickup' | 'shipping';
+  inpostOnly?: boolean;
   token?: string | null;
   withheld?: boolean;
   canTest?: boolean;
@@ -46,7 +47,7 @@ const serve = (input: {
     anonymousMe(),
     http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(input.deliveryMethod ?? 'shipping') })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
-      stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, inpostGeowidgetToken: input.token ?? null, inpostGeowidgetWithheld: input.withheld ?? false,
+      stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates: input.inpostOnly ? shippingRates.filter((rate) => rate.carrier === 'inpost') : shippingRates, inpostGeowidgetToken: input.token ?? null, inpostGeowidgetWithheld: input.withheld ?? false,
       canTest: input.canTest ?? false, testConfigured: input.canTest === true || input.testEnabled === true, testEnabled: input.testEnabled ?? false,
     } })),
     http.post('/api/public/checkout/session', async ({ request }) => {
@@ -71,6 +72,25 @@ describe('checkout delivery step', () => {
     document.getElementById('inpost-geowidget-style')?.remove();
   });
 
+  it('does not validate the first typed digit before blur', async () => {
+    serve({}); renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+    await userEvent.type(phone, '5');
+    expect(phone).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.blur(phone);
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+  });
+  it.each(['insertFromPaste', 'insertReplacementText', 'insertText'])('validates a multi-character %s immediately without unavailable courier advice', async (inputType) => {
+    serve({ inpostOnly: true }); renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+    fireEvent.input(phone, { inputType, target: { value: '+44 7700 900000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.inpostPhoneInvalid);
+    expect(screen.getByRole('alert')).not.toHaveTextContent('courier');
+  });
   it('validates the phone on its first blur and every subsequent change', async () => {
     serve({});
     renderCheckout();
@@ -176,7 +196,7 @@ describe('checkout delivery step', () => {
 
   it('requires a Polish phone for an InPost courier and shows the courier hint and server refusal', async () => {
     const bodies: unknown[] = [];
-    serve({ onSession: (body) => bodies.push(body), sessionErrorCode: 'locker_phone_invalid' });
+    serve({ inpostOnly: true, onSession: (body) => bodies.push(body), sessionErrorCode: 'locker_phone_invalid' });
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('radio', { name: /^InPost courier/u }));

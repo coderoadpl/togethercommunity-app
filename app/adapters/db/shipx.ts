@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
-import { SHIPX_STATUS_CREATING, shipxShipmentBought, shipxEnvironmentSchema, shipxSenderSchema, shipxShipmentSchema } from '#core/domain/index.js';
+import { SHIPX_STATUS_CREATING, shipxEnvironmentSchema, shipxSenderSchema, shipxShipmentSchema } from '#core/domain/index.js';
 import type {
   ShipxOwnedUpdate,
   ShipxSettingsRepository,
@@ -189,11 +189,9 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
       }]);
       return { kind: 'finished' };
     }),
-    release: async (tenantId, orderId, token, audit, correctedDraftId) => await db.transaction(async (tx): Promise<{ kind: 'released' } | { kind: 'lost_lock' }> => {
-      const [locked] = await tx.select().from(orderShipments).where(owned(tenantId, orderId, token)).for('update');
-      if (locked === undefined || (correctedDraftId !== undefined && (locked.providerShipmentId !== correctedDraftId || locked.boughtAt !== null || shipxShipmentBought(locked)))) return { kind: 'lost_lock' };
+    release: async (tenantId, orderId, token, audit) => await db.transaction(async (tx): Promise<{ kind: 'released' } | { kind: 'lost_lock' }> => {
       const [removed] = await tx.delete(orderShipments)
-        .where(and(owned(tenantId, orderId, token), correctedDraftId === undefined ? isNull(orderShipments.providerShipmentId) : eq(orderShipments.providerShipmentId, correctedDraftId)))
+        .where(and(owned(tenantId, orderId, token), isNull(orderShipments.providerShipmentId)))
         .returning();
       if (removed === undefined) return { kind: 'lost_lock' };
       await record(tx, tenantId, orderId, [{

@@ -65,7 +65,7 @@ paying that only a Polish mobile number works, so my parcel is not stuck.
 - [ ] For a rate with carrier InPost (parcel locker and courier), the checkout shows its own phone field with a fixed `+48` prefix, `type="tel"`, `inputmode="tel"`, `autocomplete="tel-national"`, and a permanent hint explaining that InPost sends the pick-up code by SMS only to a Polish mobile number.
 - [ ] The field validates on blur, on input after the first blur and after autofill; a foreign or malformed number shows an inline error before the buyer reaches payment.
 - [ ] The server refuses the checkout with a distinct error code when the rule fails; a client-only check is not enough.
-- [ ] Stripe Checkout does not ask again for a phone on those rates; other carriers keep Stripe's phone collection unchanged.
+- [ ] Stripe keeps collecting a phone for one release so an in-flight checkout can finish after a rollback; the order prefers Together's canonical phone. The next release disables Stripe phone collection on InPost rates.
 - [ ] The order stores the canonical `+48XXXXXXXXX` form.
 - [ ] Polish and English copy.
 - [ ] The project's own checks pass.
@@ -80,9 +80,9 @@ created again without a database edit.
 - [ ] "Correct delivery details" on the Delivery card, gated by the permission that marks an order as shipped (`order:write`).
 - [ ] Also offered from the shipment error when InPost refuses the receiver.
 - [ ] Refused once the order is shipped or a shipment is bought; the card then explains that the receiver is changed in InPost Manager or the shipment is cancelled.
-- [ ] A non-bought draft shipment stays, and staff are told to discard it and create it again.
+- [ ] A correction is refused once any shipment has a provider id, a create attempt or an active operation lease; staff change the receiver in InPost Manager instead.
 - [ ] Each changed field is kept as an audit entry (who, when, old, new) and listed under the card.
-- [ ] The locker code is verified the same way as at checkout; a locker order's phone follows US-001's rule.
+- [ ] The locker code is verified the same way as at checkout; every InPost order's phone follows US-001's rule.
 - [ ] The project's own checks pass.
 - [ ] Verified in the running app.
 
@@ -333,7 +333,7 @@ numbers come from the deployments thread.
 - D2. Inbound mail: Amazon SES receiving in the EU, raw mail to S3 plus a signed SNS notification (alternatives: Mailgun routes, Postmark). Why: same vendor and infrastructure as outbound. Revert: "revert D2 → Mailgun".
 - D3. SMS provider: SMSAPI behind an SMS port, one account per workspace (alternatives: Twilio, SerwerSMS, a platform account). Why: Polish, EEA, DPA, PLN billing, free test mode. Revert: "revert D3 → Twilio".
 - D4. InPost phone rule at checkout covers every InPost-carrier rate, courier included (alternative: parcel lockers only). Why: Together's own shipment step refuses a non-Polish phone for both services. Revert: "revert D4 → lockers only".
-- D5. Stripe stops collecting the phone on InPost rates; Together collects it (alternative: both). Why: one phone, one rule. Revert: "revert D5 → phone in Stripe too".
+- D5. Together collects the phone for InPost rates and the order uses it; Stripe keeps collecting a phone for one release so a rollback still has one, and stops in the next release. Revert: "revert D5 → Stripe phone off now".
 - D6. Delivery-correction audit is kept inline in the order's delivery data, no migration (alternative: an event table). Why: ships without a migration during the promotion freeze; the same pattern as personalisation corrections. Revert: "revert D6 → event table".
 - D7. Retention: until the end of the calendar year three years after the last entry, then a minimal record (alternatives: 2 years, 6 years). Why: covers warranty and the business-claim limitation. Revert: "revert D7 → 6 years".
 - D8. Attachments: images, PDF and text; 10 MB per file, 25 MB per message (alternative: any type). Revert: "revert D8 → any file type".

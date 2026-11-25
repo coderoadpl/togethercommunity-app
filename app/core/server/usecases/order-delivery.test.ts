@@ -40,45 +40,45 @@ const harness = (change: Partial<OrderListItem> = {}) => {
 describe('correct order delivery', () => {
   it('authorizes before reading or looking up a locker and scopes to the tenant', async () => {
     const h = harness();
-    expect(await correctOrderDelivery(ctx(['order:read']), { orderId: 'order', phone: '500000000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
-    expect(await correctOrderDelivery({ ...ctx(), identity: { ...identity, tenantId: 'other' } }, { orderId: 'order', phone: '500000000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await correctOrderDelivery(ctx(['order:read']), { orderId: 'order', expected: { phone: null }, phone: '500000000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await correctOrderDelivery({ ...ctx(), identity: { ...identity, tenantId: 'other' } }, { orderId: 'order', expected: { phone: null }, phone: '500000000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
     expect(h.correctDelivery).not.toHaveBeenCalled();
     expect(h.lookup).not.toHaveBeenCalled();
   });
   it.each([{ fulfilmentStatus: null }, { status: 'pending' }, { fulfilmentStatus: 'shipped' }] as const)('refuses orders outside to-pack state %o', async (change) => {
     const h = harness(change);
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', phone: '500000000' }, h.deps)).toMatchObject({ ok: false });
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { phone: null }, phone: '500000000' }, h.deps)).toMatchObject({ ok: false });
     expect(h.correctDelivery).not.toHaveBeenCalled();
   });
   it('refuses bought shipments in the locked repository operation', async () => {
     const h = harness();
-    h.shipments.push({ status: 'confirmed', trackingNumber: 'TRACK001', boughtAt: null, operationToken: null });
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', phone: '500000000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_bought' } });
+    h.shipments.push({ status: 'confirmed', trackingNumber: 'TRACK001', boughtAt: null, operationToken: null, providerShipmentId: 'draft', createAttemptedAt: null });
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { phone: null }, phone: '500000000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_bought' } });
   });
   it('rejects unchanged values and foreign locker phones', async () => {
     const h = harness();
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', recipientName: 'Example Buyer' }, h.deps)).toMatchObject({ ok: false, error: { details: { deliveryCorrection: 'unchanged' } } });
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', phone: '+44 7700 900000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { recipientName: 'Example Buyer' }, recipientName: 'Example Buyer' }, h.deps)).toMatchObject({ ok: false, error: { details: { deliveryCorrection: 'unchanged' } } });
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { phone: null }, phone: '+44 7700 900000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
     expect(h.correctDelivery).not.toHaveBeenCalled();
   });
   it('stores directory data rather than submitted locker labels and appends the staff audit', async () => {
     const h = harness();
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', phone: '500 000 000', pickupPoint: { code: 'abc02m', name: 'Untrusted', address: 'Untrusted' } }, h.deps)).toMatchObject({ ok: true, value: { order: { shipping: {
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { phone: null, pickupPoint: 'ABC01M' }, phone: '500 000 000', pickupPoint: { code: 'abc02m', name: 'Untrusted', address: 'Untrusted' } }, h.deps)).toMatchObject({ ok: true, value: { order: { shipping: {
       phone: '+48500000000', pickupPoint: { code: 'ABC02M', name: 'From directory', address: 'Directory Street 2' },
       corrections: [{ field: 'phone', byUserId: 'staff', byEmail: 'staff@example.org' }, { field: 'pickup_point', from: 'ABC01M', to: 'ABC02M' }],
     } }, recreateShipment: false } });
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', recipientName: 'Corrected Buyer' }, h.deps)).toMatchObject({ ok: true, value: { order: { shipping: { corrections: [expect.anything(), expect.anything(), { field: 'recipient_name', from: 'Example Buyer', to: 'Corrected Buyer', at: '2026-11-25T10:00:00.000Z', byUserId: 'staff', byEmail: 'staff@example.org' }] } } } });
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { recipientName: 'Example Buyer' }, recipientName: 'Corrected Buyer' }, h.deps)).toMatchObject({ ok: true, value: { order: { shipping: { corrections: [expect.anything(), expect.anything(), { field: 'recipient_name', from: 'Example Buyer', to: 'Corrected Buyer', at: '2026-11-25T10:00:00.000Z', byUserId: 'staff', byEmail: 'staff@example.org' }] } } } });
   });
   it.each(['not_found', 'unavailable'] as const)('refuses an unverified locker: %s', async (kind) => {
     const h = harness();
     h.lookup.mockResolvedValue({ kind });
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', pickupPoint: { code: 'ABC02M' } }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { pickupPoint: 'ABC01M' }, pickupPoint: { code: 'ABC02M' } }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
     expect(h.correctDelivery).not.toHaveBeenCalled();
   });
-  it('returns a reminder without discarding an unpaid shipment', async () => {
+  it('refuses a correction once a shipment exists', async () => {
     const h = harness();
-    h.shipments.push({ status: 'offers_prepared', trackingNumber: null, boughtAt: null, operationToken: null });
-    expect(await correctOrderDelivery(ctx(), { orderId: 'order', phone: '500000000' }, h.deps)).toMatchObject({ ok: true, value: { recreateShipment: true } });
+    h.shipments.push({ status: 'offers_prepared', trackingNumber: null, boughtAt: null, operationToken: null, providerShipmentId: 'draft', createAttemptedAt: null });
+    expect(await correctOrderDelivery(ctx(), { orderId: 'order', expected: { phone: null }, phone: '500000000' }, h.deps)).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
     expect(h.shipments).toHaveLength(1);
   });
 });

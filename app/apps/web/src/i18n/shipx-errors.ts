@@ -1,5 +1,4 @@
 import {
-  deliveryCorrectionReasonSchema,
   shipxBoughtLabelDetailsSchema,
   shipxErrorDetailsSchema,
   shipxErrorStateSchema,
@@ -56,8 +55,6 @@ const vendorDetail = (details: ShipxErrorDetails): string | null => {
 export const localizeShipxError = (error: unknown, t: Messages): { message: string; detail: string | null } => {
   const code = errorCodeOf(error);
   const details = errorDetailsOf(error);
-  const correction = typeof details === 'object' && details !== null && 'deliveryCorrection' in details ? deliveryCorrectionReasonSchema.safeParse(details.deliveryCorrection) : null;
-  if (correction?.success === true) return { message: t.deliveryCorrection.reasons[correction.data], detail: null };
   const state = shipxErrorStateSchema.safeParse(details);
   if (state.success) return { message: stateMessage(state.data, code, t), detail: null };
   const boughtLabel = code === 'conflict' ? shipxBoughtLabelDetailsSchema.safeParse(details) : null;

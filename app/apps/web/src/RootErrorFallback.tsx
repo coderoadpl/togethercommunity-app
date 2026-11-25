@@ -30,6 +30,9 @@ const headingFor = (error: unknown, t: Messages): string => {
     case 'conflict':
     case 'fulfilment_conflict':
     case 'delivery_correction_shipped':
+    case 'delivery_correction_shipment_exists':
+    case 'delivery_correction_member_erased':
+    case 'delivery_correction_conflict':
     case 'delivery_correction_shipment_bought':
     case 'feed_cursor_reset':
       return t.errors.headingConflict;

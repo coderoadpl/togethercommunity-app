@@ -2936,6 +2936,13 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), eq(orders.id, metaCapiOutbox.orderId),
         ))),
       ));
+      await tx.update(checkoutSnapshots).set({ shipping: sql`${checkoutSnapshots.shipping} - 'phone'` }).where(and(
+        eq(checkoutSnapshots.tenantId, tenantId),
+        exists(tx.select({ id: orders.id }).from(orders).where(and(
+          eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId),
+          eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
+        ))),
+      ));
       const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({
         shipping: sql`(case

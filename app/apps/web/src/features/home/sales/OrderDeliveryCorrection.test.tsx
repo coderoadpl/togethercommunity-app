@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#core/client/index.js';
@@ -25,9 +25,9 @@ const dialog = (change: Partial<Parameters<typeof OrderDeliveryCorrectionDialog>
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('delivery correction UI', () => {
-  it('saves, closes, refreshes order queries and shows the draft reminder without discarding', async () => {
+  it('saves, closes, refreshes order queries and does not discard shipment attempts', async () => {
     const order = { ...sampleBundleOrder, shipping, fulfilmentStatus: 'to_pack' as const };
-    const save = vi.spyOn(actions.correctOrderDelivery, 'mutationFn').mockResolvedValue({ order, recreateShipment: true });
+    const save = vi.spyOn(actions.correctOrderDelivery, 'mutationFn').mockResolvedValue({ order, recreateShipment: false });
     const discard = vi.spyOn(actions.shipxDiscard, 'mutationFn');
     const view = { ...ready, shipment: { shipxShipmentId: null, status: 'creating', trackingNumber: null, environment: 'production' as const, createAttemptedAt: null, boughtAt: null, labelFetchedAt: null, createdAt: '2026-11-25T09:00:00.000Z', updatedAt: '2026-11-25T09:00:00.000Z' } };
     const { queryClient } = renderWithProviders(<OrderDeliveryCorrection order={order} view={view} canCorrect>{() => null}</OrderDeliveryCorrection>);
@@ -36,9 +36,8 @@ describe('delivery correction UI', () => {
     fireEvent.change(screen.getByLabelText('Recipient name'), { target: { value: 'Corrected Buyer' } });
     await userEvent.click(screen.getByTestId('delivery-correction-save'));
     expect(await screen.findByText('Delivery details updated.')).toBeVisible();
-    expect(screen.getByText('Discard the draft shipment and create it again so InPost gets the new details.')).toBeVisible();
     await waitFor(() => expect(screen.queryByTestId('delivery-correction-dialog')).toBeNull());
-    expect(save.mock.calls[0]?.[0]).toEqual({ orderId: order.id, recipientName: 'Corrected Buyer' });
+    expect(save.mock.calls[0]?.[0]).toEqual({ orderId: order.id, expected: { recipientName: 'Example Buyer' }, recipientName: 'Corrected Buyer' });
     expect(invalidate).toHaveBeenCalledWith(actions.ordersInvalidates());
     expect(discard).not.toHaveBeenCalled();
   });
@@ -48,7 +47,7 @@ describe('delivery correction UI', () => {
     expect(screen.getByTestId('delivery-correction-save')).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Delivery phone'), { target: { value: '+44 7700 900000' } });
     expect(screen.getByTestId('delivery-correction-save')).toBeDisabled();
-    expect(screen.getByText(/InPost sends the pick-up code by SMS only to a Polish mobile number/)).toBeVisible();
+    expect(screen.getByText(/This is not a Polish mobile number/)).toBeVisible();
     expect(h.onSave).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(h.onClose).toHaveBeenCalledOnce();
@@ -59,10 +58,10 @@ describe('delivery correction UI', () => {
     fireEvent.change(screen.getByLabelText('Street and building number'), { target: { value: 'Street 2' } });
     fireEvent.change(screen.getByLabelText('Parcel locker code'), { target: { value: 'abc02m' } });
     await userEvent.click(screen.getByTestId('delivery-correction-save'));
-    expect(h.onSave).toHaveBeenCalledExactlyOnceWith({ orderId: 'order', recipientName: 'Corrected Buyer', pickupPoint: { code: 'ABC02M' }, address: { line1: 'Street 2', line2: null, postalCode: '00-001', city: 'Example City' } });
+    expect(h.onSave).toHaveBeenCalledExactlyOnceWith({ orderId: 'order', expected: { recipientName: 'Example Buyer', pickupPoint: 'ABC01M', address: { line1: 'Street 1' } }, recipientName: 'Corrected Buyer', pickupPoint: { code: 'ABC02M' }, address: { line1: 'Street 2' } });
   });
   it('validates Polish postal codes and allows a foreign courier phone', async () => {
-    const h = dialog({ shipping: { ...shipping, pickupPoint: null } });
+    const h = dialog({ shipping: { ...shipping, carrier: 'other', pickupPoint: null } });
     expect(screen.queryByLabelText('Parcel locker code')).toBeNull();
     fireEvent.change(screen.getByLabelText('Delivery phone'), { target: { value: '+44 7700 900000' } });
     fireEvent.change(screen.getByLabelText('Postal code'), { target: { value: '00001' } });
@@ -70,7 +69,37 @@ describe('delivery correction UI', () => {
     expect(screen.getByTestId('delivery-correction-save')).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Postal code'), { target: { value: '00-001' } });
     await userEvent.click(screen.getByTestId('delivery-correction-save'));
-    expect(h.onSave).toHaveBeenCalledExactlyOnceWith({ orderId: 'order', phone: '+44 7700 900000' });
+    expect(h.onSave).toHaveBeenCalledExactlyOnceWith({ orderId: 'order', expected: { phone: '+48500000000' }, phone: '+44 7700 900000' });
+  });
+  it('rejects a foreign InPost courier phone without advising courier delivery', () => {
+    dialog({ shipping: { ...shipping, pickupPoint: null } });
+    fireEvent.change(screen.getByLabelText('Delivery phone'), { target: { value: '+44 7700 900000' } });
+    expect(screen.getByTestId('delivery-correction-save')).toBeDisabled();
+    expect(screen.getByText(/This is not a Polish mobile number/)).not.toHaveTextContent('choose courier');
+  });
+  it('does not submit untouched legacy whitespace when another field changes', async () => {
+    const h = dialog({ shipping: { ...shipping, address: { ...shipping.address, name: ' Example Buyer ', line1: ' Street 1 ' } } });
+    fireEvent.change(screen.getByLabelText('Delivery phone'), { target: { value: '600000000' } });
+    await userEvent.click(screen.getByTestId('delivery-correction-save'));
+    expect(h.onSave).toHaveBeenCalledExactlyOnceWith({ orderId: 'order', phone: '600000000', expected: { phone: '+48500000000' } });
+  });
+  it('keeps the opening values when the order refreshes during editing', async () => {
+    const onSave = vi.fn();
+    const props = { orderId: 'order', pending: false, error: null, onSave, onClose: vi.fn() };
+    const { rerender } = render(<OrderDeliveryCorrectionDialog {...props} shipping={shipping} />);
+    fireEvent.change(screen.getByLabelText('Street and building number'), { target: { value: 'Street 2' } });
+    rerender(<OrderDeliveryCorrectionDialog {...props} shipping={{ ...shipping, address: { ...shipping.address, city: 'Concurrent City' } }} />);
+    await userEvent.click(screen.getByTestId('delivery-correction-save'));
+    expect(onSave).toHaveBeenCalledExactlyOnceWith({ orderId: 'order', address: { line1: 'Street 2' }, expected: { address: { line1: 'Street 1' } } });
+  });
+  it('does not suggest courier delivery after a server phone refusal', () => {
+    dialog({ error: new ApiError({ code: 'locker_phone_invalid', message: 'Invalid phone' }) });
+    expect(screen.getByRole('alert')).toHaveTextContent('This is not a Polish mobile number. Enter 9 digits.');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('courier');
+  });
+  it('localizes a concurrent edit refusal', () => {
+    dialog({ error: new ApiError({ code: 'delivery_correction_conflict', message: 'Conflict' }) });
+    expect(screen.getByText('Someone just changed these details. Refresh and try again.')).toBeVisible();
   });
   it('localizes server validation failures and prevents closing while pending', () => {
     const h = dialog({ pending: true, error: new ApiError({ code: 'validation', message: 'Unavailable', details: { deliveryCorrection: 'locker_unavailable' } }) });

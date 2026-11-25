@@ -7,8 +7,13 @@ const shipping: OrderShipping = {
   pickupPoint: { provider: 'inpost', code: 'ABC01M', name: null, address: null },
   phone: null, address: { name: 'Example Buyer', line1: 'Example Street 1', line2: null, postalCode: '00-001', city: 'Example City', country: 'PL' },
 };
-const correct = (input: DeliveryCorrectionInput, current = shipping) => correctedOrderShipping(current, {
-  input: deliveryCorrectionInputSchema.parse(input), pickupPoint: input.pickupPoint === undefined ? null : { provider: 'inpost', code: input.pickupPoint.code, name: 'Directory name', address: 'Directory address' },
+const correct = (input: Omit<DeliveryCorrectionInput, 'expected'> & { expected?: DeliveryCorrectionInput['expected'] }, current = shipping) => correctedOrderShipping(current, {
+  input: deliveryCorrectionInputSchema.parse({ ...input, expected: input.expected ?? {
+    ...(input.phone === undefined ? {} : { phone: current.phone }),
+    ...(input.recipientName === undefined ? {} : { recipientName: current.address.name }),
+    ...(input.pickupPoint === undefined ? {} : { pickupPoint: current.pickupPoint?.code ?? null }),
+    ...(input.address === undefined ? {} : { address: Object.fromEntries(Object.keys(input.address).map((key) => [key, Object.entries(current.address).find(([field]) => field === key)?.[1]])) }),
+  } }), pickupPoint: input.pickupPoint === undefined ? null : { provider: 'inpost', code: input.pickupPoint.code, name: 'Directory name', address: 'Directory address' },
   at: '2026-11-25T10:00:00.000Z', byUserId: 'staff', byEmail: 'staff@example.org',
 });
 
@@ -34,9 +39,27 @@ describe('delivery correction', () => {
     const again = correct({ orderId: 'order', recipientName: 'Another Buyer' }, result.value);
     expect(again.ok && again.value.corrections).toHaveLength(5);
   });
-  it('rejects a foreign locker phone but accepts it for a courier', () => {
+  it('rejects a foreign locker phone but accepts it for another carrier', () => {
     expect(correct({ orderId: 'order', phone: '+44 7700 900000' })).toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
-    expect(correct({ orderId: 'order', phone: '+44 7700 900000' }, { ...shipping, pickupPoint: null })).toMatchObject({ ok: true, value: { phone: '+44 7700 900000' } });
+    expect(correct({ orderId: 'order', phone: '+44 7700 900000' }, { ...shipping, carrier: 'other', pickupPoint: null })).toMatchObject({ ok: true, value: { phone: '+44 7700 900000' } });
+  });
+  it('rejects foreign and zero-prefixed InPost courier phones and stores canonical numbers', () => {
+    const courier = { ...shipping, pickupPoint: null };
+    for (const phone of ['+44 7700 900000', '050000000']) expect(correct({ orderId: 'order', phone }, courier)).toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
+    expect(correct({ orderId: 'order', phone: '500 000 000' }, courier)).toMatchObject({ ok: true, value: { phone: '+48500000000' } });
+  });
+  it('rejects a stale field but preserves unrelated concurrent address changes', () => {
+    expect(correct({ orderId: 'order', phone: '500000000', expected: { phone: '+48600000000' } })).toMatchObject({ ok: false, error: { code: 'delivery_correction_conflict' } });
+    expect(correct({ orderId: 'order', address: { line1: 'Street 2' }, expected: { address: { line1: shipping.address.line1 } } }, { ...shipping, address: { ...shipping.address, city: 'Concurrent City' } })).toMatchObject({ ok: true, value: { address: { line1: 'Street 2', city: 'Concurrent City' } } });
+    expect(correct({ orderId: 'order', address: { line1: 'Street 2' }, expected: { address: { line1: 'Stale Street' } } })).toMatchObject({ ok: false, error: { code: 'delivery_correction_conflict' } });
+  });
+  it('compares the exact stored address, including whitespace and empty second lines', () => {
+    const current = { ...shipping, address: { ...shipping.address, line1: ' Street 1 ', line2: '' } };
+    expect(correct({ orderId: 'order', address: { line1: 'Street 2', line2: null }, expected: { address: { line1: ' Street 1 ', line2: '' } } }, current)).toMatchObject({ ok: true, value: { address: { line1: 'Street 2', line2: null } } });
+  });
+  it('requires an expected value for every changed field', () => {
+    expect(deliveryCorrectionInputSchema.safeParse({ orderId: 'order', phone: '500000000', expected: {} }).success).toBe(false);
+    expect(deliveryCorrectionInputSchema.safeParse({ orderId: 'order', address: { city: 'City' }, expected: { address: { line1: 'Street' } } }).success).toBe(false);
   });
   it('rejects invalid postal codes, unsupported countries and lockers on courier orders', () => {
     expect(correct({ orderId: 'order', address: { line1: 'Street 2', line2: null, postalCode: '12345', city: 'City' } })).toMatchObject({ ok: false, error: { details: { deliveryCorrection: 'postal_code' } } });
@@ -62,8 +85,8 @@ describe('delivery correction', () => {
     expect(deliveryCorrectionAllowed({ ...ready, fulfilmentStatus: 'shipped' }, [])).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipped' } });
     expect(deliveryCorrectionAllowed({ ...ready, status: 'pending' }, [])).toMatchObject({ ok: false });
     expect(deliveryCorrectionAllowed({ ...ready, fulfilmentStatus: null }, [])).toMatchObject({ ok: false });
-    expect(deliveryCorrectionAllowed(ready, [{ status: 'confirmed', trackingNumber: 'TRACK001', boughtAt: null, operationToken: null }])).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_bought' } });
-    expect(deliveryCorrectionAllowed(ready, [{ status: 'created', trackingNumber: null, boughtAt: null, operationToken: 'lease' }])).toMatchObject({ ok: false, error: { details: { deliveryCorrection: 'shipment_busy' } } });
-    expect(deliveryCorrectionAllowed(ready, [{ status: 'offers_prepared', trackingNumber: null, boughtAt: null, operationToken: null }])).toMatchObject({ ok: true });
+    expect(deliveryCorrectionAllowed(ready, [{ status: 'confirmed', trackingNumber: 'TRACK001', boughtAt: null, operationToken: null, providerShipmentId: 'draft', createAttemptedAt: null }])).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_bought' } });
+    expect(deliveryCorrectionAllowed(ready, [{ status: 'created', trackingNumber: null, boughtAt: null, operationToken: 'lease', providerShipmentId: null, createAttemptedAt: null }])).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
+    expect(deliveryCorrectionAllowed(ready, [{ status: 'offers_prepared', trackingNumber: null, boughtAt: null, operationToken: null, providerShipmentId: null, createAttemptedAt: null }])).toMatchObject({ ok: true });
   });
 });

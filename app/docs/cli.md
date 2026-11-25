@@ -84,7 +84,7 @@ carries no terms field.
 
 ```bash
 pnpm --silent run cli --tenant studio checkout session --product product-id \
-  --email buyer@example.test --shipping-rate courier --accept-terms
+  --email buyer@example.test --shipping-rate courier --shipping-phone "+48 500 000 000" --accept-terms
 pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
   --email buyer@example.test --accept-terms
 ```

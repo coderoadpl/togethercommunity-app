@@ -36,6 +36,7 @@ interface Hoisted {
   createOrderRefund: ReturnType<typeof vi.fn>;
   shipOrderAnyway: ReturnType<typeof vi.fn>;
   correctOrderPersonalization: ReturnType<typeof vi.fn>;
+  getOrder: ReturnType<typeof vi.fn>;
   correctOrderDelivery: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   listPaymentEventRejections: ReturnType<typeof vi.fn>;
@@ -149,6 +150,7 @@ const h = vi.hoisted(
     createOrderRefund: vi.fn(),
     shipOrderAnyway: vi.fn(),
     correctOrderPersonalization: vi.fn(),
+    getOrder: vi.fn(),
     correctOrderDelivery: vi.fn(),
     ordersPackingList: vi.fn(),
     listPaymentEventRejections: vi.fn(),
@@ -310,6 +312,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     createOrderRefund: h.createOrderRefund,
     shipOrderAnyway: h.shipOrderAnyway,
     correctOrderPersonalization: h.correctOrderPersonalization,
+    getOrder: h.getOrder,
     correctOrderDelivery: h.correctOrderDelivery,
     ordersPackingList: h.ordersPackingList,
     listPaymentEventRejections: h.listPaymentEventRejections,
@@ -469,6 +472,7 @@ beforeEach(() => {
   }));
   h.createOrderRefund.mockReset().mockResolvedValue(ok({ created: true, refund: { id: 'refund-1', kind: 'amount', status: 'pending', amountCents: 1250, currency: 'PLN', restocked: false, removedFromPackingList: false } }));
   h.shipOrderAnyway.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' } }));
+  h.getOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', shipping: { phone: null, pickupPoint: { code: 'ABC02M' }, address: { name: 'Original Buyer', line1: 'Street 1', line2: 'Apartment 2', postalCode: '00-001', city: 'City' } } } }));
   h.correctOrderDelivery.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' }, recreateShipment: false }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.listPaymentEventRejections.mockReset().mockResolvedValue(ok({ rejections: [] }));
@@ -624,6 +628,10 @@ describe('terms acceptance flag', () => {
     expect(process.exitCode).toBe(0);
   });
 
+  it.each(['checkout', 'simulate-purchase'])('passes the delivery phone through %s', async (command) => {
+    await run('--json', command, ...(command === 'checkout' ? ['session'] : []), '--product', 'product-1', '--email', 'buyer@example.test', '--shipping-rate', 'locker', '--pickup-point', 'ABC01M', '--shipping-phone', '+48 500 000 000');
+    expect(command === 'checkout' ? h.createCheckoutSession : h.simulatePurchase).toHaveBeenCalledWith(expect.objectContaining({ shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'ABC01M' } } }));
+  });
   it('simulates a purchase with termsAccepted only when --accept-terms is given', async () => {
     await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test');
     expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
@@ -2613,9 +2621,19 @@ describe('personalisation CLI', () => {
     await rm(join(invalid, '..'), { recursive: true, force: true });
   });
 
+  it.each([['--line1', 'Street 2'], ['--city', 'City'], ['--postal-code', '00-002'], ['--line2', 'Apartment 3']])('refuses incomplete delivery address flags %s', async (...args) => {
+    await run('--json', 'order', 'delivery', 'order-number', ...args);
+    expect(h.correctOrderDelivery).not.toHaveBeenCalled();
+    expect(h.getOrder).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('--line1, --postal-code and --city together') } });
+  });
+  it('keeps the current second address line when its flag is omitted', async () => {
+    await run('--json', 'order', 'delivery', 'order-number', '--line1', 'Street 2', '--postal-code', '00-002', '--city', 'Other City');
+    expect(h.correctOrderDelivery).toHaveBeenCalledWith(expect.objectContaining({ address: { line1: 'Street 2', line2: 'Apartment 2', postalCode: '00-002', city: 'Other City' }, expected: { address: { line1: 'Street 1', line2: 'Apartment 2', postalCode: '00-001', city: 'City' } } }));
+  });
   it('corrects delivery details through the order alias', async () => {
     await run('--json', 'order', 'delivery', 'order-number', '--phone', '500000000', '--recipient-name', 'Example Buyer', '--locker', 'ABC01M');
-    expect(h.correctOrderDelivery).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', phone: '500000000', recipientName: 'Example Buyer', pickupPoint: { code: 'ABC01M' } });
+    expect(h.correctOrderDelivery).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', expected: { phone: null, recipientName: 'Original Buyer', pickupPoint: 'ABC02M' }, phone: '500000000', recipientName: 'Example Buyer', pickupPoint: { code: 'ABC01M' } });
   });
 
   it('corrects the personalisation text of an order line through the order alias', async () => {

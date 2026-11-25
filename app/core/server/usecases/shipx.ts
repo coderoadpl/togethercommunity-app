@@ -1,7 +1,5 @@
 import {
   appError,
-  deliveryCorrectionAfterShipment,
-  deliveryCorrectionRefused,
   buildShipxShipmentRequest,
   configureShipxInputSchema,
   DEFAULT_PARCEL_TEMPLATE,
@@ -666,7 +664,6 @@ export const createInpostShipment = async (
     const current = await loadOrder(tenant.value, order.value.id, deps);
     if (!current.ok) return current;
     if (current.value.shipping == null) return err(validation('Order has no delivery details'));
-    if (deliveryCorrectionAfterShipment(current.value.shipping, acquired.shipment) && (acquired.shipment.shipxShipmentId !== null || acquired.shipment.createAttemptedAt !== null)) return err(deliveryCorrectionRefused('draft_outdated'));
     const result = await runShipment(ctx, { ...run, order: current.value, shipping: current.value.shipping }, parsed.data.markShipped, deps);
     outcome = operationOutcome(result, run.lease.released);
     return result;
@@ -675,46 +672,10 @@ export const createInpostShipment = async (
   }
 };
 
-const discardCorrectedDraft = async (
-  ctx: Ctx, tenantId: string, order: OrderListItem, shipment: ShipxShipmentRecord, deps: ShipxOrderDeps & { ids: IdGenerator },
-): Promise<Result<{ discarded: true }, AppError>> => {
-  const current = await resolveCredentials(tenantId, orderEnvironment(order), deps);
-  if (!current.ok) return current;
-  const credentials = storedCredentials(shipment, current.value);
-  if (!credentials.ok) return credentials;
-  const now = deps.clock.nowIso();
-  const token = deps.ids.nextId();
-  const acquired = await deps.shipxShipments.acquire(tenantId, {
-    id: deps.ids.nextId(), orderId: order.id, token, environment: shipment.environment, organizationId: shipment.organizationId,
-    now, leaseExpiredBefore: leaseExpiredBefore(now), actorUserId: ctx.identity.userId,
-    orderShippable: (locked) => locked !== null && orderShipmentAllowed(locked).ok,
-  });
-  if (acquired.kind !== 'acquired') return err(deliveryCorrectionRefused('shipment_busy'));
-  let outcome: ShipxOperationOutcome = 'failed';
-  try {
-    const locked = acquired.shipment;
-    if (locked.shipxShipmentId === null || !deliveryCorrectionAfterShipment(order.shipping, locked)) return err(deliveryCorrectionRefused('unchanged'));
-    if (locked.boughtAt !== null || shipxShipmentBought(locked)) return err(appError('delivery_correction_shipment_bought', 'The shipment has already been bought'));
-    const lockedCredentials = storedCredentials(locked, current.value);
-    if (!lockedCredentials.ok) return lockedCredentials;
-    const remote = await clientOf(deps.shipx).getShipment(lockedCredentials.value, locked.shipxShipmentId);
-    if (!remote.ok) return remote;
-    if (shipxShipmentBought(remote.value) || remote.value.transactions.some((transaction) => transaction.status !== 'failure') || !['created', 'offers_prepared', 'offer_selected'].includes(remote.value.status)) {
-      return err(appError('delivery_correction_shipment_bought', 'The shipment is bought or its payment is unresolved'));
-    }
-    const released = await deps.shipxShipments.release(tenantId, order.id, token, { actorUserId: ctx.identity.userId, at: deps.clock.nowIso() }, locked.shipxShipmentId);
-    if (released.kind === 'lost_lock') return err(lostLock());
-    outcome = 'released';
-    return ok({ discarded: true });
-  } finally {
-    await deps.shipxShipments.finishOperation(tenantId, order.id, token, { actorUserId: ctx.identity.userId, at: deps.clock.nowIso(), outcome });
-  }
-};
-
 export const discardInpostShipmentAttempt = async (
   ctx: Ctx,
   input: unknown,
-  deps: ShipxOrderDeps & { ids: IdGenerator },
+  deps: Pick<ShipxOrderDeps, 'orderDetails' | 'shipxShipments' | 'clock'>,
 ): Promise<Result<{ discarded: true }, AppError>> => {
   const tenant = authorizeTenant(ctx, 'order:write');
   if (!tenant.ok) return tenant;
@@ -723,9 +684,6 @@ export const discardInpostShipmentAttempt = async (
   const order = await loadOrder(tenant.value, parsed.data.orderId, deps);
   if (!order.ok) return order;
   const shipment = await deps.shipxShipments.findByOrder(tenant.value, order.value.id);
-  if (shipment?.shipxShipmentId != null && deliveryCorrectionAfterShipment(order.value.shipping, shipment)) {
-    return discardCorrectedDraft(ctx, tenant.value, order.value, shipment, deps);
-  }
   if (shipment?.shipxShipmentId !== null) return err(validation('The order has no unconfirmed InPost attempt to discard'));
   const now = deps.clock.nowIso();
   const discarded = await deps.shipxShipments.discardUnconfirmed(tenant.value, order.value.id, leaseExpiredBefore(now), { actorUserId: ctx.identity.userId, at: now });

@@ -1,5 +1,6 @@
 import { Alert, Button, Checkbox, FormControlLabel, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { useState } from 'react';
+import { z } from 'zod';
 import { PARCEL_TEMPLATES, parcelTemplateSchema, SHIPX_SETUP_GAPS, SHIPX_STATUS_CANCELED, shipxAttemptUnconfirmed, shipxErrorStateSchema, shipxLabelUsable, type OrderListItem, type ParcelTemplate, type ShipxOrderView } from '#core/domain/index.js';
 
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
@@ -20,6 +21,14 @@ interface OrderShipxProps {
 }
 
 const AUTOMATIC = 'automatic';
+const receiverRejectionSchema = z.object({ error: z.literal('validation_failed'), fields: z.record(z.unknown()) });
+const receiverRejected = (error: unknown): boolean => {
+  const details = errorDetailsOf(error);
+  const state = shipxErrorStateSchema.safeParse(details);
+  if (state.success && state.data.state === 'receiver_invalid') return true;
+  const rejected = receiverRejectionSchema.safeParse(details);
+  return rejected.success && Object.keys(rejected.data.fields).some((field) => field === 'receiver' || field.startsWith('receiver.') || field === 'custom_attributes.target_point');
+};
 
 const hintReason = (reason: ShipxOrderView['reason']): (typeof SHIPX_SETUP_GAPS)[number] | null =>
   SHIPX_SETUP_GAPS.find((candidate) => candidate === reason) ?? null;
@@ -41,7 +50,6 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
   const unconfirmed = shipment !== null && shipxAttemptUnconfirmed(shipment);
   const discardable = shipment !== null && shipment.shipxShipmentId === null;
   const awaitingPayment = shipment?.shipxShipmentId != null && !labelReady && !labelCanceled && view.reason === null;
-  const errorState = shipxErrorStateSchema.safeParse(errorDetailsOf(error));
   const failure = error === null ? null : localizeShipxError(error, t);
   const service = t.shipx.services[view.service];
   const createsShipment = shipment?.shipxShipmentId == null && !unconfirmed;
@@ -100,7 +108,7 @@ export const OrderShipx = ({ order, view, canCreate, pending, discarding, downlo
       {failure === null || (labelCanceled && failure.message === t.shipx.labelCanceled) ? null : (
         <Alert severity="error" data-testid="order-shipx-error">
           {failure.message}
-          {onCorrectDelivery !== undefined && errorState.success && errorState.data.state === 'receiver_invalid' ? <Button onClick={onCorrectDelivery}>{t.deliveryCorrection.action}</Button> : null}
+          {onCorrectDelivery !== undefined && receiverRejected(error) ? <Button onClick={onCorrectDelivery}>{t.deliveryCorrection.action}</Button> : null}
           {failure.detail === null ? null : <Typography component="div" variant="body2">{t.shipx.errorDetail({ detail: failure.detail })}</Typography>}
         </Alert>
       )}

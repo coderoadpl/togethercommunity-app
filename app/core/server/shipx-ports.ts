@@ -106,7 +106,7 @@ export interface ShipxShipmentRepository {
   }): Promise<ShipxShipmentAcquisition>;
   update(tenantId: string, orderId: string, token: string, patch: ShipxShipmentPatch, step: ShipxShipmentStep): Promise<ShipxOwnedUpdate>;
   finishOperation(tenantId: string, orderId: string, token: string, end: ShipxOperationEnd): Promise<{ kind: 'finished' } | ShipxClaimLost>;
-  release(tenantId: string, orderId: string, token: string, audit: ShipxShipmentAudit, correctedDraftId?: string): Promise<{ kind: 'released' } | ShipxClaimLost>;
+  release(tenantId: string, orderId: string, token: string, audit: ShipxShipmentAudit): Promise<{ kind: 'released' } | ShipxClaimLost>;
   refreshUnclaimed(
     tenantId: string,
     orderId: string,

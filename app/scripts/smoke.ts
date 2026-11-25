@@ -782,7 +782,7 @@ const driveCli = async (port: number, homes: string[]): Promise<void> => {
   const shippedPurchase = simulatePurchaseSchema.parse(expectOk(
     await cli([
       '--json', '--api-url', url, '--tenant', 'acme', 'simulate-purchase', '--email', shippedBuyer, '--product', shippedProduct.product.id,
-      '--shipping-rate', 'smoke-locker', '--pickup-point', 'waw01m',
+      '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'smoke-locker', '--pickup-point', 'waw01m',
     ], anonHome),
     'shipping: simulated shipped purchase',
   ));

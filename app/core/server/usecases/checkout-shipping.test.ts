@@ -260,13 +260,13 @@ describe('checkout with shipping', () => {
     expect(h.snapshots).toEqual([]);
   });
 
-  it('disables Stripe phone collection and freezes the canonical phone for an InPost courier', async () => {
+  it('keeps Stripe phone collection during the rollback window and freezes the canonical phone for an InPost courier', async () => {
     const h = harness();
     const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
       productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'inpost-courier', phone: '+48 500 000 000' },
     }, h.deps);
     expect(result.ok).toBe(true);
-    expect(h.calls[0]?.shipping?.phone).toBe(false);
+    expect(h.calls[0]?.shipping?.phone).toBe(true);
     expect(h.snapshots[0]?.shipping).toMatchObject({ rateId: 'inpost-courier', pickupPoint: null, phone: '+48500000000' });
     expect(h.pickupPoints.lookups).toEqual([]);
   });
@@ -290,7 +290,7 @@ describe('checkout with shipping', () => {
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]).toMatchObject({
       priceCents: 4900,
-      shipping: { allowedCountries: ['PL'], phone: false, option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN', deliveryEstimateDays: { min: 1, max: 2 } } },
+      shipping: { allowedCountries: ['PL'], phone: true, option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN', deliveryEstimateDays: { min: 1, max: 2 } } },
     });
     expect(h.calls[0]).not.toHaveProperty('lines');
     expect(h.calls[0]).not.toHaveProperty('expiresAt');

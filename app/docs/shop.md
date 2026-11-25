@@ -1427,16 +1427,18 @@ pnpm --silent run cli --tenant acme product create --title 'Printed holder' \
   --type physical --delivery-method shipping --price-cents 4900
 pnpm --silent run cli --tenant acme product update <id> --delivery-method pickup
 pnpm --silent run cli --tenant acme checkout session --product <id> \
-  --shipping-rate locker --pickup-point WAW01M
+  --shipping-rate locker --pickup-point WAW01M --shipping-phone "+48 500 000 000"
 pnpm --silent run cli --tenant acme checkout session --line <id>:2 --line <other-id>:1 \
-  --shipping-rate locker --pickup-point WAW01M
+  --shipping-rate locker --pickup-point WAW01M --shipping-phone "+48 500 000 000"
 pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com \
-  --product <id> --shipping-rate locker --pickup-point WAW01M
+  --product <id> --shipping-rate locker --pickup-point WAW01M --shipping-phone "+48 500 000 000"
 pnpm --silent run cli --tenant acme orders list --fulfilment to_pack
 pnpm --silent run cli --tenant acme orders packing-list --format csv --out packing-list.csv
 pnpm --silent run cli --tenant acme orders packing-list --format csv --mode test
 pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
 pnpm --silent run cli --tenant acme orders list --fulfilment shipped
+pnpm --silent run cli --tenant acme order delivery <orderId> --phone '+48 500 000 000'
+pnpm --silent run cli --tenant acme order delivery <orderId> --line1 'Example Street 2' --postal-code '00-001' --city 'Warsaw'
 pnpm --silent run cli --tenant acme tenant shipx-set --slot sandbox \
   --organization-id 1234 --token-env SHIPX_SANDBOX_TOKEN
 pnpm --silent run cli --tenant acme tenant shipx-set --slot production \
@@ -1464,12 +1466,19 @@ pnpm --silent run cli --tenant acme checkout session --sales-link <link-id> --pr
 pnpm --silent run cli --tenant acme orders personalization <orderId> <productId> --text 'For Anna'
 ```
 
+`order delivery` reads the current order and sends expected previous values with
+the corrections. `--line1`, `--postal-code` and `--city` must be given together;
+`--line2` is optional, stays unchanged when omitted and is cleared with an empty
+string. Once an InPost shipment has been created or attempted, change the receiver
+in InPost Manager instead.
+
 `--shipping-rates` replaces the whole list; an empty string for
 `--inpost-geowidget-token` clears the token. `--checkout-return-origins` replaces
 the list of shop origins that checkout return and cancel addresses may use
 (see [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses));
 an empty string clears it. `--pickup-point` needs
-`--shipping-rate`. `checkout session --line <product-id>:<quantity>` posts a
+`--shipping-rate`. Every InPost rate also requires `--shipping-phone` (a Polish
+mobile number, for example `+48 500 000 000`). `checkout session --line <product-id>:<quantity>` posts a
 cart; repeat it once per product and leave out `--product` and `--sales-link`
 (see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
 For an order with a line above one unit, `orders list` shows its product lines

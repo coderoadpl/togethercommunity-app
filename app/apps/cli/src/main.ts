@@ -319,6 +319,7 @@ const personalizationSelection = (
 };
 const shippingSelectionOptionsSchema = z.object({
   shippingRate: z.string().min(1).optional(),
+  shippingPhone: z.string().min(1).optional(),
   pickupPoint: z.string().min(1).optional(),
 });
 const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.merge(personalizationSelectionOptionsSchema).extend({
@@ -1031,6 +1032,7 @@ checkout
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--shipping-phone <phone>', 'delivery phone; required for every InPost rate')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
   .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product, not with --line', (value: string, previous: string[]) => [...previous, value], [])
@@ -1098,10 +1100,11 @@ const shippingSelection = (
   options: z.output<typeof shippingSelectionOptionsSchema>,
 ): Result<CheckoutShippingInput | null, AppError> => {
   if (options.shippingRate === undefined) {
-    return options.pickupPoint === undefined ? ok(null) : err(validation('Pass --shipping-rate <id> together with --pickup-point <code>'));
+    return options.pickupPoint === undefined && options.shippingPhone === undefined ? ok(null) : err(validation('Pass --shipping-rate <id> together with --pickup-point or --shipping-phone'));
   }
   return ok({
     rateId: options.shippingRate,
+    ...(options.shippingPhone === undefined ? {} : { phone: options.shippingPhone }),
     ...(options.pickupPoint === undefined ? {} : { pickupPoint: { provider: 'inpost' as const, code: options.pickupPoint } }),
   });
 };
@@ -1980,8 +1983,8 @@ ordersCommand.command('delivery <orderId>').description('Correct delivery detail
   .option('--phone <phone>', 'delivery phone')
   .option('--recipient-name <name>', 'recipient name')
   .option('--locker <code>', 'parcel locker code')
-  .option('--line1 <line>', 'street and building number')
-  .option('--line2 <line>', 'apartment or second address line')
+  .option('--line1 <line>', 'street and building number; requires --postal-code and --city')
+  .option('--line2 <line>', 'apartment or second address line; omitted means unchanged, empty clears it; requires --line1, --postal-code and --city')
   .option('--postal-code <code>', 'postal code')
   .option('--city <city>', 'city')
   .action(withInput(z.tuple([z.string().min(1), z.object({
@@ -1989,12 +1992,26 @@ ordersCommand.command('delivery <orderId>').description('Correct delivery detail
     line1: z.string().optional(), line2: z.string().optional(), postalCode: z.string().optional(), city: z.string().optional(),
   })]), async (ctx, [orderId, options]) => {
     const addressChanged = options.line1 !== undefined || options.line2 !== undefined || options.postalCode !== undefined || options.city !== undefined;
+    if (addressChanged && (options.line1 === undefined || options.postalCode === undefined || options.city === undefined)) {
+      emit(err(validation('Pass --line1, --postal-code and --city together; --line2 is optional and otherwise unchanged')), ctx.json, () => '');
+      return;
+    }
+    const current = await ctx.api.getOrder(orderId);
+    if (!current.ok) { emit(current, ctx.json, () => ''); return; }
+    const shipping = current.value.order.shipping;
+    if (shipping == null) { emit(err(validation('Order has no delivery details')), ctx.json, () => ''); return; }
     emit(await ctx.api.correctOrderDelivery({
       orderId,
+      expected: {
+        ...(options.phone === undefined ? {} : { phone: shipping.phone }),
+        ...(options.recipientName === undefined ? {} : { recipientName: shipping.address.name }),
+        ...(options.locker === undefined ? {} : { pickupPoint: shipping.pickupPoint?.code ?? null }),
+        ...(addressChanged ? { address: { line1: shipping.address.line1, line2: shipping.address.line2, postalCode: shipping.address.postalCode, city: shipping.address.city } } : {}),
+      },
       ...(options.phone === undefined ? {} : { phone: options.phone }),
       ...(options.recipientName === undefined ? {} : { recipientName: options.recipientName }),
       ...(options.locker === undefined ? {} : { pickupPoint: { code: options.locker } }),
-      ...(addressChanged ? { address: { line1: options.line1 ?? '', line2: options.line2 ?? null, postalCode: options.postalCode ?? '', city: options.city ?? '' } } : {}),
+      ...(addressChanged ? { address: { line1: options.line1 ?? '', line2: options.line2 ?? shipping.address.line2, postalCode: options.postalCode ?? '', city: options.city ?? '' } } : {}),
     }), ctx.json, (data) => JSON.stringify(data, null, 2));
   }));
 const ordersShipx = ordersCommand.command('shipx').description('InPost ShipX shipments and labels');
@@ -3630,6 +3647,7 @@ program
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--shipping-phone <phone>', 'delivery phone; required for every InPost rate')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product', (value: string, previous: string[]) => [...previous, value], [])
   .option('--accept-condition', 'accept the personalisation conditions on behalf of the buyer')

@@ -4,7 +4,7 @@ import { DELETED_MEMBER_DISPLAY, memberTombstone, orderSchema, type DeliveryCorr
 import { createOrderDeliveryRepository } from './order-delivery.js';
 import { createMemberErasureRepository, createOrderRepository } from './repositories.js';
 import { createShipxShipmentRepository } from './shipx.js';
-import { members, orderChanges, orderShipments, orders, products, tenants, user } from './schema.js';
+import { checkoutSnapshots, members, orderChanges, orderShipments, orders, products, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together_buyer_support';
@@ -21,7 +21,11 @@ const order = (id: string) => orderSchema.parse({
   createdAt: now, paidAt: now, shipping, fulfilmentStatus: 'to_pack',
 });
 const command = (orderId: string, fields: Partial<DeliveryCorrectionCommand['input']> = { phone: '500000000' }): DeliveryCorrectionCommand => ({
-  input: { orderId, ...fields }, pickupPoint: null, at: now, byUserId: 'staff', byEmail: 'staff@example.org',
+  input: { orderId, expected: {
+    ...(fields.phone === undefined ? {} : { phone: null }),
+    ...(fields.recipientName === undefined ? {} : { recipientName: shipping.address.name }),
+    ...(fields.address === undefined ? {} : { address: { line1: shipping.address.line1, line2: shipping.address.line2, postalCode: shipping.address.postalCode, city: shipping.address.city } }),
+  }, ...fields }, pickupPoint: null, at: now, byUserId: 'staff', byEmail: 'staff@example.org',
 });
 const seedShipment = async (orderId: string, change: Partial<typeof orderShipments.$inferInsert> = {}) => {
   await database.db.insert(orderShipments).values({ id: `shipment-${orderId}`, tenantId: 'workspace', orderId,
@@ -55,35 +59,58 @@ describe('delivery correction persistence', () => {
   });
   it('checks the shipment and order guards under the lock and leaves denied rows unchanged', async () => {
     const repo = createOrderDeliveryRepository(database.db);
-    for (const id of ['bought', 'shipped', 'draft', 'busy']) await createOrderRepository(database.db).create('workspace', order(id));
+    for (const id of ['bought', 'shipped', 'draft', 'busy', 'attempted']) await createOrderRepository(database.db).create('workspace', order(id));
     await seedShipment('bought', { status: 'confirmed', trackingNumber: 'TRACK001' });
     await seedShipment('draft');
+    await seedShipment('attempted', { providerShipmentId: null, createAttemptedAt: now });
     await seedShipment('busy', { operationToken: 'active', operationStartedAt: now });
     await database.db.update(orders).set({ fulfilmentStatus: 'shipped' }).where(eq(orders.id, 'shipped'));
     expect(await repo.correctDelivery('workspace', command('bought'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_bought' } });
     expect(await repo.correctDelivery('workspace', command('shipped'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipped' } });
-    expect(await repo.correctDelivery('workspace', command('busy'))).toMatchObject({ ok: false, error: { details: { deliveryCorrection: 'shipment_busy' } } });
+    expect(await repo.correctDelivery('workspace', command('busy'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
+    expect(await repo.correctDelivery('workspace', command('attempted'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
     expect(await repo.correctDelivery('other', command('draft'))).toMatchObject({ ok: false, error: { code: 'not_found' } });
-    expect(await repo.correctDelivery('workspace', command('draft'))).toMatchObject({ ok: true, value: { recreateShipment: true } });
+    expect(await repo.correctDelivery('workspace', command('draft'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
     expect((await createOrderRepository(database.db).findById('workspace', 'bought'))?.shipping?.corrections).toBeUndefined();
     expect((await database.db.select().from(orderShipments)).filter((row) => row.orderId === 'draft')).toHaveLength(1);
   });
-  it('discards only the leased matching unpaid draft and records its prior provider id', async () => {
-    await createOrderRepository(database.db).create('workspace', order('release-draft'));
-    await seedShipment('release-draft', { operationToken: 'lease', operationStartedAt: now });
-    const repo = createShipxShipmentRepository(database.db);
-    expect(await repo.release('workspace', 'release-draft', 'other', { actorUserId: 'staff', at: now }, 'draft')).toEqual({ kind: 'lost_lock' });
-    expect(await repo.release('workspace', 'release-draft', 'lease', { actorUserId: 'staff', at: now }, 'different')).toEqual({ kind: 'lost_lock' });
-    expect(await repo.release('workspace', 'release-draft', 'lease', { actorUserId: 'staff', at: now }, 'draft')).toEqual({ kind: 'released' });
-    expect(await repo.findByOrder('workspace', 'release-draft')).toBeNull();
-    expect(await repo.listEvents('workspace', 'release-draft')).toMatchObject([{ type: 'attempt_released', shipxShipmentId: 'draft' }]);
+  it('allows only one concurrent edit of the same field', async () => {
+    await createOrderRepository(database.db).create('workspace', order('conflict'));
+    const repo = createOrderDeliveryRepository(database.db);
+    const results = await Promise.all([
+      repo.correctDelivery('workspace', command('conflict', { phone: '500000000' })),
+      repo.correctDelivery('workspace', command('conflict', { phone: '600000000' })),
+    ]);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok)).toMatchObject([{ error: { code: 'delivery_correction_conflict' } }]);
+  });
+  it('serializes a shipment claim after correction and rejects further corrections under its lease', async () => {
+    await createOrderRepository(database.db).create('workspace', order('claimed'));
+    const repo = createOrderDeliveryRepository(database.db);
+    expect(await repo.correctDelivery('workspace', command('claimed'))).toMatchObject({ ok: true });
+    const claim = await createShipxShipmentRepository(database.db).acquire('workspace', {
+      id: 'claim', orderId: 'claimed', token: 'lease', environment: 'sandbox', organizationId: 'org', now,
+      leaseExpiredBefore: '2026-11-25T09:00:00.000Z', actorUserId: 'staff', orderShippable: () => true,
+    });
+    expect(claim.kind).toBe('acquired');
+    expect((await createOrderRepository(database.db).findById('workspace', 'claimed'))?.shipping?.phone).toBe('+48500000000');
+    expect(await repo.correctDelivery('workspace', command('claimed', { recipientName: 'New Buyer' }))).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
   });
   it('removes historical delivery personal data when the member is erased', async () => {
+    await createOrderRepository(database.db).create('workspace', { ...order('snapshot-order'), providerObjectIds: { checkoutSession: 'session-erased' } });
+    for (const tenantId of ['workspace', 'other']) await database.db.insert(checkoutSnapshots).values({
+      id: tenantId + '-snapshot', tenantId, providerSessionId: 'session-erased', currency: 'PLN', lines: [], createdAt: now,
+      shipping: { rateId: 'locker', label: 'Locker', amountCents: 1200, vatRatePercent: 23, carrier: 'inpost', pickupPoint: null, allowedCountries: ['PL'], phone: '+48500000000' },
+    });
     const tombstone = memberTombstone('member');
     await createMemberErasureRepository(database.db, { compute: (tenantId, value) => `${tenantId}:${value}` }).pseudonymize('workspace', {
       memberId: 'member', deletedAt: now, tombstoneEmail: tombstone.email, severedUserId: tombstone.userId, postAuthorDisplay: DELETED_MEMBER_DISPLAY,
     });
     const [stored] = await database.db.select().from(orders).where(eq(orders.id, 'concurrent'));
+    const snapshots = await database.db.select().from(checkoutSnapshots);
+    expect(snapshots.find((row) => row.tenantId === 'workspace')?.shipping).not.toHaveProperty('phone');
+    expect(snapshots.find((row) => row.tenantId === 'other')?.shipping).toHaveProperty('phone', '+48500000000');
+    expect(await createOrderDeliveryRepository(database.db).correctDelivery('workspace', command('snapshot-order'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_member_erased' } });
     expect(stored?.shipping?.corrections ?? []).toEqual([]);
     expect(JSON.stringify(stored?.shipping)).not.toContain('Corrected Buyer');
   });

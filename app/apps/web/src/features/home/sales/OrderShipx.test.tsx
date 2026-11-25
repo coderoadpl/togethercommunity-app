@@ -33,6 +33,16 @@ const props = {
 };
 
 describe('OrderShipx', () => {
+  it.each([
+    [{ 'receiver.phone': ['invalid'] }, true],
+    [{ 'receiver.address.city': ['required'] }, true],
+    [{ 'sender.phone': ['invalid'] }, false],
+    [{ organization_id: ['invalid'] }, false],
+  ])('shows correction only for carrier receiver fields %o', (fields, visible) => {
+    const onCorrectDelivery = vi.fn();
+    renderWithProviders(<OrderShipx {...props} onCorrectDelivery={onCorrectDelivery} error={new ApiError({ code: 'shipx_rejected', message: 'InPost rejected the shipment data', details: { status: 400, error: 'validation_failed', fields } })} />);
+    expect(screen.queryByRole('button', { name: 'Correct delivery details' }) !== null).toBe(visible);
+  });
   it('opens the delivery correction from a receiver validation failure', async () => {
     const onCorrectDelivery = vi.fn();
     renderWithProviders(<OrderShipx {...props} onCorrectDelivery={onCorrectDelivery} error={new ApiError({ code: 'validation', message: 'Invalid receiver', details: { state: 'receiver_invalid', field: 'phone' } })} />);

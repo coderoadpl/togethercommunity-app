@@ -1153,12 +1153,12 @@ export interface Messages {
     showLess: string;
   };
   deliveryCorrection: {
-    discard: string;
-    discardBody: string;
+    shipmentExists: string;
+    memberErased: string;
+    conflict: string;
     action: string;
     save: string;
     saved: string;
-    recreate: string;
     bought: string;
     shipped: string;
     history: string;
@@ -1173,7 +1173,7 @@ export interface Messages {
     invalid: string;
     postalInvalid: string;
     fields: { phone: string; recipient_name: string; address: string; pickup_point: string };
-    reasons: { unchanged: string; history_full: string; country: string; postal_code: string; locker_not_allowed: string; locker_unavailable: string; locker_invalid: string; shipment_busy: string; draft_outdated: string };
+    reasons: { unchanged: string; history_full: string; country: string; postal_code: string; locker_not_allowed: string; locker_unavailable: string; locker_invalid: string };
   };
   personalization: {
     forLine: (params: { name: string }) => string;

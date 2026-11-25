@@ -172,11 +172,15 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
         startAdornment={<InputAdornment position="start">+48</InputAdornment>}
         inputProps={{ maxLength: 40, inputMode: 'tel', 'aria-describedby': `${phoneId}-hint` + (phoneInvalid ? ` ${phoneId}-error` : ''), 'data-testid': 'checkout-locker-phone' }}
         onChange={(event) => dispatch({ type: 'lockerPhoneChanged', phone: event.target.value })}
-        onInput={() => setPhoneTouched(true)}
+        onInput={(event) => {
+          const inputType = 'inputType' in event.nativeEvent ? event.nativeEvent.inputType : undefined;
+          const value = 'value' in event.target && typeof event.target.value === 'string' ? event.target.value : '';
+          if (inputType === undefined || inputType === 'insertReplacementText' || inputType === 'insertFromPaste' || value.length - state.lockerPhone.length >= 3) setPhoneTouched(true);
+        }}
         onBlur={() => setPhoneTouched(true)}
       />
       <FormHelperText id={`${phoneId}-hint`} error={false} sx={{ mx: 0 }}>{usesLocker ? t.shipping.lockerPhoneHint : t.shipping.courierPhoneHint}</FormHelperText>
-      {phoneInvalid ? <FormHelperText id={`${phoneId}-error`} role="alert" sx={{ mx: 0 }}>{usesLocker ? t.shipping.lockerPhoneInvalid : t.shipping.inpostPhoneInvalid}</FormHelperText> : null}
+      {phoneInvalid ? <FormHelperText id={`${phoneId}-error`} role="alert" sx={{ mx: 0 }}>{rates.some((rate) => !rateNeedsPolishMobile(rate)) ? t.shipping.lockerPhoneInvalid : t.shipping.inpostPhoneInvalid}</FormHelperText> : null}
     </FormControl>
   ) : null;
   const lockerChoice = picked === null ? (

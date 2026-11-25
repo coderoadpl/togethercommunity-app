@@ -652,7 +652,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   expectError(
     await cli([
       '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
-      '--shipping-rate', 'locker', '--pickup-point', 'not-a-locker',
+      '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'not-a-locker',
     ], buyerHome),
     'shipped purchase with a malformed locker code',
     EXIT_CODE_BY_ERROR_CODE.validation,
@@ -661,7 +661,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const shippedPurchase = expectOk(
     await cli([
       '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
-      '--shipping-rate', 'locker', '--pickup-point', 'waw01m',
+      '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'waw01m',
     ], buyerHome),
     'shipped purchase',
     simulatePurchaseOutputSchema,
@@ -755,7 +755,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const shipxPurchase = expectOk(
     await cli([
       '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipx@together.dev', '--product', shippedProduct.id,
-      '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
+      '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
     ], buyerHome),
     'InPost purchase',
     simulatePurchaseOutputSchema,
@@ -874,7 +874,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const engravingText = 'For Ann & Bo <3';
   const buyBook = (extra: string[]) => cli([
     '--tenant', 'alfa', 'simulate-purchase', '--sales-link', bookLink.id, '--product', book.id, '--email', 'engraving@together.dev',
-    '--shipping-rate', 'locker', '--pickup-point', 'WAW03M', '--personalization', `${book.id}:${engravingText}`, ...extra,
+    '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'WAW03M', '--personalization', `${book.id}:${engravingText}`, ...extra,
   ], buyerHome);
   expectError(await buyBook([]), 'personalisation without the accepted condition', EXIT_CODE_BY_ERROR_CODE.validation, 'validation');
   const bookPurchase = expectOk(await buyBook(['--accept-condition']), 'personalised purchase', simulatePurchaseOutputSchema);

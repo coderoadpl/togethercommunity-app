@@ -122,6 +122,12 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageSoldOut;
     case 'delivery_correction_shipped':
       return t.deliveryCorrection.shipped;
+    case 'delivery_correction_shipment_exists':
+      return t.deliveryCorrection.shipmentExists;
+    case 'delivery_correction_member_erased':
+      return t.deliveryCorrection.memberErased;
+    case 'delivery_correction_conflict':
+      return t.deliveryCorrection.conflict;
     case 'delivery_correction_shipment_bought':
       return t.deliveryCorrection.bought;
     case 'fulfilment_conflict':
@@ -169,6 +175,9 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'locker_phone_invalid':
     case 'sold_out':
     case 'delivery_correction_shipped':
+    case 'delivery_correction_shipment_exists':
+    case 'delivery_correction_member_erased':
+    case 'delivery_correction_conflict':
     case 'delivery_correction_shipment_bought':
     case 'fulfilment_conflict':
     case 'shipx_unavailable':

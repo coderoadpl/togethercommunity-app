@@ -135,7 +135,7 @@ describe('checkout shipping resolution', () => {
     expect(checkoutShippingSnapshotSchema.omit({ phone: true }).parse(result.value)).not.toHaveProperty('phone');
   });
 
-  it.each([undefined, '', '+44 7700 900000', '50000000', '5000000000', '+44 7700900', 'abc500000000'])('refuses the invalid locker phone %s', (phone) => {
+  it.each([undefined, '', '+44 7700 900000', '50000000', '5000000000', '+44 7700900', 'abc500000000', '050000000', '+48 050000000', '0048 050000000'])('refuses the invalid locker phone %s', (phone) => {
     expect(resolveCheckoutShipping([{ deliveryMethod: 'shipping' }], rates, { rateId: 'locker', phone, pickupPoint: { provider: 'inpost', code: 'ABC01M' } }))
       .toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
   });

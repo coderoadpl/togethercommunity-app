@@ -1,4 +1,4 @@
-import { and, count, eq, gte, sql } from 'drizzle-orm';
+import { and, count, eq, gte, notExists, sql } from 'drizzle-orm';
 
 import { purchaseSmokeCheckoutSchema, purchaseSmokeReceiptSchema, purchaseSmokeResultSchema } from '#core/domain/index.js';
 import type { PurchaseSmokeRepository } from '#core/server/purchase-smoke-ports.js';
@@ -51,11 +51,25 @@ export const createPurchaseSmokeRepository = (db: Db): PurchaseSmokeRepository =
       receipts,
     });
   },
-  recordAppliedEvent: async (tenantId, sessionId, receipt) => {
-    const [checkout] = await db.select({ reference: purchaseSmokeCheckouts.reference }).from(purchaseSmokeCheckouts)
+  recordAppliedEvent: async (tenantId, sessionId, receipt, refundAdvance) => {
+    const findCheckout = db.select({ reference: purchaseSmokeCheckouts.reference }).from(purchaseSmokeCheckouts)
       .where(and(eq(purchaseSmokeCheckouts.tenantId, tenantId), eq(purchaseSmokeCheckouts.sessionId, sessionId))).limit(1);
+    const [checkout] = await (receipt.type === 'charge.refunded' ? findCheckout.for('no key update') : findCheckout);
     if (checkout === undefined) return;
     const parsed = purchaseSmokeReceiptSchema.parse(receipt);
+    if (refundAdvance !== undefined) {
+      const amount = parsed.refundedAmountCents;
+      if (amount === null || amount === 0) return;
+      const [advanced] = await db.select({ id: orders.id }).from(orders).where(and(
+        eq(orders.tenantId, tenantId), eq(orders.id, refundAdvance.orderId), eq(orders.mode, 'test'),
+        eq(orders.status, refundAdvance.status), sql`${orders.providerObjectIds}->>'checkoutSession' = ${sessionId}`,
+        notExists(db.select({ eventId: purchaseSmokeReceipts.eventId }).from(purchaseSmokeReceipts).where(and(
+          eq(purchaseSmokeReceipts.tenantId, tenantId), eq(purchaseSmokeReceipts.reference, checkout.reference),
+          sql`(${purchaseSmokeReceipts.receipt}->>'refundedAmountCents')::numeric >= ${amount}`,
+        ))),
+      ));
+      if (advanced === undefined) return;
+    }
     await db.insert(purchaseSmokeReceipts).values({ tenantId, reference: checkout.reference, eventId: parsed.eventId, receipt: parsed })
       .onConflictDoNothing();
   },

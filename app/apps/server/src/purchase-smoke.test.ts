@@ -224,6 +224,24 @@ const paidEvent = (created: PurchaseSmokeCheckout, snapshotId: string): PaymentW
   },
 });
 
+const refundEvent = (created: PurchaseSmokeCheckout, id: string, amount: number): PaymentWebhookEvent => ({
+  id, type: 'charge.refunded', apiVersion: '2025-09-30.clover', objectId: 'ch_test', mode: 'test', livemode: false,
+  checkoutSession: null, tenantIds: [SMOKE_TENANT_ID],
+  adjustment: { chargeId: null, paymentIntentId: `pi_${created.sessionId}`, invoiceId: null,
+    refund: { full: amount === 9900, amountCents: 9900, amountRefundedCents: amount } },
+});
+
+const paidCheckout = async () => {
+  const created = await checkout();
+  const tenant = await deps.tenants.findById(SMOKE_TENANT_ID);
+  const snapshot = await database.db.query.checkoutSnapshots.findFirst({ where: (table, { eq }) => eq(table.providerSessionId, created.sessionId) });
+  if (tenant === null || snapshot === undefined) throw new Error('Missing fixture');
+  const payment = paidEvent(created, snapshot.id);
+  const apply = (event: PaymentWebhookEvent) => fulfillStripeWebhook(tenant, event, { ...deps, exposeMagicLinks: false });
+  expect(await apply(payment)).toMatchObject({ ok: true, value: { processed: true } });
+  return { created, payment, apply, result: () => getPurchaseSmokeResult(key, created.reference, deps) };
+};
+
 it('records paid and partial/full refund evidence only after successful application', async () => {
   const created = await checkout();
   const tenant = await deps.tenants.findById(SMOKE_TENANT_ID);
@@ -265,10 +283,8 @@ it('records paid and partial/full refund evidence only after successful applicat
   expect(await getPurchaseSmokeResult(key, created.reference, deps)).toMatchObject({ ok: true, value: {
     paid: true, receipts: [expect.objectContaining({ eventId: event.id, type: event.type, apiVersion: event.apiVersion })],
   } });
-  for (const [amount, full, state] of [[100, false, 'partial'], [9900, true, 'full']] as const) {
-    const refund: PaymentWebhookEvent = { id: `evt_refund_${amount}`, type: 'charge.refunded', apiVersion: '2025-09-30.clover',
-      objectId: 'ch_test', mode: 'test', livemode: false, checkoutSession: null, tenantIds: [SMOKE_TENANT_ID],
-      adjustment: { chargeId: null, paymentIntentId: `pi_${created.sessionId}`, invoiceId: null, refund: { full, amountCents: 9900, amountRefundedCents: amount } } };
+  for (const [amount, state] of [[100, 'partial'], [9900, 'full']] as const) {
+    const refund = refundEvent(created, `evt_refund_${amount}`, amount);
     expect(await fulfillStripeWebhook(tenant, refund, { ...deps, exposeMagicLinks: false })).toMatchObject({ ok: true, value: { processed: true } });
     expect(await getPurchaseSmokeResult(key, created.reference, deps)).toMatchObject({ ok: true, value: {
       paid: true, refundState: state, refundedAmountCents: amount,
@@ -278,30 +294,53 @@ it('records paid and partial/full refund evidence only after successful applicat
   expect(await database.db.query.productGrants.findMany({ where: (table, { eq }) => eq(table.mode, 'live') })).toEqual(originalLiveGrants);
 });
 
+it('records cumulative partial advances, but not smaller, equal or duplicate deliveries', async () => {
+  const { created, payment, apply, result } = await paidCheckout();
+  const first = refundEvent(created, 'evt_refund_100', 100);
+  const second = refundEvent(created, 'evt_refund_300', 300);
+  for (const refund of [first, second, refundEvent(created, 'evt_refund_late', 100), { ...second, id: 'evt_refund_equal' }]) {
+    expect(await apply(refund)).toEqual(ok({ processed: true }));
+  }
+  expect(await apply(second)).toEqual(ok({ processed: false }));
+  expect(await result()).toMatchObject({ ok: true, value: { paid: true, refundState: 'partial', refundedAmountCents: 300, receipts: [
+    expect.objectContaining({ eventId: payment.id }),
+    expect.objectContaining({ eventId: first.id, refundedAmountCents: 100 }),
+    expect.objectContaining({ eventId: second.id, refundedAmountCents: 300 }),
+  ] } });
+});
+
+it('records an equal cumulative advance only once across concurrent deliveries', async () => {
+  const { created, apply, result } = await paidCheckout();
+  expect(await apply(refundEvent(created, 'evt_refund_100', 100))).toEqual(ok({ processed: true }));
+  const advances = [refundEvent(created, 'evt_refund_300_a', 300), refundEvent(created, 'evt_refund_300_b', 300)];
+  expect(await Promise.all(advances.map(apply))).toEqual([ok({ processed: true }), ok({ processed: true })]);
+  const applied = await result();
+  expect(applied).toMatchObject({ ok: true, value: { refundState: 'partial', refundedAmountCents: 300 } });
+  if (!applied.ok) throw new Error('Missing result');
+  expect(applied.value.receipts.filter(({ refundedAmountCents }) => refundedAmountCents === 300)).toEqual([
+    expect.objectContaining({ eventId: expect.stringMatching(/^evt_refund_300_[ab]$/) }),
+  ]);
+});
+
 it('handles late partial and duplicate full refunds without certifying unapplied effects', async () => {
-  const created = await checkout();
-  const tenant = await deps.tenants.findById(SMOKE_TENANT_ID);
-  const snapshot = await database.db.query.checkoutSnapshots.findFirst({ where: (table, { eq }) => eq(table.providerSessionId, created.sessionId) });
-  if (tenant === null || snapshot === undefined) throw new Error('Missing fixture');
-  const event = paidEvent(created, snapshot.id);
-  expect(await fulfillStripeWebhook(tenant, event, { ...deps, exposeMagicLinks: false })).toMatchObject({ ok: true, value: { processed: true } });
-  const full: PaymentWebhookEvent = {
-    id: 'evt_full_first', type: 'charge.refunded', apiVersion: '2025-09-30.clover', objectId: 'ch_test', mode: 'test', livemode: false,
-    checkoutSession: null, tenantIds: [SMOKE_TENANT_ID],
-    adjustment: { chargeId: null, paymentIntentId: `pi_${created.sessionId}`, invoiceId: null, refund: { full: true, amountCents: 9900, amountRefundedCents: 9900 } },
-  };
-  expect(await fulfillStripeWebhook(tenant, full, { ...deps, exposeMagicLinks: false })).toMatchObject({ ok: true, value: { processed: true } });
-  const applied = await getPurchaseSmokeResult(key, created.reference, deps);
+  const { created, payment, apply, result } = await paidCheckout();
+  const partial = refundEvent(created, 'evt_refund_100', 100);
+  const full = refundEvent(created, 'evt_full', 9900);
+  expect(await apply(partial)).toEqual(ok({ processed: true }));
+  expect(await apply(full)).toEqual(ok({ processed: true }));
+  const applied = await result();
   expect(applied).toMatchObject({ ok: true, value: { refundState: 'full', refundedAmountCents: 9900, receipts: [
-    expect.objectContaining({ eventId: full.id }), expect.objectContaining({ eventId: event.id }),
+    expect.objectContaining({ eventId: full.id, refundedAmountCents: 9900 }),
+    expect.objectContaining({ eventId: payment.id }),
+    expect.objectContaining({ eventId: partial.id, refundedAmountCents: 100 }),
   ] } });
   for (const late of [
-    { ...full, id: 'evt_partial_late', adjustment: { chargeId: null, paymentIntentId: `pi_${created.sessionId}`, invoiceId: null, refund: { full: false, amountCents: 9900, amountRefundedCents: 100 } } },
+    refundEvent(created, 'evt_partial_late', 300),
     { ...full, id: 'evt_full_duplicate' },
-    { ...event, id: 'evt_paid_duplicate' },
+    { ...payment, id: 'evt_paid_duplicate' },
   ]) {
-    expect((await fulfillStripeWebhook(tenant, late, { ...deps, exposeMagicLinks: false })).ok).toBe(true);
-    expect(await getPurchaseSmokeResult(key, created.reference, deps)).toEqual(applied);
+    expect((await apply(late)).ok).toBe(true);
+    expect(await result()).toEqual(applied);
     if (late.type === 'charge.refunded') {
       expect(await database.db.query.processedPaymentEvents.findFirst({ where: (table, { eq }) => eq(table.id, `test:${late.id}`) })).toMatchObject({ status: 'processed' });
     }

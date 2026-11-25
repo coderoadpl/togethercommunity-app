@@ -2127,6 +2127,16 @@ export interface CheckoutConsentJobRepository {
   complete(tenantId: string, checkoutSessionId: string, completedAt: string): Promise<void>;
 }
 
+export interface PurchaseSmokeRefundAdvance {
+  orderId: string;
+  status: 'partially_refunded' | 'refunded';
+}
+
+export interface PurchaseSmokeEventRepository {
+  hasCheckout(tenantId: string, sessionId: string): Promise<boolean>;
+  recordAppliedEvent(tenantId: string, sessionId: string, receipt: PurchaseSmokeReceipt, refundAdvance?: PurchaseSmokeRefundAdvance): Promise<void>;
+}
+
 export interface PaymentTransactionPort {
   /** Every payment projection write of one webhook branch commits together or not at all. */
   run<T>(
@@ -2148,10 +2158,7 @@ export interface PaymentTransactionPort {
       marketingConsents: MarketingConsentRepository;
       confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;
-      purchaseSmoke?: {
-        hasCheckout(tenantId: string, sessionId: string): Promise<boolean>;
-        recordAppliedEvent(tenantId: string, sessionId: string, receipt: PurchaseSmokeReceipt): Promise<void>;
-      };
+      purchaseSmoke?: PurchaseSmokeEventRepository;
       enrollmentTransaction: EnrollmentTransactionPort;
       stock?: StockRepository;
     }) => Promise<Result<T, AppError>>,

@@ -522,10 +522,10 @@ The key grants only two routes:
   scenario is `digital-course`, `parcel-courier`, `parcel-locker`, or
   `bundle-locker`. Returns `{runId, scenario, reference, sessionId, url}`.
 - `GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result`: returns
-  that key's checkout identity, paid state, refund state, observed cumulative
-  refunded amount, and applied-event receipts (received event id, type and API
-  version, application time and observed refund amount). A missing version
-  remains null, not an inferred provider version.
+  that key's checkout identity, paid state, refund state, the largest cumulative
+  refunded amount among applied refund events, and applied-event receipts
+  (received event id, type and API version, application time and observed refund
+  amount). A missing version remains null, not an inferred provider version.
 
 All checkouts use the existing synthetic smoke member, TEST mode and fixed
 fixtures. Locker scenarios use `WAW01M`. No caller-selected buyer, product,

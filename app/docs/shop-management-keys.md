@@ -1955,8 +1955,9 @@ This purpose authorizes exactly two routes:
   Scenarios are `digital-course`, `parcel-courier`, `parcel-locker`, and
   `bundle-locker`; the locker code is fixed at `WAW01M`.
 - `GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result` reads only a
-  checkout created by the same key, including paid/refund state and receipts
-  from successfully applied provider webhooks.
+  checkout created by the same key, including paid/refund state, the largest
+  cumulative refunded amount among applied refund events, and receipts from
+  successfully applied provider webhooks.
 
 Checkouts always use the fixed synthetic member, fixture products and TEST
 payments from the workspace's own stored test slot, never an inherited

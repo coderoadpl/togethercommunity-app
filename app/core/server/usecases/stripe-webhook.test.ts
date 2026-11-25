@@ -3063,6 +3063,28 @@ describe('Stripe payment mode isolation', () => {
   });
 });
 
+it('offers smoke evidence for the partial transition and its cumulative advance, but not after full refund', async () => {
+  const { h, event } = await testCheckout();
+  expect(await fulfillStripeWebhook(tenantA, event, h.deps)).toEqual(ok({ processed: true }));
+  const recordAppliedEvent = vi.fn(async () => undefined);
+  const transaction = h.deps.paymentTransaction;
+  h.deps.paymentTransaction = { run: (operation) => transaction.run((repositories) => operation({
+    ...repositories, purchaseSmoke: { hasCheckout: async () => true, recordAppliedEvent },
+  })) };
+  const adjust = (id: string, amountRefundedCents: number) => fulfillStripeWebhook(tenantA, {
+    ...adjustmentEvent({ id, paymentIntentId: 'pi-test', refund: { full: amountRefundedCents === 4900, amountRefundedCents, amountCents: 4900 } }),
+    mode: 'test', livemode: false,
+  }, h.deps);
+  for (const [id, amount] of [['evt-first', 100], ['evt-advance', 300], ['evt-full', 4900], ['evt-late', 500]] as const) {
+    expect(await adjust(id, amount)).toEqual(ok({ processed: true }));
+  }
+  expect(recordAppliedEvent.mock.calls).toEqual([
+    [tenantA.id, 'cs-test', expect.objectContaining({ eventId: 'evt-first', refundedAmountCents: 100 }), undefined],
+    [tenantA.id, 'cs-test', expect.objectContaining({ eventId: 'evt-advance', refundedAmountCents: 300 }), { orderId: 'test-order', status: 'partially_refunded' }],
+    [tenantA.id, 'cs-test', expect.objectContaining({ eventId: 'evt-full', refundedAmountCents: 4900 }), undefined],
+  ]);
+});
+
 it('rechecks the selected adjustment order at the mutation boundary', async () => {
   const { h, event, liveOrder } = await testCheckout();
   await fulfillStripeWebhook(tenantA, event, h.deps);

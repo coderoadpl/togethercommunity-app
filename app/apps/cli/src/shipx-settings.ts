@@ -2,6 +2,7 @@ import {
   err,
   ok,
   SHIPX_ENVIRONMENTS,
+  SHIPX_SENDING_METHODS,
   validation,
   type AppError,
   type Result,
@@ -10,6 +11,8 @@ import {
 } from '#core/domain/index.js';
 
 import { secretInput } from './secret-input.js';
+
+export const SHIPX_SENDING_METHOD_HELP = `How the sender hands over parcels: ${SHIPX_SENDING_METHODS.join(", ")}`;
 
 export interface ShipxSlotOptions {
   slot?: ShipxEnvironment | undefined;
@@ -46,5 +49,6 @@ export const shipxSettingsLines = (view: ShipxSettingsView): string => [
     const connection = view[slot];
     return `${slot}: ${connection.configured ? 'connected' : 'not connected'}, organization id ${connection.organizationId?.maskedPreview ?? '(not set)'}, token ${connection.token?.maskedPreview ?? '(not set)'}`;
   }),
+  `sending method: ${view.sendingMethod}`,
   `sender: ${view.sender === null ? '(not set; InPost uses the organization data)' : `${view.sender.name}, ${view.sender.street} ${view.sender.buildingNumber}, ${view.sender.postCode} ${view.sender.city}`}`,
 ].join('\n');

@@ -1,4 +1,4 @@
-import { ok, type AppError, type Result, type ShipxEnvironment, type ShipxRemoteShipment, type ShipxSender, type ShipxShipmentRequest } from '#core/domain/index.js';
+import { DEFAULT_SHIPX_SENDING_METHOD, ok, type AppError, type Result, type ShipxEnvironment, type ShipxRemoteShipment, type ShipxWorkspaceSettings, type ShipxShipmentRequest } from '#core/domain/index.js';
 
 import type {
   ShipxClient,
@@ -168,8 +168,7 @@ export const createShipxShipmentRepositoryFake = () => {
   return { repository, rows, events, key, lockedOrders };
 };
 
-interface ShipxSettingsRow {
-  sender: ShipxSender | null;
+interface ShipxSettingsRow extends Partial<ShipxWorkspaceSettings> {
   legacyEnvironment?: ShipxEnvironment;
 }
 
@@ -177,9 +176,12 @@ export const createShipxSettingsRepositoryFake = (initial: Record<string, ShipxS
   const rows = new Map(Object.entries(initial));
   const legacyReads: string[] = [];
   const repository: ShipxSettingsRepository = {
-    findSender: async (tenantId) => rows.get(tenantId)?.sender ?? null,
-    saveSender: async (tenantId, sender) => {
-      rows.set(tenantId, { ...rows.get(tenantId), sender });
+    findSettings: async (tenantId) => {
+      const row = rows.get(tenantId);
+      return { sender: row?.sender ?? null, sendingMethod: row?.sendingMethod ?? DEFAULT_SHIPX_SENDING_METHOD };
+    },
+    saveSettings: async (tenantId, patch) => {
+      rows.set(tenantId, { ...rows.get(tenantId), ...patch });
     },
     legacyEnvironment: async (tenantId) => {
       legacyReads.push(tenantId);

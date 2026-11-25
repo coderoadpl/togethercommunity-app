@@ -377,7 +377,7 @@ describe('InPost shipment use-case on the database', () => {
   const unpaid = (id: string) => ok(remoteShipment(id, { status: 'offers_prepared', offers: [{ id: '55', status: 'available', service: 'inpost_locker_standard' }] }));
 
   it('re-reads the order under its lock and creates nothing at ShipX once a staff refund took it off the packing list after it was read', async () => {
-    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
+    await createShipxSettingsRepository(database.db).saveSettings('workspace', { sender });
     const client = createScriptedShipxClient();
 
     expect(await createInpostShipment(write, { orderId: 'order-refunded' }, depsFor('order-refunded', client.client))).toMatchObject({ ok: false, error: { code: 'conflict' } });
@@ -386,7 +386,7 @@ describe('InPost shipment use-case on the database', () => {
   });
 
   it('buys once when a second click arrives while the first one is paying', async () => {
-    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
+    await createShipxSettingsRepository(database.db).saveSettings('workspace', { sender });
     await seedShipment(createShipxShipmentRepository(database.db), 'order-buy', '777');
     let releaseBuy: () => void = () => undefined;
     const gate = new Promise<void>((resolve) => {
@@ -423,7 +423,7 @@ describe('InPost shipment use-case on the database', () => {
   });
 
   it('lets only one of two simultaneous clicks reach ShipX', async () => {
-    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
+    await createShipxSettingsRepository(database.db).saveSettings('workspace', { sender });
     await seedShipment(createShipxShipmentRepository(database.db), 'order-twin', '888');
     const client = createScriptedShipxClient({
       polls: [unpaid, (id) => ok(remoteShipment(id, { status: 'confirmed', trackingNumber: '520000011395200025754312' }))],
@@ -443,7 +443,7 @@ describe('InPost shipment use-case on the database', () => {
   });
 
   it('ignores the late cleanup of a released attempt, so a third click cannot create a second shipment', async () => {
-    await createShipxSettingsRepository(database.db).saveSender('workspace', sender);
+    await createShipxSettingsRepository(database.db).saveSettings('workspace', { sender });
     const repository = createShipxShipmentRepository(database.db);
     const rejecting = createScriptedShipxClient({
       create: () => err(shipxRejected({ status: 400, error: 'validation_failed', description: 'Invalid', fields: {} })),
@@ -505,13 +505,14 @@ describe('ShipX settings repository and parcel template', () => {
   it('stores the shared sender per workspace and never writes the stored environment', async () => {
     const repository = createShipxSettingsRepository(database.db);
     await database.db.update(tenants).set({ shipxEnvironment: 'production', shipxSender: null }).where(eq(tenants.id, 'workspace'));
-    expect(await repository.findSender('workspace')).toBeNull();
-    await repository.saveSender('workspace', sender);
-    expect(await repository.findSender('workspace')).toEqual(sender);
-    expect(await repository.findSender('other')).toBeNull();
-    expect(await repository.findSender('missing')).toBeNull();
-    await repository.saveSender('workspace', null);
-    expect(await repository.findSender('workspace')).toBeNull();
+    expect(await repository.findSettings('workspace')).toEqual({ sender: null, sendingMethod: 'parcel_locker' });
+    await repository.saveSettings('workspace', { sender });
+    await repository.saveSettings('workspace', { sendingMethod: 'pop' });
+    expect(await repository.findSettings('workspace')).toEqual({ sender, sendingMethod: 'pop' });
+    expect(await repository.findSettings('other')).toEqual({ sender: null, sendingMethod: 'parcel_locker' });
+    expect(await repository.findSettings('missing')).toEqual({ sender: null, sendingMethod: 'parcel_locker' });
+    await repository.saveSettings('workspace', { sender: null });
+    expect(await repository.findSettings('workspace')).toEqual({ sender: null, sendingMethod: 'pop' });
     expect(await repository.legacyEnvironment('workspace')).toBe('production');
     expect(await repository.legacyEnvironment('other')).toBe('sandbox');
     expect(await repository.legacyEnvironment('missing')).toBeNull();

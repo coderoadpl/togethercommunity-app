@@ -1,4 +1,4 @@
-import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, shipxSendingMethodSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -74,7 +74,7 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
-import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
+import { SHIPX_SENDING_METHOD_HELP, shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerOrderRefundCommands } from './order-refund-commands.js';
 import { registerTeamCommands } from './team-commands.js';
@@ -258,6 +258,7 @@ const ordersIssueOptionsSchema = z.object({
 const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional() });
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
+  sendingMethod: shipxSendingMethodSchema.optional(),
   slot: shipxEnvironmentSchema.optional(),
   organizationId: z.string().min(1).optional(),
   tokenEnv: z.string().min(1).optional(),
@@ -269,6 +270,7 @@ const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
   `environment: ${view.environment}`,
   `service: ${view.service ?? '(none)'}`,
+  `sending method: ${view.sendingMethod ?? '(none)'}`,
   `parcel template: ${view.parcelTemplate}`,
   `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,
 ].join('\n');
@@ -1215,7 +1217,8 @@ tenant.command('shipx').description('Show the InPost ShipX settings (credentials
 
 tenant
   .command('shipx-set')
-  .description('Update the InPost ShipX sender or the credentials of one connection (owner)')
+  .description('Update the InPost ShipX sender, sending method or credentials of one connection (owner)')
+  .option('--sending-method <method>', SHIPX_SENDING_METHOD_HELP)
   .option('--slot <slot>', 'connection the credential options change: production (paid orders) or sandbox (test-mode orders)')
   .option('--organization-id <id>', 'ShipX organization id from Manager Paczek')
   .option('--token-env <name>', 'environment variable holding the ShipX API token from Manager Paczek; stored encrypted')
@@ -1242,6 +1245,7 @@ tenant
       emit(
         await ctx.api.shipxConfigure({
           ...(sender === undefined ? {} : { sender }),
+          ...(options.sendingMethod === undefined ? {} : { sendingMethod: options.sendingMethod }),
           ...slot.value,
         }),
         ctx.json,

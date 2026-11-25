@@ -22,6 +22,7 @@ import {
   type OrderShipping,
   type ParcelTemplate,
   type ShipxEnvironment,
+  type ShipxSendingMethod,
   type ShipxSender,
   type TenantSecret,
   type TenantSecretKey,
@@ -114,6 +115,7 @@ const harness = (options: {
   realAvailable?: boolean;
   secrets?: Partial<Record<TenantSecretKey, string>>;
   sender?: ShipxSender | null;
+  sendingMethod?: ShipxSendingMethod;
   legacyEnvironment?: ShipxEnvironment;
   ship?: OrderFulfilmentRepository['ship'];
 } = {}) => {
@@ -124,6 +126,7 @@ const harness = (options: {
   const settings = createShipxSettingsRepositoryFake({
     workspace: {
       sender: options.sender === undefined ? sender : options.sender,
+      ...(options.sendingMethod === undefined ? {} : { sendingMethod: options.sendingMethod }),
       ...(options.legacyEnvironment === undefined ? {} : { legacyEnvironment: options.legacyEnvironment }),
     },
   });
@@ -223,6 +226,7 @@ describe('create InPost shipment', () => {
     expect(h.real.calls.create[0]).toMatchObject({
       reference: 'order-1',
       service: 'inpost_locker_standard',
+      sendingMethod: 'parcel_locker',
       parcelTemplate: 'large',
       targetPoint: 'WAW01M',
       receiver: { firstName: 'Jane', lastName: 'Buyer', email: 'buyer@example.org', phone: '500000000', address: null },
@@ -652,14 +656,43 @@ describe('create InPost shipment', () => {
     });
   });
 
-  it('builds a courier shipment with the address for address deliveries', async () => {
-    const h = harness({ order: { ...baseOrder, shipping: { ...lockerShipping, rateId: 'courier', pickupPoint: null } } });
+  const courierOrder = { ...baseOrder, shipping: { ...lockerShipping, rateId: 'courier', pickupPoint: null } };
+
+  it.each(['dispatch_order', 'pop'] as const)('builds a courier shipment with the address and %s sending method', async (sendingMethod) => {
+    const h = harness({ order: courierOrder, sendingMethod });
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: true, value: { available: true, sendingMethod },
+    });
     expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
     expect(h.real.calls.create[0]).toMatchObject({
       service: 'inpost_courier_standard',
+      sendingMethod,
       targetPoint: null,
       receiver: { address: { street: 'Garden Street', buildingNumber: '5', city: 'Warsaw', postCode: '00-950', countryCode: 'PL' } },
     });
+  });
+
+  it('blocks a new courier shipment with the default locker drop-off before calling ShipX', async () => {
+    const h = harness({ order: courierOrder });
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: true, value: { available: false, reason: 'sending_method_incompatible', sendingMethod: 'parcel_locker' },
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(h.real.calls.create).toEqual([]);
+    expect(h.real.calls.get).toEqual([]);
+    expect(h.real.calls.buy).toEqual([]);
+    expect(h.ship).not.toHaveBeenCalled();
+  });
+
+  it('finishes a previously created courier shipment despite the current incompatible setting', async () => {
+    const h = harness({ order: courierOrder });
+    h.seed({ shipxShipmentId: '1001', status: 'offer_selected' });
+    expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: true, value: { available: true, sendingMethod: null },
+    });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls.create).toEqual([]);
+    expect(h.real.calls.get).toEqual(['1001']);
   });
 
   it('requires the credentials of the order slot before calling ShipX and creates without a sender when none is saved', async () => {
@@ -996,7 +1029,7 @@ describe('InPost shipment view and label', () => {
     const h = harness();
     expect(await getInpostShipment(ctx(['order:read']), { orderId: 'order-1' }, h.deps)).toEqual({
       ok: true,
-      value: { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'large', shipment: null },
+      value: { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', sendingMethod: 'parcel_locker', parcelTemplate: 'large', shipment: null },
     });
     expect(h.resolve).not.toHaveBeenCalled();
     const missing = harness({ secrets: { ...sandboxOnly, 'shipx.production.token': 'only-token' } });
@@ -1258,6 +1291,7 @@ describe('ShipX settings', () => {
       ok: true,
       value: {
         sender,
+        sendingMethod: 'parcel_locker',
         production: {
           organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' },
           token: { maskedPreview: '••••9876', updatedAt: '2026-11-08T10:00:00.000Z' },
@@ -1282,6 +1316,19 @@ describe('ShipX settings', () => {
     expect(h.settings.legacyReads).toEqual([]);
   });
 
+  it('defaults to locker drop-off and stores the workspace sending method without replacing other settings', async () => {
+    const h = settingsHarness();
+    const reader = ctx(['tenant:secret:read']);
+    expect(await getShipxSettings(reader, h.deps)).toMatchObject({ ok: true, value: { sender: null, sendingMethod: 'parcel_locker' } });
+    await configureShipx(owner, { sender, sandbox: { organizationId: '5678', token: 'sandbox-token' } }, h.deps);
+    expect(await configureShipx(owner, { sendingMethod: 'pop' }, h.deps)).toMatchObject({
+      ok: true, value: { sender, sendingMethod: 'pop', sandbox: { configured: true } },
+    });
+    expect(await configureShipx(owner, { sender: null }, h.deps)).toMatchObject({ ok: true, value: { sender: null, sendingMethod: 'pop' } });
+    expect(await configureShipx(owner, { sendingMethod: 'invalid' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await getShipxSettings(reader, h.deps)).toMatchObject({ ok: true, value: { sendingMethod: 'pop' } });
+  });
+
   it('counts a slot as configured with its organization id and token, without a sender', async () => {
     const h = settingsHarness();
     expect(await configureShipx(owner, { sandbox: { organizationId: '5678', token: 'sandbox-token' } }, h.deps)).toMatchObject({
@@ -1300,6 +1347,7 @@ describe('ShipX settings', () => {
       ok: true,
       value: {
         sender: null,
+        sendingMethod: 'parcel_locker',
         [environment]: {
           organizationId: { maskedPreview: '••••4321', updatedAt: '2026-11-01T00:00:00.000Z' },
           token: { maskedPreview: '••••oken', updatedAt: '2026-11-01T00:00:00.000Z' },
@@ -1320,7 +1368,9 @@ describe('ShipX settings', () => {
       },
     });
     const unnamed = settingsHarness({ secrets: [previewed('shipx.organizationId', '••••4321'), previewed('shipx.token', '••••oken')] });
-    expect(await getShipxSettings(ctx(['tenant:secret:read']), unnamed.deps)).toEqual({ ok: true, value: { sender: null, sandbox: unset, production: unset } });
+    expect(await getShipxSettings(ctx(['tenant:secret:read']), unnamed.deps)).toEqual({
+      ok: true, value: { sender: null, sendingMethod: 'parcel_locker', sandbox: unset, production: unset },
+    });
   });
 
   it('changes nothing when encrypting a value fails', async () => {

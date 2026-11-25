@@ -73,7 +73,7 @@ const shipment: ShipxShipment = {
   labelFetchedAt: null, createdAt: '2026-11-15T10:00:00.000Z', updatedAt: '2026-11-15T10:00:00.000Z',
 };
 
-const shipxOrder: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment };
+const shipxOrder: ShipxOrderView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', sendingMethod: null, parcelTemplate: 'medium', shipment };
 
 const shopSettings = {
   name: 'Example Press', logoUrl: null, logoDarkUrl: null, faviconUrl: null, accentColor: null, accentLight: null,
@@ -96,6 +96,7 @@ const orderData = (pathname: string, method: string): unknown => {
 
 const maskedCredential = { maskedPreview: '••••2345', updatedAt: '2026-11-15T10:00:00.000Z' };
 const shipxView = {
+  sendingMethod: 'parcel_locker',
   sandbox: { configured: true, organizationId: maskedCredential, token: maskedCredential },
   production: { configured: false, organizationId: null, token: null },
   sender: { name: 'Warehouse', company: null, email: 'warehouse@example.test', phone: '600700800', street: 'Garden Street', buildingNumber: '5', city: 'Warsaw', postCode: '00-950' },
@@ -694,6 +695,7 @@ describe('shop integrations CLI', () => {
     [['shop', 'integrations', 'shipx', 'configure', '--slot', 'production', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { production: { clearCredentials: true } }],
     [['shop', 'integrations', 'shipx', 'configure', '--slot', 'sandbox', '--clear-credentials'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { sandbox: { clearCredentials: true } }],
     [['shop', 'integrations', 'shipx', 'configure', '--clear-sender'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { sender: null }],
+    [['shop', 'integrations', 'shipx', 'configure', '--sending-method', 'dispatch_order'], 'POST', '/api/m2m/shop/integrations/shipx/configure', { sendingMethod: 'dispatch_order' }],
   ])('sends %j to the integration route', async (args, method, path, body) => {
     await run(...args);
     expect(soleJson()).toMatchObject({ ok: true });

@@ -39,6 +39,7 @@ export const server = setupServer(
   http.get('*/api/integrations/shipx', () =>
     HttpResponse.json({ ok: true, data: {
       sender: null,
+      sendingMethod: 'parcel_locker',
       sandbox: { organizationId: null, token: null, configured: false },
       production: { organizationId: null, token: null, configured: false },
     } }),
@@ -47,10 +48,10 @@ export const server = setupServer(
     HttpResponse.json({ ok: true, data: { rejections: [] } }),
   ),
   http.get('*/api/orders/:orderId/shipx', () =>
-    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, parcelTemplate: 'medium', shipment: null } }),
+    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, sendingMethod: null, parcelTemplate: 'medium', shipment: null } }),
   ),
   http.post('*/api/orders/:orderId/shipx/refresh', () =>
-    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, parcelTemplate: 'medium', shipment: null } }),
+    HttpResponse.json({ ok: true, data: { available: false, reason: 'not_inpost', environment: 'production', service: null, sendingMethod: null, parcelTemplate: 'medium', shipment: null } }),
   ),
   http.get('*/api/public/parcel-lockers/:code', () =>
     HttpResponse.json({ ok: true, data: { status: 'unavailable' } }),

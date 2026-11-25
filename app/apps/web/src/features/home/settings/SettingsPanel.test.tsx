@@ -1766,10 +1766,10 @@ describe('SettingsPanel shipping', () => {
     await waitFor(() => expect(updates).toContainEqual({ checkoutReturnOrigins: ['https://shop.example.test', 'https://www.shop.example.test:8443'] }));
   });
 
-  it('saves the production connection write-only without touching the sandbox, and an empty sender as none', async () => {
+  it('saves the sending method and the production connection without touching the sandbox', async () => {
     const configured: unknown[] = [];
     const notConnected = { organizationId: null, token: null, configured: false };
-    let view: ShipxSettingsView = { sender: null, sandbox: notConnected, production: notConnected };
+    let view: ShipxSettingsView = { sender: null, sendingMethod: 'parcel_locker', sandbox: notConnected, production: notConnected };
     server.use(
       http.get('*/api/integrations/shipx', () => HttpResponse.json({ ok: true, data: view })),
       http.post('*/api/integrations/shipx/configure', async ({ request }) => {
@@ -1777,6 +1777,7 @@ describe('SettingsPanel shipping', () => {
         configured.push(body);
         view = {
           ...view,
+          sendingMethod: 'pop',
           production: {
             organizationId: { maskedPreview: '••••1234', updatedAt: '2026-11-08T10:00:00.000Z' },
             token: { maskedPreview: '••••5678', updatedAt: '2026-11-08T10:00:00.000Z' },
@@ -1793,12 +1794,15 @@ describe('SettingsPanel shipping', () => {
     const sandbox = within(card.getByTestId('shipx-slot-sandbox'));
     expect(await production.findByText(en.shipx.slotNotConnected)).toBeVisible();
     expect(sandbox.getByText(en.shipx.slotNotConnected)).toBeVisible();
-    expect(card.queryByRole('combobox')).toBeNull();
     expect(card.getByText(en.shipx.senderHint)).toBeVisible();
+    const method = card.getByRole('combobox', { name: en.shipx.sendingMethodLabel });
+    expect(method).toHaveTextContent(en.shipx.sendingMethods.parcel_locker);
+    await userEvent.click(method);
+    await userEvent.click(screen.getByRole('option', { name: en.shipx.sendingMethods.pop }));
     await userEvent.type(production.getByLabelText(en.shipx.organizationId), '1234');
     await userEvent.type(production.getByLabelText(en.shipx.token), 'secret-token-5678');
     await userEvent.click(card.getByRole('button', { name: en.shipx.save }));
-    await waitFor(() => expect(configured).toEqual([{ sender: null, production: { organizationId: '1234', token: 'secret-token-5678' } }]));
+    await waitFor(() => expect(configured).toEqual([{ sender: null, sendingMethod: 'pop', production: { organizationId: '1234', token: 'secret-token-5678' } }]));
     await waitFor(() => expect(production.getByLabelText(en.shipx.token)).toHaveValue(''));
     expect(production.getByText(en.shipx.credentialSaved({ preview: '••••5678' }))).toBeVisible();
     expect(production.getByText(en.shipx.slotConnected)).toBeVisible();
@@ -1810,6 +1814,7 @@ describe('SettingsPanel shipping', () => {
     const stored = { maskedPreview: '••••9999', updatedAt: '2026-11-08T10:00:00.000Z' };
     const view: ShipxSettingsView = {
       sender: null,
+      sendingMethod: 'parcel_locker',
       sandbox: { organizationId: null, token: null, configured: false },
       production: { organizationId: stored, token: stored, configured: true },
     };

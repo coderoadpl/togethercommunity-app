@@ -12,6 +12,7 @@ import type {
   OrderRefundJobView,
   RegisteredChangeProposalOperation,
   ShipxRejectionError,
+  ShipxSendingMethod,
   SnsWebhookDeliveryOutcome,
   StaffRefundReason,
   StripeAdoptionRefusal,
@@ -1056,6 +1057,11 @@ export interface Messages {
     credentialSaved: (params: { preview: string }) => string;
     credentialMissing: string;
     clearCredentials: string;
+    sendingMethodLabel: string;
+    sendingMethodHint: string;
+    sendingMethodSummary: (params: { method: string }) => string;
+    sendingMethodIncompatible: string;
+    sendingMethods: Record<ShipxSendingMethod, string>;
     senderHeading: string;
     senderHint: string;
     senderName: string;

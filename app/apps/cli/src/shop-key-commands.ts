@@ -42,6 +42,7 @@ import {
   productVisibilitySchema,
   shippingCarrierSchema,
   shipxEnvironmentSchema,
+  shipxSendingMethodSchema,
   stripeModeSchema,
   validation,
   type AccessItem,
@@ -62,7 +63,7 @@ import { changeProposalAppliedLine } from './change-proposal-output.js';
 import { imageUploadInput, productImagesFileOption } from './image-files.js';
 import { emit, orderStatusLabel } from './output.js';
 import { readStdin, secretInput } from './secret-input.js';
-import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
+import { SHIPX_SENDING_METHOD_HELP, shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { formatProductStock } from './stock-commands.js';
 
 export const DEFAULT_SHOP_KEY_ENV = 'TOGETHER_SHOP_KEY';
@@ -266,6 +267,7 @@ const storageConfigureSchema = keyOnlySchema.extend({
   secretAccessKeyEnv: envNameSchema,
 });
 const shipxConfigureSchema = keyOnlySchema.extend({
+  sendingMethod: shipxSendingMethodSchema.optional(),
   slot: shipxEnvironmentSchema.optional(),
   senderJsonFile: z.string().min(1).optional(),
   clearSender: z.boolean().optional(),
@@ -296,6 +298,7 @@ const shipxConfigureInput = async (options: z.output<typeof shipxConfigureSchema
   return contractInput(shopIntegrationContracts.shipxConfigure.input, {
     ...(options.senderJsonFile === undefined ? {} : { sender }),
     ...(options.clearSender === true ? { sender: null } : {}),
+    ...(options.sendingMethod === undefined ? {} : { sendingMethod: options.sendingMethod }),
     ...slot.value,
   }, 'Invalid InPost ShipX settings');
 };
@@ -318,6 +321,7 @@ const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
   `environment: ${view.environment}`,
   `service: ${view.service ?? '(none)'}`,
+  `sending method: ${view.sendingMethod ?? '(none)'}`,
   `parcel template: ${view.parcelTemplate}`,
   `shipment: ${view.shipment === null ? '(none)' : `${view.shipment.shipxShipmentId ?? '(not confirmed by ShipX)'} ${view.shipment.status} ${view.shipment.environment} ${view.shipment.trackingNumber ?? ''}`.trim()}`,
 ].join('\n');
@@ -993,9 +997,10 @@ export const registerShopKeyCommands = (
     }, (data) => `stored storage configuration: ${data.diagnostic.message}`));
 
   const shipxSettings = integrations.command('shipx').description('InPost ShipX sender and the sandbox and production connections');
-  keyed(shipxSettings.command('show').description('Show the sender and the masked credentials of both ShipX connections'))
+  keyed(shipxSettings.command('show').description('Show the sending method, sender and masked credentials of both ShipX connections'))
     .action(run(z.tuple([keyOnlySchema]), (client) => client.getShipxSettings(), shipxSettingsLines));
-  keyed(shipxSettings.command('configure').description('Change the ShipX sender or the credentials of one connection; omitted parts keep their value')
+  keyed(shipxSettings.command('configure').description('Change the ShipX sender, sending method or credentials; omitted parts keep their value')
+    .option('--sending-method <method>', SHIPX_SENDING_METHOD_HELP)
     .option('--sender-json-file <path>', 'JSON file with the sender address, or - for stdin')
     .option('--clear-sender', 'remove the sender address; InPost then uses the organization data')
     .option('--slot <slot>', 'connection the credential options change: production (paid orders) or sandbox (test-mode orders)')

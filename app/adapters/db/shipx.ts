@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
-import { SHIPX_STATUS_CREATING, shipxEnvironmentSchema, shipxSenderSchema, shipxShipmentSchema } from '#core/domain/index.js';
+import { DEFAULT_SHIPX_SENDING_METHOD, SHIPX_STATUS_CREATING, shipxEnvironmentSchema, shipxSenderSchema, shipxSendingMethodSchema, shipxShipmentSchema } from '#core/domain/index.js';
 import type {
   ShipxOwnedUpdate,
   ShipxSettingsRepository,
@@ -242,14 +242,17 @@ export const createShipxShipmentRepository = (db: Db): ShipxShipmentRepository =
 };
 
 export const createShipxSettingsRepository = (db: Db): ShipxSettingsRepository => ({
-  findSender: async (tenantId) => {
-    const [row] = await db.select({ sender: tenants.shipxSender }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);
-    if (row?.sender == null) return null;
-    const sender = shipxSenderSchema.safeParse(row.sender);
-    return sender.success ? sender.data : null;
+  findSettings: async (tenantId) => {
+    const [row] = await db.select({ sender: tenants.shipxSender, sendingMethod: tenants.shipxSendingMethod })
+      .from(tenants).where(eq(tenants.id, tenantId)).limit(1);
+    const sender = shipxSenderSchema.safeParse(row?.sender);
+    return {
+      sender: sender.success ? sender.data : null,
+      sendingMethod: row === undefined ? DEFAULT_SHIPX_SENDING_METHOD : shipxSendingMethodSchema.parse(row.sendingMethod),
+    };
   },
-  saveSender: async (tenantId, sender) => {
-    await db.update(tenants).set({ shipxSender: sender }).where(eq(tenants.id, tenantId));
+  saveSettings: async (tenantId, patch) => {
+    await db.update(tenants).set({ shipxSender: patch.sender, shipxSendingMethod: patch.sendingMethod }).where(eq(tenants.id, tenantId));
   },
   legacyEnvironment: async (tenantId) => {
     const [row] = await db.select({ environment: tenants.shipxEnvironment }).from(tenants).where(eq(tenants.id, tenantId)).limit(1);

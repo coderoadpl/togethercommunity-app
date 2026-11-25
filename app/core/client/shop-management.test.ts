@@ -218,7 +218,7 @@ const order = {
   amountCents: 6398, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0,
   createdAt: '2026-11-15T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Printed handbook', couponCode: null,
 };
-const shipxView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', parcelTemplate: 'medium', shipment: null };
+const shipxView = { available: true, reason: null, environment: 'production', service: 'inpost_locker_standard', sendingMethod: 'parcel_locker', parcelTemplate: 'medium', shipment: null };
 const exportFile = { filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number' };
 
 describe('shop management client order calls', () => {
@@ -510,7 +510,7 @@ describe('shop management client download file calls', () => {
 describe('shop management client integration calls', () => {
   it('sends every integration call to its keyed route with only the key and workspace headers', async () => {
     const masked = { maskedPreview: '••••1234', updatedAt: '2026-11-15T10:00:00.000Z' };
-    const shipxView = { sender: null, sandbox: { organizationId: masked, token: masked, configured: true }, production: { organizationId: null, token: null, configured: false } };
+    const shipxView = { sender: null, sendingMethod: 'parcel_locker', sandbox: { organizationId: masked, token: masked, configured: true }, production: { organizationId: null, token: null, configured: false } };
     const seen: { method: string; path: string; headers: Headers; body: unknown }[] = [];
     const fetchImpl = vi.fn<typeof fetch>(async (input, init) => {
       const url = new URL(String(input));

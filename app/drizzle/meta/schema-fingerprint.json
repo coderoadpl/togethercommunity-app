@@ -1,6 +1,6 @@
 {
-  "hash": "9e2afabee961fed23c7fcd10c496065791034c18cba4952f4637258b0d0fcff2",
-  "shortId": "9e2afabee961",
+  "hash": "59b1d57731e3693985db9440be36acfc046cea2a46ef17fe3f405de880953177",
+  "shortId": "59b1d57731e3",
   "schema": {
     "constraints": [
       {
@@ -686,6 +686,11 @@
       {
         "definition": "CHECK ((shipx_environment = ANY (ARRAY['sandbox'::text, 'production'::text])))",
         "name": "tenants_shipx_environment_check",
+        "table": "tenants"
+      },
+      {
+        "definition": "CHECK ((shipx_sending_method = ANY (ARRAY['parcel_locker'::text, 'dispatch_order'::text, 'pop'::text])))",
+        "name": "tenants_shipx_sending_method_check",
         "table": "tenants"
       },
       {
@@ -4831,6 +4836,14 @@
             "generated": "",
             "identity": "",
             "name": "default_language",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": "'parcel_locker'::text",
+            "generated": "",
+            "identity": "",
+            "name": "shipx_sending_method",
             "notNull": true,
             "type": "text"
           },

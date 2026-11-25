@@ -10,6 +10,7 @@ const credentials: ShipxCredentials = { organizationId: '1', token: 'unused', en
 const request: ShipxShipmentRequest = {
   reference: 'order-1',
   service: 'inpost_locker_standard',
+  sendingMethod: 'parcel_locker',
   parcelTemplate: 'small',
   targetPoint: 'WAW01M',
   receiver: { firstName: 'Jane', lastName: 'Buyer', email: 'buyer@example.org', phone: '500000000', address: null },

@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Alert, Button, Stack, TextField, Typography } from '@mui/material';
+import { Alert, Button, MenuItem, Stack, TextField, Typography } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { shipxSenderSchema, type ConfigureShipxSlotInput, type ShipxEnvironment, type ShipxSettingsView, type ShipxSlotView } from '#core/domain/index.js';
+import { DEFAULT_SHIPX_SENDING_METHOD, SHIPX_SENDING_METHODS, shipxSenderSchema, shipxSendingMethodSchema, type ConfigureShipxSlotInput, type ShipxEnvironment, type ShipxSendingMethod, type ShipxSettingsView, type ShipxSlotView } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { SectionCard, StatusView } from '../../../components/layout/index.js';
@@ -25,6 +25,7 @@ interface SlotDraft {
 interface ShipxDraft {
   slots: Record<ShipxEnvironment, SlotDraft>;
   sender: SenderDraft;
+  sendingMethod: ShipxSendingMethod;
 }
 
 const emptySender: SenderDraft = { name: '', company: '', email: '', phone: '', street: '', buildingNumber: '', city: '', postCode: '' };
@@ -33,6 +34,7 @@ const emptySlot: SlotDraft = { organizationId: '', token: '' };
 
 const draftFrom = (view: ShipxSettingsView | undefined): ShipxDraft => ({
   slots: { sandbox: emptySlot, production: emptySlot },
+  sendingMethod: view?.sendingMethod ?? DEFAULT_SHIPX_SENDING_METHOD,
   sender: view?.sender == null ? emptySender : { ...view.sender, company: view.sender.company ?? '' },
 });
 
@@ -56,7 +58,10 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
   const value = draft ?? draftFrom(settings.data);
   const save = useMutation({
     ...actions.shipxConfigure,
-    onSuccess: () => queryClient.invalidateQueries(actions.shipxSettingsInvalidates()),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries(actions.shipxSettingsInvalidates()),
+      queryClient.invalidateQueries(actions.shipxShipmentInvalidates()),
+    ]),
   });
   const clearSlot = (slot: ShipxEnvironment) => save.mutate({ [slot]: { clearCredentials: true } }, {
     onSuccess: () => setDraft((current) => (current === null ? null : { ...current, slots: { ...current.slots, [slot]: emptySlot } })),
@@ -101,6 +106,7 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
         const production = slotInput(value.slots.production);
         save.mutate({
           sender: sender === null ? null : sender.data,
+          ...(value.sendingMethod === settings.data?.sendingMethod ? {} : { sendingMethod: value.sendingMethod }),
           ...(sandbox === undefined ? {} : { sandbox }),
           ...(production === undefined ? {} : { production }),
         }, { onSuccess: () => setDraft(null) });
@@ -149,6 +155,17 @@ export const ShipxSettingsCard = ({ canEdit }: { canEdit: boolean }) => {
           </Stack>
         );
       })}
+      <TextField
+        select
+        id="shipx-sending-method"
+        label={t.shipx.sendingMethodLabel}
+        helperText={t.shipx.sendingMethodHint}
+        value={value.sendingMethod}
+        disabled={disabled}
+        onChange={(event) => change({ sendingMethod: shipxSendingMethodSchema.parse(event.target.value) })}
+      >
+        {SHIPX_SENDING_METHODS.map((method) => <MenuItem key={method} value={method}>{t.shipx.sendingMethods[method]}</MenuItem>)}
+      </TextField>
       <Typography variant="subtitle2" component="h3">{t.shipx.senderHeading}</Typography>
       <Typography variant="body2" color="text.secondary" data-testid="shipx-sender-hint">{t.shipx.senderHint}</Typography>
       <Stack direction={{ xs: 'column', sm: 'row' }} useFlexGap spacing="0.75rem" sx={{ flexWrap: 'wrap' }}>

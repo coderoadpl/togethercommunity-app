@@ -2,7 +2,8 @@ import type { QueryFunctionContext } from '@tanstack/query-core';
 import { unwrap, type ApiClient } from './http.js';
 
 const shipxScopes = {
-  order: (orderId: string) => ['sales', 'shipx', orderId] as const,
+  orders: () => ['sales', 'shipx'] as const,
+  order: (orderId: string) => [...shipxScopes.orders(), orderId] as const,
   settings: () => ['shipx-settings'] as const,
 };
 
@@ -28,7 +29,7 @@ export const downloadShipxLabelMutation = (api: ApiClient) => ({
   mutationFn: async (orderId: string) => unwrap(await api.shipxLabel({ orderId })),
 });
 
-export const shipxShipmentInvalidates = (orderId: string) => ({ queryKey: shipxScopes.order(orderId) });
+export const shipxShipmentInvalidates = (orderId?: string) => ({ queryKey: orderId === undefined ? shipxScopes.orders() : shipxScopes.order(orderId) });
 
 export const shipxSettingsQuery = (api: ApiClient) => ({
   queryKey: shipxScopes.settings(),

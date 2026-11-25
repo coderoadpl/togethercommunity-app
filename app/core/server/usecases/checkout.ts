@@ -109,7 +109,7 @@ export const getPaymentConfig = async (
 ): Promise<Result<{ stripeConfigured: boolean }, AppError>> =>
   ok({ stripeConfigured: await paymentsConfigured(tenantId, await deps.paymentSource.read(tenantId, mode), deps, mode) });
 
-// A workspace without Stripe still completes free orders, so only an inherited configuration is refused before anything is recorded.
+// A workspace without Stripe still completes free orders, so only an inherited configuration is refused ahead of the free-order and coupon branches.
 const inheritedPaymentsRefusal = (source: PaymentSource, mode: StripeMode): AppError | null =>
   source.source === 'organization' && !organizationCheckoutReady(source, mode) ? validation(STRIPE_NOT_CONFIGURED_MESSAGE) : null;
 

@@ -471,7 +471,7 @@ beforeEach(() => {
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
-  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
+  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
   const unconnected = { organizationId: null, token: null, configured: false };
@@ -2649,7 +2649,7 @@ describe('InPost ShipX CLI', () => {
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
     expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', markShipped: false });
-    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost 520000011395200025754311)');
+    expect(logSpy).toHaveBeenCalledWith('label ready; order still to pack: order-number (inpost 520000011395200025754311)');
     h.shipxCreate.mockResolvedValue(err(appError('shipx_unavailable', 'InPost ShipX is unavailable')));
     await run('--json', 'orders', 'shipx', 'create', 'order-number');
     expect(process.exitCode).toBe(28);

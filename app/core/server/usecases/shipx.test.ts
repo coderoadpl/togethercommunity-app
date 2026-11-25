@@ -1480,7 +1480,6 @@ it.each([false, true])('never emails a test order with markShipped %s', async (m
   expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
 });
 
-
 it('returns the current shipped order if manual dispatch wins during label creation', async () => {
   const h = harness();
   let current = baseOrder;

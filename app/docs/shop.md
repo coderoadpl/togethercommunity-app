@@ -1421,7 +1421,6 @@ pnpm --silent run cli --tenant acme product update <id> --parcel-template large
 pnpm --silent run cli --tenant acme --json order shipx show <orderId>
 pnpm --silent run cli --tenant acme --json order shipx refresh <orderId>
 pnpm --silent run cli --tenant acme --json order shipx create <orderId>
-# Optional one-step dispatch; without this flag the order stays to pack.
 pnpm --silent run cli --tenant acme --json order shipx create <orderId> --mark-shipped
 pnpm --silent run cli --tenant acme order shipx label <orderId> --out label.pdf
 pnpm --silent run cli --tenant acme order shipx discard <orderId>

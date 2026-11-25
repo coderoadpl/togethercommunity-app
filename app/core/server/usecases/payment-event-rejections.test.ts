@@ -211,7 +211,10 @@ describe('recordStripeWebhookOutcome', () => {
     await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
 
     expect([...outbox.values()].map((input) => [input.id, input.to, input.payload])).toEqual([
-      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'support@togethercommunity.app', expect.objectContaining({ kind: 'm2m-transactional', subject: expect.stringContaining('Płatność') })],
+      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'support@togethercommunity.app', prerenderedTransactionalPayload(paymentEventRejectedEmail('pl', {
+        tenantName: 'Acme', eventId: 'evt_paid', checkoutSessionId: 'cs_paid', reasonCode: 'validation',
+        reasonMessage: 'Checkout snapshot not found', firstSeenAt: '2026-11-20T10:00:00.000Z', studioUrl: 'https://acme.togethercommunity.app/panel/sales',
+      }))],
     ]);
   });
 

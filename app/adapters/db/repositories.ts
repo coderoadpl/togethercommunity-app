@@ -103,6 +103,7 @@ import type {
   AccountAvatarRepository,
   AccountAvatarTenantReader,
   AvatarSourceReader,
+  CourseLessonIdLookup,
   CourseLessonRepository,
   LessonAttachmentRepository,
   CourseModuleRepository,
@@ -168,6 +169,8 @@ import type {
   PublicRateLimitRepository,
 } from '#core/server/index.js';
 
+import { oweKeyFileDeletions } from './key-download-files.js';
+import { busyAfterRollback } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { undefinedRelation, uniqueViolation } from './pg-errors.js';
@@ -422,12 +425,11 @@ export const createProductRepository = (
         .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
     ).map(parseProduct);
   },
-  create: async (tenantId, product) => {
+  create: async (tenantId, product, options = {}) => {
     try {
       return await db.transaction(async (tx) => {
-        if (!await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId))) {
-          return 'course_unavailable';
-        }
+        const active = await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId));
+        if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
         await tx.insert(products).values({
           id: product.id,
           tenantId,
@@ -485,15 +487,15 @@ export const createProductRepository = (
     const row = rows[0];
     return row ? parseProduct(row) : null;
   }),
-  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) =>
-    db.transaction(async (tx) => {
-      if (!await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId))) {
-        return 'course_unavailable';
-      }
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds, options = {}) =>
+    busyAfterRollback(() => db.transaction(async (tx) => {
+      const active = await lockActiveCourses(tx, tenantId, (accessItems ?? []).map((item) => item.courseId));
+      if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
       if (version) await insertEntityVersion(tx, tenantId, version);
-      const changes = checkoutConsentDefinitionIds === undefined
-        ? { accessItems }
-        : { accessItems, checkoutConsentDefinitionIds };
+      const changes = {
+        ...(accessItems === null ? {} : { accessItems }),
+        ...(checkoutConsentDefinitionIds === undefined ? {} : { checkoutConsentDefinitionIds }),
+      };
       const rows = await tx
         .update(products)
         .set(changes)
@@ -501,7 +503,7 @@ export const createProductRepository = (
         .returning();
       const row = rows[0];
       return row ? parseProduct(row) : null;
-    }),
+    }), 'busy' as const),
   setPublished: async (tenantId, id, published) => {
     await db
       .update(products)
@@ -662,7 +664,7 @@ export const createCourseModuleRepository = (db: Db): CourseModuleRepository => 
   },
 });
 
-export const createCourseLessonRepository = (db: Db): CourseLessonRepository => ({
+export const createCourseLessonRepository = (db: Db): CourseLessonRepository & CourseLessonIdLookup => ({
   list: async (tenantId) =>
     (
       await db
@@ -720,6 +722,15 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .from(courseLessons)
         .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
     ).map(parseLesson);
+  },
+  existingIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    return (
+      await db
+        .select({ id: courseLessons.id })
+        .from(courseLessons)
+        .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
+    ).map((row) => row.id);
   },
   create: async (tenantId, lesson) => {
     await db.insert(courseLessons).values({ ...lesson, tenantId });
@@ -892,6 +903,7 @@ export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAss
       .where(and(eq(products.tenantId, tenantId), eq(products.id, initial.productId))).for('update');
     const [deleted] = await tx.delete(productDownloadAssets).where(scope).returning();
     if (!deleted) return false;
+    await oweKeyFileDeletions(tx, tenantId, [deleted], new Date().toISOString());
     if (deleted.status === 'ready' && deleted.supersededAt === null) {
       const [latest] = await tx.select().from(productDownloadAssets).where(and(
         eq(productDownloadAssets.tenantId, tenantId),
@@ -1157,8 +1169,6 @@ const findProgressOfPair = async (
   return row ? progressFromRow(row) : null;
 };
 
-const lessonIdArray = (lessonId: string) => sql`jsonb_build_array(${lessonId}::text)`;
-
 export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgressRepository => ({
   findByMemberAndCourse: async (tenantId, input) => findProgressOfPair(db, tenantId, input),
   listByMember: async (tenantId, memberId) => {
@@ -1209,17 +1219,6 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
     }));
     return progressFromRow(changed);
   }),
-  removeCompletedLesson: async (tenantId, input) => {
-    const [row] = await db
-      .update(memberCourseProgress)
-      .set({
-        completedLessonIds: sql`${memberCourseProgress.completedLessonIds} - ${input.lessonId}::text`,
-        updatedAt: sql`case when ${memberCourseProgress.completedLessonIds} @> ${lessonIdArray(input.lessonId)} then ${input.now} else ${memberCourseProgress.updatedAt} end`,
-      })
-      .where(progressOfPair(tenantId, input))
-      .returning();
-    return row === undefined ? null : progressFromRow(row);
-  },
   setLastViewed: async (tenantId, input) => {
     const pointers = {
       ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
@@ -1274,6 +1273,36 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
       }));
     }
     return progressFromRow(row);
+  }),
+  removeCompletedLesson: async (tenantId, input) => db.transaction(async (tx) => {
+    if (input.courseIds.length === 0) return [];
+    const locked = await tx
+      .select()
+      .from(memberCourseProgress)
+      .where(and(
+        eq(memberCourseProgress.tenantId, tenantId),
+        eq(memberCourseProgress.memberId, input.memberId),
+        inArray(memberCourseProgress.courseId, input.courseIds),
+      ))
+      .orderBy(asc(memberCourseProgress.courseId))
+      .for('update');
+    const saved = [];
+    for (const row of locked) {
+      if (!row.completedLessonIds.includes(input.lessonId)) {
+        saved.push(row);
+        continue;
+      }
+      const [updated] = await tx
+        .update(memberCourseProgress)
+        .set({
+          completedLessonIds: sql`${memberCourseProgress.completedLessonIds} - ${input.lessonId}::text`,
+          updatedAt: input.now,
+        })
+        .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, row.id)))
+        .returning();
+      if (updated !== undefined) saved.push(updated);
+    }
+    return saved.map(progressFromRow);
   }),
   countReferencingLesson: async (tenantId, lessonId) => {
     const rows = await db

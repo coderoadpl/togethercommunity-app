@@ -20,14 +20,17 @@ import {
 } from '#core/server/index.js';
 
 import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
+import { createQuarantinedImageRepository } from './change-proposal-images.js';
 import { createChangeProposalOwnerNotifier } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalRepository } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
 import { createNotificationRepository, createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposals,
+  courses,
   emailOutbox,
   entityVersions,
   productDownloadAssets,
@@ -80,7 +83,7 @@ const refuse = (name: string) => () => {
 const storage: StorageProvider = {
   objectUrl: (_configuration, objectKey) => new URL(`https://storage.example.test/${objectKey}`),
   delete: refuse('delete'), list: refuse('list'), getObject: refuse('getObject'), putObject: refuse('putObject'),
-  probe: refuse('probe'), probeCors: refuse('probeCors'), presignPut: refuse('presignPut'), presignGet: refuse('presignGet'),
+  probe: refuse('probe'), copyObject: refuse('copyObject'), digestObject: refuse('digestObject'), probeCors: refuse('probeCors'), presignPut: refuse('presignPut'), presignGet: refuse('presignGet'),
   head: refuse('head'), healthcheck: refuse('healthcheck'), test: refuse('test'),
 };
 
@@ -97,6 +100,8 @@ const deps = (
   shopManagementKeys: createShopManagementKeyRepository(db),
   changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
   realtimeBus: { publish: (event) => { published.push(event); } },
+  quarantinedImages: createQuarantinedImageRepository(db, bounds),
+  keyDownloadFiles: createKeyDownloadFileRepository(db, bounds),
   storage,
   logger,
   ids: { nextId: () => `submit-${String(++sequence)}` },
@@ -138,6 +143,7 @@ beforeAll(async () => {
   await insertProduct('mug', { type: 'physical' });
   await insertProduct('live', { type: 'physical', published: true });
   await insertProduct('draft', { type: 'digital_download' });
+  await database.db.insert(courses).values({ id: 'course-intro', tenantId: TENANT, name: 'Intro course', description: '', createdAt: NOW });
   await database.db.insert(productPrices).values([
     { id: 'price-mug', tenantId: TENANT, productId: 'mug', kind: 'one_time', amountCents: 900, currency: 'EUR', active: true, createdAt: NOW },
     { id: 'price-live', tenantId: TENANT, productId: 'live', kind: 'one_time', amountCents: 1500, currency: 'EUR', active: true, createdAt: NOW },
@@ -171,6 +177,7 @@ const INPUTS: Record<ChangeProposalOperation, unknown> = {
   'sales-link.update': { id: 'link-spring', expectedRevision: 1, slug: 'spring', title: 'Spring', heading: 'Spring sale, extended', productIds: ['live'] },
   'sales-link.delete': { id: 'link-spring' },
   'settings.update': { name: 'Acme shop', invoiceVatMode: 'rate', invoiceVatRatePercent: 8 },
+  'product.set-access': { id: 'draft', accessItems: [{ level: 'course', courseId: 'course-intro' }] },
 };
 
 describe('submitChangeProposal over the database', () => {
@@ -260,7 +267,10 @@ describe('the owner notification of a submitted proposal over the database', () 
       [OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
       [OTHER_OWNER, 'change-proposal', `change-proposal:${key.id}`, null],
     ]);
-    expect(unread[0]?.payload).toMatchObject({ contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '' });
+    expect(unread[0]?.payload).toMatchObject({
+      contextKind: 'tenant', contextId: null, authorDisplay: key.name, snippet: '',
+      changeProposal: { keyName: key.name, groupId: null, groupTitle: null },
+    });
     const unreadIds = new Map(unread.map((row) => [row.recipientUserId, row.id]));
     expect(published.map((event) => event.kind === 'notification' ? [event.recipientUserId, event.notificationId, event.notificationKind] : null)).toEqual([
       [OWNER, unreadIds.get(OWNER), 'change-proposal'],

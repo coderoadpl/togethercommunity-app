@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   STORAGE_PROBE_ERROR_CODES,
+  type ProviderDiagnostic,
   type StorageConfiguration,
   type StorageProbeErrorCode,
   type StorageProviderKind,
@@ -94,6 +95,24 @@ const localizedProbeError = (error: unknown, t: Messages): string => {
   };
   const code = providerCodeOf(error);
   return code !== null && isProbeErrorCode(code) ? messages[code] : localizePanelError(error, t);
+};
+
+interface OutcomeTexts {
+  success: string;
+  refused: string;
+  ignored: string;
+}
+
+const downloadWarning = (diagnostic: ProviderDiagnostic, texts: OutcomeTexts): string | null => {
+  if (diagnostic.signedResponseOverrides === 'refused') return texts.refused;
+  return diagnostic.signedResponseOverrides === 'ignored' ? texts.ignored : null;
+};
+
+const ProbeOutcome = ({ diagnostic, texts, testId }: { diagnostic: ProviderDiagnostic; texts: OutcomeTexts; testId: string }) => {
+  const warning = downloadWarning(diagnostic, texts);
+  return warning === null
+    ? <Alert severity="success" data-testid={`${testId}-success`}>{texts.success}</Alert>
+    : <Alert severity="warning" data-testid={`${testId}-warning`}>{warning}</Alert>;
 };
 
 const StorageCorsSettings = ({ origins }: { origins: string[] }) => {
@@ -337,9 +356,15 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
             </Alert>
           ) : null}
           {probe.isSuccess ? (
-            <Alert severity="success" data-testid="storage-probe-success">
-              {t.integrations.storageProbeSuccess}
-            </Alert>
+            <ProbeOutcome
+              diagnostic={probe.data.diagnostic}
+              texts={{
+                success: t.integrations.storageProbeSuccess,
+                refused: t.integrations.storageDownloadOverridesRefused,
+                ignored: t.integrations.storageDownloadOverridesIgnored,
+              }}
+              testId="storage-probe"
+            />
           ) : null}
           {probe.isSuccess ? (
             <Button
@@ -359,9 +384,15 @@ export const StorageWizard = ({ configured, origins }: { configured: boolean; or
             </Alert>
           ) : null}
           {configure.isSuccess ? (
-            <Alert severity="success" data-testid="storage-save-success">
-              {t.integrations.storageSaved}
-            </Alert>
+            <ProbeOutcome
+              diagnostic={configure.data.diagnostic}
+              texts={{
+                success: t.integrations.storageSaved,
+                refused: t.integrations.storageSavedOverridesRefused,
+                ignored: t.integrations.storageSavedOverridesIgnored,
+              }}
+              testId="storage-save"
+            />
           ) : null}
         </Stack>
       ) : null}

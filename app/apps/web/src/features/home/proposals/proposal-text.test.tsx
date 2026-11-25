@@ -5,7 +5,7 @@ import { en } from '../../../i18n/en.js';
 import { LanguageProvider } from '../../../i18n/index.js';
 import { pl } from '../../../i18n/pl.js';
 import { languagePreference } from '../../../theme-mode.js';
-import { enumValueLabel, fieldLabel, Isolated } from './proposal-text.js';
+import { enumValueLabel, fieldLabel, fileTypeLabel, Isolated, operationTitle, Sentence } from './proposal-text.js';
 
 describe('proposal text', () => {
   it('labels every enumerated value it knows and falls back to the raw value', () => {
@@ -58,6 +58,34 @@ describe('proposal text', () => {
     const { container } = render(<p><Isolated sentence={(key) => en.changeProposals.proposedBy({ key })} value={'Agent” \u202Eone'} /></p>);
     expect(container.querySelector('bdi')).toHaveTextContent('Agent” \u202Eone');
     expect(container).toHaveTextContent('Proposed by the key “Agent” \u202Eone”');
+  });
+
+  it('puts every part in its own slot of the sentence, whatever order the language writes them in', () => {
+    const { container } = render(
+      <p><Sentence text={(file, product) => `${product} gets ${file}; ${file} again`} parts={[<bdi key="file">{'a\u202Eb.pdf'}</bdi>, <strong key="product">Mug</strong>]} /></p>,
+    );
+    expect(container).toHaveTextContent('Mug gets a\u202Eb.pdf; a\u202Eb.pdf again');
+    expect(container.querySelectorAll('bdi')).toHaveLength(2);
+    expect(container.querySelector('strong')).toHaveTextContent('Mug');
+    expect(container.textContent).not.toMatch(/[\u{E000}-\u{E001}]/u);
+  });
+
+  it('labels the file types a key may stage and falls back to the raw type', () => {
+    expect(fileTypeLabel('application/pdf')).toBe('PDF');
+    expect(fileTypeLabel('application/epub+zip')).toBe('EPUB');
+    expect(fileTypeLabel('audio/mp4')).toBe('M4A');
+    expect(fileTypeLabel('video/mp4')).toBe('MP4');
+    expect(fileTypeLabel('text/plain')).toBe('text/plain');
+  });
+
+  it('titles every operation the server can store, and only an unregistered one as unknown', () => {
+    for (const translations of [en.changeProposals, pl.changeProposals]) {
+      for (const operation of ['product.set-access', 'download.add', 'download.replace', 'download.remove'] as const) {
+        expect(operationTitle(translations, operation)).toBe(translations.operation[operation]);
+        expect(operationTitle(translations, operation)).not.toBe(translations.unknownOperation);
+      }
+      expect(operationTitle(translations, 'download.rename')).toBe(translations.unknownOperation);
+    }
   });
 
   it('sets the document language to the active language', () => {

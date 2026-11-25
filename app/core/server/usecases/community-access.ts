@@ -25,7 +25,7 @@ import type {
   SpaceRepository,
   TenantAccessReader,
 } from '../ports.js';
-import { isLessonAccessibleByLookup, locateLesson, type AccessLookup } from './access.js';
+import { lessonIdsOpenedByLookup, locateAccessibleLesson, type AccessLookup } from './access.js';
 import { resolveMemberAccessLookup } from './entitlements.js';
 
 export interface TenantScope {
@@ -105,16 +105,10 @@ export const lessonContextAccess = async (
     deps.courses.list(tenant.value.tenantId),
     deps.modules.list(tenant.value.tenantId),
   ]);
-  const location = locateLesson(lessonId, courses, modules);
-  if (!location) return err(forbidden('This lesson is not accessible'));
   const lookup = await resolveMemberAccessLookup(member, deps);
-  return isLessonAccessibleByLookup(lookup, {
-    courseId: location.course.id,
-    moduleId: location.moduleId,
-    lessonId,
-  })
-    ? ok(undefined)
-    : err(forbidden('This lesson is not accessible'));
+  return locateAccessibleLesson(lessonId, courses, modules, lookup) === null
+    ? err(forbidden('This lesson is not accessible'))
+    : ok(undefined);
 };
 
 export interface AccessibleLessonsDeps extends LessonAccessDeps {
@@ -145,21 +139,8 @@ const accessibleLessons = (
   lessons: CourseLesson[],
   lookup: AccessLookup,
 ): Set<string> => {
-  const ids = new Set<string>();
-  for (const lesson of lessons) {
-    const location = locateLesson(lesson.id, courses, modules);
-    if (
-      location &&
-      isLessonAccessibleByLookup(lookup, {
-        courseId: location.course.id,
-        moduleId: location.moduleId,
-        lessonId: lesson.id,
-      })
-    ) {
-      ids.add(lesson.id);
-    }
-  }
-  return ids;
+  const opened = lessonIdsOpenedByLookup(courses, modules, lookup);
+  return new Set(lessons.filter((lesson) => opened.has(lesson.id)).map((lesson) => lesson.id));
 };
 
 export interface SpaceAccessDeps {

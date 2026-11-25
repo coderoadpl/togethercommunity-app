@@ -514,7 +514,10 @@ A verified owner of `tenant-acme` issues a shop management key with
 `purpose: "purchase-smoke"`, `scopes: []`, `mode: "direct"`, a name and
 an absolute expiry no more than 30 days away. The existing owner key-revocation
 and purge controls apply. The secret is returned once. Neither issuance nor
-renewal is available to machine keys.
+renewal is available to machine keys. Issue it signed in as the seeded fixture
+owner: authentication checks that the issuer still owns the workspace, and the
+reseed re-creates only that owner's grant, so a key issued by another owner
+stops authenticating after the next reseed.
 
 The key grants only two routes:
 
@@ -542,8 +545,9 @@ with reseeding. The reseed still removes orders: an old binding is not a fresh
 purchase, and its result is unavailable after that order is removed. Use a new
 run id after reseeding; retained bindings keep the daily cap from resetting.
 
-Receipts are written in the same transaction as a payment/refund transition on
-that order, never on signature acceptance or event handling alone. A late partial
+Receipts are written in the same transaction that applies a payment or refund
+event to that order (a state change, or a larger cumulative refunded amount),
+never on signature acceptance or event handling alone. A late partial
 refund after a full refund and a duplicate full refund produce no new receipt.
 A provider refund tests
 inbound refund reconciliation, not staff refund authorization or dispatch.

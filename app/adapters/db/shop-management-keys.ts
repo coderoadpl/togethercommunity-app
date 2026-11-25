@@ -39,7 +39,7 @@ export const createShopManagementKeyRepository = (db: Db): ShopManagementKeyRepo
     if (parsed.tenantId !== tenantId) throw new Error('Shop management key belongs to another tenant');
     await withoutKeyHashInErrors('API key write failed', () => db.transaction(async (tx) => {
       await lockSmokeFixture(tx, tenantId);
-      // Old releases must parse the row but refuse even a transformed secret, so the legacy expiry stays permanently in the past.
+      // A previous release must still parse this row and must refuse it, so the legacy expiry stays permanently in the past.
       await tx.insert(shopManagementKeys).values(parsed.purpose === 'purchase-smoke' ? {
         ...parsed, scopes: ['shop:catalog:read'], expiresAt: '1970-01-01T00:00:00.000Z', purposeExpiresAt: parsed.expiresAt,
       } : parsed);

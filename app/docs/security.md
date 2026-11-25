@@ -1436,9 +1436,8 @@ Storage is additive and rollback-safe. The purpose and its absolute expiry have
 new columns; ordinary key rows keep their original representation. A purpose
 row stores a legacy-compatible scope marker and a permanently expired legacy
 expiry. The current adapter exposes an empty scope list and the actual purpose
-expiry. The previous release can list the row without an enum parse failure,
-but cannot authenticate it, even if the caller transforms the secret to match
-its legacy hash lookup. New authentication also separates the hash domain and
+expiry. The previous release lists the row without an enum parse failure and
+refuses it as expired. New authentication also separates the hash domain and
 grants no staff capabilities. Reseeds preserve purpose keys and their original
 expiry, revocation, audit, quotas and bindings transactionally; they never
 restore a purged key or clear revocation. Rolling back leaves the additive

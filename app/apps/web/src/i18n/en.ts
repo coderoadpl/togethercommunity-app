@@ -968,6 +968,8 @@ export const en: Messages = {
       description: 'Description',
       coverUrl: 'Cover image',
       images: 'Gallery images',
+      galleryImage: 'Image',
+      galleryImageAlt: 'Alternative text',
       priceCents: 'Price',
       currency: 'Currency',
       published: 'Published',

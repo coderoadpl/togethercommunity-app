@@ -118,6 +118,27 @@ const LongText = ({ text, initiallyExpanded }: { text: string; initiallyExpanded
   );
 };
 
+type RecordEntries = Extract<DisplayValue, { kind: 'record' }>['entries'];
+
+const RecordWithImages = ({ entries }: { entries: RecordEntries }) => {
+  const t = useTranslations().changeProposals;
+  return (
+    <Stack useFlexGap spacing="0.25rem">
+      {entries.map((entry) => (
+        <Box key={entry.field}>
+          {`${fieldLabel(t, entry.field)}: `}
+          {entry.value.kind === 'image' ? <ProposalValue value={entry.value} /> : <ValueText value={entry.value} />}
+        </Box>
+      ))}
+    </Stack>
+  );
+};
+
+const ListItemValue = ({ value }: { value: DisplayValue }) =>
+  value.kind === 'record' && value.entries.some((entry) => entry.value.kind === 'image')
+    ? <RecordWithImages entries={value.entries} />
+    : <ValueText value={value} />;
+
 const ProposalValue = ({ value, initiallyExpanded = false }: { value: DisplayValue; initiallyExpanded?: boolean }) => {
   const t = useTranslations().changeProposals;
   switch (value.kind) {
@@ -132,7 +153,7 @@ const ProposalValue = ({ value, initiallyExpanded = false }: { value: DisplayVal
         ? <FieldDiffImage key={value.path} url={value.path} failedNote={t.imageNotShown} caption={contentAddressCaption(value.path)} />
         : <ProposedImage image={value.awaitingApproval} path={value.path} />;
     case 'list':
-      return <FieldDiffList items={value.items.map((item, index) => ({ key: String(index), content: <ValueText value={item} /> }))} />;
+      return <FieldDiffList items={value.items.map((item, index) => ({ key: String(index), content: <ListItemValue value={item} /> }))} />;
     case 'record':
       return (
         <FieldDiffList

@@ -72,6 +72,8 @@ const MONEY_FIELDS = new Set(['priceCents', 'amountCents']);
 
 const IMAGE_FIELDS = new Set(['coverUrl', 'logoUrl', 'logoDarkUrl', 'faviconUrl', 'ogImageUrl']);
 
+const GALLERY_ENTRY_FIELDS: Readonly<Record<string, string>> = { url: 'galleryImage', alt: 'galleryImageAlt' };
+
 const ENUM_FIELDS = new Set([
   'type', 'visibility', 'salesChannel', 'deliveryMethod', 'parcelTemplate', 'kind', 'interval', 'vatRate',
   'invoiceVatMode', 'invoiceVatRatePercent', 'invoiceExemptionBasisKind', 'invoicingProvider', 'ksefSubmissionMode',
@@ -150,11 +152,11 @@ const referenceOf = (value: string, references: GroupReferences): DisplayValue |
   return item === undefined ? null : { kind: 'reference', ...item };
 };
 
-const stringValue = (field: string, value: string, context: ValueContext): DisplayValue => {
+const stringValue = (field: string, value: string, context: ValueContext, image: boolean): DisplayValue => {
   if (value.length === 0) return { kind: 'empty' };
   const reference = referenceOf(value, context.references);
   if (reference !== null) return reference;
-  if (IMAGE_FIELDS.has(field)) {
+  if (image) {
     const proposed = context.pendingProposalId === null ? null : parseProposalImagePath(value);
     if (proposed !== null && context.pendingProposalId !== null) {
       return { kind: 'image', path: value, awaitingApproval: { proposalId: context.pendingProposalId, digest: proposed.digest, extension: proposed.extension } };
@@ -167,9 +169,14 @@ const stringValue = (field: string, value: string, context: ValueContext): Displ
   return { kind: 'text', text: value, long: value.length > LONG_TEXT_LENGTH || value.includes('\n'), breakAnywhere };
 };
 
-const displayValue = (field: string, value: JsonValue | undefined, context: ValueContext): DisplayValue => {
+const displayValue = (
+  field: string,
+  value: JsonValue | undefined,
+  context: ValueContext,
+  image = IMAGE_FIELDS.has(field),
+): DisplayValue => {
   if (value === undefined || value === null) return { kind: 'empty' };
-  if (typeof value === 'string') return stringValue(field, value, context);
+  if (typeof value === 'string') return stringValue(field, value, context, image);
   if (typeof value === 'number') {
     if (MONEY_FIELDS.has(field)) return { kind: 'money', amountCents: value, currency: context.currency };
     return ENUM_FIELDS.has(field) ? { kind: 'enum', field, value } : { kind: 'number', value };
@@ -183,11 +190,17 @@ const displayValue = (field: string, value: JsonValue | undefined, context: Valu
   const keys = Object.keys(value);
   const shown = keys.length > 1 ? keys.filter((key) => key !== 'id') : keys;
   if (shown.length === 0) return { kind: 'empty' };
+  const gallery = field === 'images';
   return {
     kind: 'record',
     entries: shown.map((key) => ({
-      field: key,
-      value: displayValue(key, value[key], { ...context, currency: stringField(value, 'currency') ?? context.currency }),
+      field: gallery ? GALLERY_ENTRY_FIELDS[key] ?? key : key,
+      value: displayValue(
+        key,
+        value[key],
+        { ...context, currency: stringField(value, 'currency') ?? context.currency },
+        IMAGE_FIELDS.has(key) || (gallery && key === 'url'),
+      ),
     })),
   };
 };

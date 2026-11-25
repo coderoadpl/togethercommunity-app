@@ -1014,6 +1014,8 @@ export const pl: Messages = {
       description: 'Opis',
       coverUrl: 'Okładka',
       images: 'Galeria zdjęć',
+      galleryImage: 'Zdjęcie',
+      galleryImageAlt: 'Tekst alternatywny',
       priceCents: 'Cena',
       currency: 'Waluta',
       published: 'Opublikowany',

@@ -825,6 +825,8 @@ export interface Messages {
       description: string;
       coverUrl: string;
       images: string;
+      galleryImage: string;
+      galleryImageAlt: string;
       priceCents: string;
       currency: string;
       published: string;

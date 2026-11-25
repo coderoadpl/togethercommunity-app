@@ -77,7 +77,8 @@ Equivalent configuration reads include:
 
 For a live paid checkout, `stripeConfigured` checks for the workspace's live
 restricted key **and** webhook signing secret, including a key-mode conflict
-check. A creator checklist flag or a stored key alone is not a live-payment
+check. A workspace whose live payments are taken from its organization reports
+`false` (see [Workspaces linked to an organization](payments.md#workspaces-linked-to-an-organization)). A creator checklist flag or a stored key alone is not a live-payment
 certification. Leave an already configured provider alone. Creating or replacing
 provider configuration is a real external operation: obtain separate operational
 approval and verify the provider-side result before opening sales. A platform

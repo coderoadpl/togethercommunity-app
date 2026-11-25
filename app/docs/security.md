@@ -943,7 +943,8 @@ transaction. Public submissions never lift a suppression.
   grant, and an audit event atomically, with retries deduplicated by slug and owner.
 - `GET /api/internal/tenants/:slug/readiness` requires the same secret and
   `tenant:readiness`. It returns only configuration booleans, a probe timestamp,
-  the Stripe mode and the published-product count.
+  the Stripe mode, the published-product count and, while a payment group is
+  taken from an organization, the configuration source of each Stripe mode.
 
 Both routes compare `x-scheduler-operator-secret` with `deps.operatorSecret`
 using `secretEquals` before parsing input or accessing repositories. An early

@@ -6,6 +6,7 @@ import {
   ok,
   QUARANTINED_IMAGE_LIMITS,
   SHOP_MANAGEMENT_KEY_MAX_LIFETIME_MS,
+  SMOKE_TENANT_ID,
   toShopManagementKeyPublic,
   validation,
   type AppError,
@@ -93,6 +94,9 @@ export const createShopManagementKey = async (
   const parsed = createShopManagementKeyInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid shop management key', parsed.error.flatten()));
 
+  if (parsed.data.purpose === 'purchase-smoke' && tenant.value !== SMOKE_TENANT_ID) {
+    return err(forbidden('Purchase smoke keys belong only to the synthetic fixture workspace'));
+  }
   const createdAt = deps.clock.nowIso();
   const lifetimeMs = Date.parse(parsed.data.expiresAt) - Date.parse(createdAt);
   if (lifetimeMs <= 0) return err(validation('API key expiry must be in the future'));
@@ -105,8 +109,9 @@ export const createShopManagementKey = async (
     id: deps.ids.nextId(),
     tenantId: tenant.value,
     name: parsed.data.name,
-    keyHash: shopManagementKeyHash(deps.apiKeyCrypto, secret, parsed.data.mode),
+    keyHash: shopManagementKeyHash(deps.apiKeyCrypto, secret, parsed.data.purpose ?? parsed.data.mode),
     scopes: [...new Set(parsed.data.scopes)],
+    ...(parsed.data.purpose === undefined ? {} : { purpose: parsed.data.purpose }),
     mode: parsed.data.mode,
     issuedByUserId: ctx.identity.userId,
     createdAt,

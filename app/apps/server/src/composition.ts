@@ -1,3 +1,6 @@
+import { createPurchaseSmokeRepository } from '#adapters/db/purchase-smoke.js';
+import { createPurchaseSmokeTransaction } from '#adapters/db/purchase-smoke-transaction.js';
+import type { PurchaseSmokeRepository, PurchaseSmokeTransaction } from '#core/server/purchase-smoke-ports.js';
 import { ensureTransactionalSesConfiguration } from '#core/server/usecases/transactional-ses-configuration.js';
 import { createMetaCapiRepository } from '#adapters/db/meta-capi.js';
 import { createMetaCapiGateway } from '#adapters/marketing/meta-capi.js';
@@ -419,6 +422,7 @@ import {
   parsePlatformOwnerEmails,
   resettableEnvironment,
   resolveSmokeTenantPasswords,
+  stripeModeFromKey,
   targetsProductionData,
   type AppError,
   type KsefEnvironment,
@@ -498,6 +502,8 @@ interface SweepTick {
 }
 
 export interface AppDeps {
+  purchaseSmoke: PurchaseSmokeRepository;
+  purchaseSmokeTransaction: PurchaseSmokeTransaction;
   metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
@@ -798,17 +804,37 @@ export const selectSmokeTenantReseed = (
     | 'PRODUCTION_DATABASE_FINGERPRINT'
   >,
   create: (passwords: SmokeTenantPasswords) => Omit<SmokeTenantReseedDeps, 'environment'>,
+  logger: { warn(message: string): void },
 ): SmokeTenantReseedDeps | undefined => {
   const resolved = resolveSmokeTenantPasswords({
     production: targetsProductionData(reseedMarkers(env)),
     demoPassword: DEMO_SEED_PASSWORD,
-    configured: { member: env.SMOKE_MEMBER_PASSWORD, creator: env.SMOKE_CREATOR_PASSWORD },
+    configured: {
+      member: env.SMOKE_MEMBER_PASSWORD,
+      creator: env.SMOKE_CREATOR_PASSWORD,
+    },
   });
-  if (!resolved.ok) return undefined;
+  if (!resolved.ok) {
+    logger.warn(`Smoke tenant reseed is unavailable because ${resolved.reason}`);
+    return undefined;
+  }
   return {
     ...create(resolved.passwords),
     environment: env.APP_ENV ?? env.NODE_ENV ?? 'development',
   };
+};
+
+export const selectSmokeTenantTestPaymentsKey = (
+  env: Pick<Env, 'SMOKE_PURCHASE_STRIPE_TEST_KEY'>,
+  logger: { warn(message: string): void },
+): string | undefined => {
+  const key = env.SMOKE_PURCHASE_STRIPE_TEST_KEY?.trim();
+  if (key === undefined || key === '') return undefined;
+  if (stripeModeFromKey(key) !== 'test') {
+    logger.warn('SMOKE_PURCHASE_STRIPE_TEST_KEY is ignored because it is not a Stripe test restricted key');
+    return undefined;
+  }
+  return key;
 };
 
 export const selectOperatorSecret = (
@@ -1178,12 +1204,31 @@ export const createDeps = (
     dataReset: { run: () => runReseed(db, reseedMarkers(env)) },
     audit: createPlatformAuditRepository(db),
   }));
-  const smokeTenantReseed = selectSmokeTenantReseed(env, (passwords) => ({
-    reseed: { run: () => runSmokeTenantReseed(db, { passwords, nowIso: clock.nowIso }) },
-    platformAudit: createPlatformAuditRepository(db),
-    ids,
-    clock,
-  }));
+  const smokeTenantReseed = selectSmokeTenantReseed(env, (passwords) => {
+    const testPaymentsKey = selectSmokeTenantTestPaymentsKey(env, logger);
+    return {
+      reseed: { run: () => runSmokeTenantReseed(db, { passwords, purchaseFixtures: testPaymentsKey !== undefined, nowIso: clock.nowIso }) },
+      platformAudit: createPlatformAuditRepository(db),
+      ids,
+      clock,
+      ...(testPaymentsKey === undefined ? {} : {
+        testPayments: {
+          restrictedKey: testPaymentsKey,
+          configure: {
+            appBaseUrl: env.APP_BASE_URL,
+            baseDomain,
+            singleTenantMode,
+            payment,
+            tenantSecrets,
+            secretCrypto,
+            ids,
+            clock,
+            logger,
+          },
+        },
+      }),
+    };
+  }, logger);
   const sanitizeStagingSecrets: SanitizeStagingSecretsDeps = {
     ...reseedMarkers(env),
     secrets: createTenantSecretScan(db),
@@ -1708,6 +1753,8 @@ export const createDeps = (
     importAuditEvents: createImportAuditEventRepository(db),
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
+    purchaseSmoke: createPurchaseSmokeRepository(db),
+    purchaseSmokeTransaction: createPurchaseSmokeTransaction(db, { payment, secretCrypto, ids, clock }),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),

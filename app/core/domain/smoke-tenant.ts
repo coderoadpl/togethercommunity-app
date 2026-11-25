@@ -1,3 +1,5 @@
+import type { ShippingRate } from './shipping.js';
+
 /**
  * Production carries one permanent synthetic tenant so the post-deploy smoke can
  * assert on known content. It is the seed's `acme` fixture — the same rows local
@@ -9,7 +11,57 @@ export const SMOKE_TENANT_SLUG = 'acme';
 export const SMOKE_TENANT_MEMBER_EMAIL = 'kontakt+smoke-member@togethercommunity.app';
 export const SMOKE_TENANT_CREATOR_EMAIL = 'kontakt+smoke-creator@togethercommunity.app';
 export const SMOKE_TENANT_COURSE_TITLE = 'Acme Course';
+export const SMOKE_TENANT_COURSE_PRODUCT_ID = 'product-acme-course';
 export const DEMO_SEED_PASSWORD = 'demo-password-15';
+
+export const SMOKE_PURCHASE_SHIPPING_RATES = [
+  {
+    id: 'purchase-e2e-locker',
+    label: 'Purchase test parcel locker',
+    amountCents: 1299,
+    vatRatePercent: 23,
+    carrier: 'inpost',
+    pickupPoint: 'inpost_locker',
+    active: true,
+  },
+  {
+    id: 'purchase-e2e-courier',
+    label: 'Purchase test courier',
+    amountCents: 1599,
+    vatRatePercent: 23,
+    carrier: 'inpost',
+    pickupPoint: 'none',
+    active: true,
+  },
+] as const satisfies readonly ShippingRate[];
+
+export const SMOKE_PURCHASE_TERMS_URL = 'https://togethercommunity.app/terms';
+export const SMOKE_PURCHASE_PRIVACY_URL = 'https://togethercommunity.app/privacy';
+
+export const SMOKE_PURCHASE_PRODUCT = {
+  id: 'product-acme-purchase-parcel',
+  slug: 'purchase-e2e-parcel',
+  title: 'Purchase test parcel',
+  type: 'physical',
+  deliveryMethod: 'shipping',
+  priceCents: 2500,
+  currency: 'PLN',
+  vatRate: 23,
+  published: true,
+  priceId: 'price-product-acme-purchase-parcel',
+  stockOnHand: 1000,
+} as const;
+
+export const SMOKE_PURCHASE_SALES_LINK = {
+  id: 'sales-link-acme-purchase-bundle',
+  slug: 'purchase-e2e-bundle',
+  title: 'Purchase test bundle',
+  heading: 'Purchase test bundle',
+  productIds: [SMOKE_PURCHASE_PRODUCT.id, SMOKE_TENANT_COURSE_PRODUCT_ID],
+  active: true,
+  listed: false,
+  revision: 1,
+} as const;
 
 /** Every other seeded account lives on this domain; a real tenant never would. */
 const SEED_ACCOUNT_EMAIL_DOMAIN = '@together.dev';

@@ -1400,3 +1400,46 @@ names sent, Meta's trace id only when it is at most 100 letters, digits, `_` or
 or `invalid_tenant`); dispatch failures log a fixed message without request or
 response data. Consent, retention and
 retry rules are described in [Meta Conversions API](integrations/meta-capi.md).
+
+## Purchase smoke machine purpose
+
+The exclusive `purchase-smoke` purpose belongs only to `tenant-acme`. Verified
+owners issue and revoke it through the existing shop key flow, with no ordinary
+scopes and no propose mode. The maximum lifetime remains 30 days. Authentication
+rechecks the issuer's verified owner grant, expiry and revocation; machine keys
+never become human sessions. The machine registrar denies every route except
+`POST /api/m2m/shop/purchase-smoke/checkouts` and
+`GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result` for this purpose.
+Ordinary shop keys cannot call either route.
+
+Worst case for the platform key alone: create up to 40 fixed-fixture test
+checkouts per UTC day, including pending checkouts, and read only the results
+bound to that key. It cannot select buyers, amounts, products, prices, workspaces
+or modes, configure integrations, read generic orders, request platform refunds
+or create carrier shipments. The workspace's own test slot must be configured;
+organization-inherited test payments are refused, and the live slot must be
+empty. Checkout creation and cleanup use the exact local credential checked
+inside the checkout transaction, without a second provider credential lookup.
+The fixed buyer is the existing synthetic smoke member; provider events
+with a different buyer are rejected. Test purchases do not reserve live stock
+or grant live access. Applied-event evidence commits with order reconciliation;
+a valid signature or merely claimed event is not an application receipt.
+
+The provider credential is a separate security boundary: it must belong to a
+sandbox/account used exclusively for the fixture workspace. Provider test keys
+are not workspace-scoped by platform metadata. Give the runner only the provider
+permissions needed to complete/read test payments and issue/read test refunds,
+not the server's webhook-configuration credential. Refund checks cover inbound
+provider reconciliation, not the staff refund workflow.
+
+Storage is additive and rollback-safe. The purpose and its absolute expiry have
+new columns; ordinary key rows keep their original representation. A purpose
+row stores a legacy-compatible scope marker and a permanently expired legacy
+expiry. The current adapter exposes an empty scope list and the actual purpose
+expiry. The previous release can list the row without an enum parse failure,
+but cannot authenticate it, even if the caller transforms the secret to match
+its legacy hash lookup. New authentication also separates the hash domain and
+grants no staff capabilities. Reseeds preserve purpose keys and their original
+expiry, revocation, audit, quotas and bindings transactionally; they never
+restore a purged key or clear revocation. Rolling back leaves the additive
+schema in place and leaves these keys inert.

@@ -1940,3 +1940,32 @@ deployment, and the purge deletes a workspace's shop management keys, for
 example when a key may have leaked.
 
 See also the [CLI reference](cli.md) and [security notes](security.md).
+
+## Purchase smoke purpose
+
+An owner of the synthetic `tenant-acme` workspace can create an exclusive
+purchase key through the same owner-session endpoint, using
+`{name, purpose: "purchase-smoke", scopes: [], mode: "direct", expiresAt}`.
+It keeps the 30-day maximum expiry and normal owner-only revoke/purge controls.
+The secret is returned once. Mixed scopes and propose mode are refused.
+
+This purpose authorizes exactly two routes:
+
+- `POST /api/m2m/shop/purchase-smoke/checkouts` accepts only `{runId, scenario}`.
+  Scenarios are `digital-course`, `parcel-courier`, `parcel-locker`, and
+  `bundle-locker`; the locker code is fixed at `WAW01M`.
+- `GET /api/m2m/shop/purchase-smoke/checkouts/:reference/result` reads only a
+  checkout created by the same key, including paid/refund state, the largest
+  cumulative refunded amount among applied refund events, and receipts from
+  successfully applied provider webhooks.
+
+Checkouts always use the fixed synthetic member, fixture products and TEST
+payments from the workspace's own stored test slot, never an inherited
+organization slot. The live slot must be empty. A workspace-wide 40-checkout daily cap
+includes pending sessions, and key/run/scenario retries are idempotent. Existing
+purpose keys, expiry, revocation, audit, rate limits and bindings survive the
+operator reseed; orders do not. A result whose order was removed is unavailable,
+and a fresh run id is needed after reseeding. The runner's separate Stripe key
+must come from a sandbox dedicated to this fixture workspace. See
+[smoke fixture setup](observability.md#purchase-smoke-fixtures-and-machine-key)
+and [the security boundary](security.md#purchase-smoke-machine-purpose).

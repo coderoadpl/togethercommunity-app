@@ -1,4 +1,5 @@
 import type {
+  PurchaseSmokeReceipt,
   StorageListInput,
   StorageListPage,
   StorageReferenceInventory,
@@ -1154,6 +1155,7 @@ export interface TenantSecretResolver {
 }
 
 export interface PaymentWebhookEvent {
+  apiVersion?: string | null;
   foreignTenant?: true;
   tenantIds?: string[];
   customerId?: string | null;
@@ -1291,7 +1293,7 @@ export interface PaymentProvider {
     promotionCodeId?: string;
     couponCheckoutSessionId?: string;
     expiresAt?: string;
-  }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
+  }, credential?: { restrictedKey: string }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
   ensureCouponPromotion?(input: {
     tenantId: string;
     couponId: string;
@@ -1307,7 +1309,7 @@ export interface PaymentProvider {
     mode?: 'live' | 'test';
     tenantId: string;
     sessionId: string;
-  }): Promise<Result<{ expired: true }, AppError>>;
+  }, credential?: { restrictedKey: string }): Promise<Result<{ expired: true }, AppError>>;
   cancelSubscription(input: {
     mode?: 'live' | 'test';
     tenantId: string;
@@ -2125,6 +2127,16 @@ export interface CheckoutConsentJobRepository {
   complete(tenantId: string, checkoutSessionId: string, completedAt: string): Promise<void>;
 }
 
+export interface PurchaseSmokeRefundAdvance {
+  orderId: string;
+  status: 'partially_refunded' | 'refunded';
+}
+
+export interface PurchaseSmokeEventRepository {
+  hasCheckout(tenantId: string, sessionId: string): Promise<boolean>;
+  recordAppliedEvent(tenantId: string, sessionId: string, receipt: PurchaseSmokeReceipt, refundAdvance?: PurchaseSmokeRefundAdvance): Promise<void>;
+}
+
 export interface PaymentTransactionPort {
   /** Every payment projection write of one webhook branch commits together or not at all. */
   run<T>(
@@ -2146,6 +2158,7 @@ export interface PaymentTransactionPort {
       marketingConsents: MarketingConsentRepository;
       confirmations: ConsentConfirmationTokenRepository;
       processedPaymentEvents: ProcessedPaymentEventRepository;
+      purchaseSmoke?: PurchaseSmokeEventRepository;
       enrollmentTransaction: EnrollmentTransactionPort;
       stock?: StockRepository;
     }) => Promise<Result<T, AppError>>,

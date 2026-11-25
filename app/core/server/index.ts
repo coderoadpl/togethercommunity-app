@@ -196,3 +196,6 @@ export * from './usecases/change-proposal-files.js';
 export * from './usecases/key-download-files.js';
 export type { StagingSweepOutcome } from './usecases/sweep-budget.js';
 export * from './usecases/product-download-files.js';
+
+export * from './purchase-smoke-ports.js';
+export * from './usecases/purchase-smoke.js';

@@ -17,8 +17,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(553);
-    expect(inventory.useCases).toHaveLength(418);
+    expect(inventory.routes).toHaveLength(557);
+    expect(inventory.useCases).toHaveLength(420);
     expect(inventory.routes.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject).sort())
       .toEqual(Object.keys(KEY_MODE_ROUTES).sort());
     expect(inventory.useCases.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject)).toEqual(
@@ -35,13 +35,13 @@ describe('permission inventory', () => {
     ]) {
       expect(row).toMatchObject({ capability: 'product:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     }
-    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(47);
+    expect(inventory.routes.filter((entry) => entry.evidence === 'Shop management key')).toHaveLength(49);
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/products/stock/adjust'))
       .toMatchObject({ capability: 'product:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     expect(inventory.routes.find((entry) => entry.subject === 'POST /api/m2m/shop/integrations/stripe/configure'))
       .toMatchObject({ capability: 'tenant:secret:write', before: [SHOP_MANAGEMENT_KEY_PRINCIPAL], after: [SHOP_MANAGEMENT_KEY_PRINCIPAL] });
     const shopRoutes = inventory.routes.filter((entry) => entry.subject.includes(' /api/m2m/shop/'));
-    expect(shopRoutes).toHaveLength(60);
+    expect(shopRoutes).toHaveLength(62);
     for (const row of shopRoutes) {
       const isAccessRoute = row.subject === 'POST /api/m2m/shop/products/access';
       const principals = isAccessRoute || row.subject.includes(' /api/m2m/shop/proposals')

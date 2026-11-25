@@ -34,7 +34,7 @@ The staging use-cases of `key-download-files.ts` authorize through the same-file
 
 The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.
 
-Closed capability count: 145. Route rows: 566. Exported `Ctx` use-case rows: 423.
+Closed capability count: 145. Route rows: 570. Exported `Ctx` use-case rows: 425.
 
 ## Human-readable diff
 
@@ -233,6 +233,8 @@ no changes
 | `POST /api/m2m/shop/image-assets/product-cover/upload (propose-mode key)` | proposal:asset:upload | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key, propose mode: proposal:asset:upload + proposal:submit:catalog; uploads into the private quarantine of the key; only the approval of a proposal that attaches the image publishes it |
 | `POST /api/m2m/shop/image-assets/product-cover/complete (direct-mode key)` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key, direct mode: product:write; uploads an image that the key publishes live |
 | `POST /api/m2m/shop/image-assets/product-cover/complete (propose-mode key)` | proposal:asset:upload | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key, propose mode: proposal:asset:upload + proposal:submit:catalog; uploads into the private quarantine of the key; only the approval of a proposal that attaches the image publishes it |
+| `POST /api/m2m/shop/image-assets/product-image/upload` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
+| `POST /api/m2m/shop/image-assets/product-image/complete` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
 | `GET /api/m2m/shop/sales-links` | product:read | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `GET /api/m2m/shop/sales-links/:id` | product:read | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | shop-management-key (scope intersect issuing owner), shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner) | yes | Shop management key |
 | `POST /api/m2m/shop/sales-links` | product:write | shop-management-key (scope intersect issuing owner) | shop-management-key (scope intersect issuing owner) | yes | Shop management key |
@@ -428,6 +430,8 @@ no changes
 | `POST /api/image-assets/course-cover/complete` | course:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/product-cover/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/product-cover/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/product-image/upload` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/image-assets/product-image/complete` | product:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/upload` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/image-assets/branding/complete` | tenant:settings:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/my/products` | member:product:read | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
@@ -731,6 +735,8 @@ no changes
 | `image-assets.ts#completeCourseCoverUpload` | course:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#beginProductCoverUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#completeProductCoverUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#beginProductImageUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
+| `image-assets.ts#completeProductImageUpload` | product:write | owner, admin | owner, admin | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#beginBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#completeBrandingAssetUpload` | tenant:settings:write | owner | owner | yes | core/server/usecases/image-assets.ts authorization call |
 | `image-assets.ts#beginAvatarUpload` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | core/server/usecases/image-assets.ts authorization call |
@@ -1046,13 +1052,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:34` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:217` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1317` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1319` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1341` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1355` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1886` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1886` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:218` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1319` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1321` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1343` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1357` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1888` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1888` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:45` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:94` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -1063,7 +1069,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:607` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
 | staff-role | `apps/server/src/public-app.ts:677` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
-| api-key | `apps/server/src/shop-machine-auth.ts:114` | `const key = headers.get(API_KEY_HEADER);` |
+| api-key | `apps/server/src/shop-machine-auth.ts:116` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |
 | staff-role | `core/server/usecases/community-access.ts:75` | `if (ctx.identity.staffRole === null && ctx.identity.memberBannedAt !== null) {` |
@@ -1086,9 +1092,9 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | member-scope | `core/server/usecases/entitlements.ts:232` | `if (!ctx.identity.memberId) return err(forbidden('Only members can list their courses'));` |
 | member-scope | `core/server/usecases/entitlements.ts:258` | `if (!isStaff(ctx) && !ctx.identity.memberId) {` |
 | member-scope | `core/server/usecases/entitlements.ts:269` | `const location = isStaff(ctx) \|\| !ctx.identity.memberId` |
-| member-scope | `core/server/usecases/image-assets.ts:337` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
-| member-scope | `core/server/usecases/image-assets.ts:348` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
-| member-scope | `core/server/usecases/image-assets.ts:432` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
+| member-scope | `core/server/usecases/image-assets.ts:357` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
+| member-scope | `core/server/usecases/image-assets.ts:368` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
+| member-scope | `core/server/usecases/image-assets.ts:452` | `if (ctx.identity.memberId === null) return err(validation('Only tenant members can manage an avatar'));` |
 | member-scope | `core/server/usecases/invoices.ts:542` | `if (ctx.identity.memberId === null) return err(forbidden('Only the invoice buyer can download it'));` |
 | api-key | `core/server/usecases/m2m-enroll.ts:30` | `export const authenticateApiKey = async (` |
 | member-scope | `core/server/usecases/member-billing-orders.ts:32` | `if (ctx.identity.memberId === null) return err(forbidden('Only tenant members can read billing history'));` |

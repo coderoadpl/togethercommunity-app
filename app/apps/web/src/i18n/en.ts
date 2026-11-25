@@ -967,6 +967,9 @@ export const en: Messages = {
       title: 'Title',
       description: 'Description',
       coverUrl: 'Cover image',
+      images: 'Gallery images',
+      galleryImage: 'Image',
+      galleryImageAlt: 'Alternative text',
       priceCents: 'Price',
       currency: 'Currency',
       published: 'Published',
@@ -2561,6 +2564,7 @@ export const en: Messages = {
       chapters: 'Chapters',
       blocks: 'Content blocks',
       price: 'Price',
+      images: 'Gallery',
     },
     versionBlockType: {
       video: 'Video',

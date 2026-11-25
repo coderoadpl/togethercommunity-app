@@ -431,6 +431,51 @@ describe('approveChangeProposal applies exactly what the owner saw', () => {
     expect(approved.value).toMatchObject({ status: 'applied', appliedResourceId: created?.id });
   });
 
+  it('applies a gallery-less product creation or draft deletion stored by a release without the gallery', async () => {
+    const h = harness();
+    const createId = await h.submit('product.create', { title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0 });
+    const deleteId = await h.submit('product.delete-draft', { productId: 'product-draft' });
+    for (const id of [createId, deleteId]) {
+      const stored = h.proposal(id);
+      if (stored === undefined) throw new Error('proposal missing');
+      expect(Object.keys(stored.input)).not.toContain('images');
+      expect(Object.keys(stored.effect)).not.toContain('images');
+      h.store.seed(storedProposal({ ...stored, id: `${id}-before-gallery` }));
+    }
+
+    const created = await h.approve(`${createId}-before-gallery`);
+    if (!created.ok) throw new Error(created.error.message);
+    expect(created.value).toMatchObject({ status: 'applied' });
+    expect(Object.keys(created.value.effect)).not.toContain('images');
+    expect(h.state.products.find((candidate) => candidate.slug === 'teapot')?.images).toEqual([]);
+    expect(await h.approve(`${deleteId}-before-gallery`)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(liveProduct(h, 'product-draft')).toBeUndefined();
+  });
+
+  it('applies a product update that reorders the gallery, and marks it stale when the gallery moved after submission', async () => {
+    const front = { url: '/api/public/assets/product-image/front.png', alt: 'Front' };
+    const back = { url: '/api/public/assets/product-image/back.png', alt: 'Back' };
+    const h = harness();
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { images: [front, back] });
+    const reordered = await h.submit('product.update', { id: 'product-mug', images: [back, front] });
+    expect(h.proposal(reordered)?.effect).toEqual({ images: { before: [front, back], after: [back, front] } });
+
+    expect(await h.approve(reordered)).toMatchObject({ ok: true, value: { status: 'applied' } });
+    expect(liveProduct(h, 'product-mug')?.images).toEqual([back, front]);
+
+    const added = await submitChangeProposal(keyCtx(), {
+      operation: 'product.update',
+      input: { id: 'product-mug', images: [back, front, { url: 'https://cdn.example.test/new.jpg', alt: '' }] },
+    }, { ...h.deps, changeProposals: h.store.repository });
+    expect(added).toMatchObject({ ok: false, error: { code: 'validation', details: { fieldErrors: { images: [expect.stringContaining('cannot be proposed yet')] } } } });
+
+    const cleared = await h.submit('product.update', { id: 'product-mug', images: [] });
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { images: [front] });
+    const before = structuredClone(h.state);
+    expect(await h.approve(cleared)).toMatchObject({ ok: true, value: { status: 'stale' } });
+    expect(h.state).toEqual(before);
+  });
+
   it('keeps the proposal pending and live state untouched when the infrastructure throws', async () => {
     const h = harness();
     const id = await h.submit('product.update', { id: 'product-mug', title: 'Big mug' });
@@ -452,6 +497,82 @@ describe('approveChangeProposal applies exactly what the owner saw', () => {
     expect(h.state).toEqual(before);
     expect(h.proposal(id)?.status).toBe('pending');
     expect(h.events(id)).toEqual(['1:proposed']);
+  });
+});
+
+describe('product proposals stored by this release and read by the release without the gallery', () => {
+  const PREVIOUS_RELEASE_PRODUCT_CREATE_INPUT_KEYS = [
+    'vatRate', 'vatExemptionBasis', 'type', 'visibility', 'salesChannel', 'deliveryMethod', 'parcelTemplate', 'compliance',
+    'personalization', 'variantGroup', 'variantLabel', 'slug', 'title', 'description', 'coverUrl', 'priceCents', 'currency',
+    'accessItems',
+  ];
+  const PREVIOUS_RELEASE_PRODUCT_UPDATE_INPUT_KEYS = [
+    'vatRate', 'vatExemptionBasis', 'visibility', 'salesChannel', 'deliveryMethod', 'parcelTemplate', 'compliance',
+    'personalization', 'variantGroup', 'variantLabel', 'id', 'title', 'description', 'coverUrl',
+  ];
+  const PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS = [
+    'exists', 'type', 'slug', 'title', 'description', 'coverUrl', 'priceCents', 'currency', 'published', 'visibility',
+    'salesChannel', 'deliveryMethod', 'parcelTemplate', 'compliance', 'personalization', 'variantGroup', 'variantLabel',
+    'vatRate', 'vatExemptionBasis', 'accessItems', 'activePrices', 'prices', 'downloads', 'stock',
+  ];
+  const gallery = [{ url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000001.webp', alt: 'Front' }];
+
+  const unknownKeys = (stored: object, known: readonly string[]): string[] =>
+    Object.keys(stored).filter((key) => !known.includes(key)).sort();
+
+  const stored = (h: Harness, id: string): ChangeProposal => {
+    const proposal = h.proposal(id);
+    if (proposal === undefined) throw new Error('proposal missing');
+    return proposal;
+  };
+
+  it('stores a product creation without gallery images with input and effect keys the previous release knows', async () => {
+    const h = harness();
+    const coverUrl = '/api/public/assets/product-cover/00000000-0000-4000-8000-000000000009.png';
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { coverUrl });
+    const proposal = stored(h, await h.submit('product.create', {
+      title: 'Teapot', slug: 'teapot', type: 'physical', priceCents: 0, vatRate: 23, coverUrl,
+    }));
+
+    expect(Object.keys(proposal.effect)).toContain('coverUrl');
+    expect(unknownKeys(proposal.input, PREVIOUS_RELEASE_PRODUCT_CREATE_INPUT_KEYS)).toEqual([]);
+    expect(unknownKeys(proposal.effect, PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS)).toEqual([]);
+  });
+
+  it('stores a product update that omits the gallery with keys the previous release knows, whether or not the product has a gallery', async () => {
+    const h = harness();
+    Object.assign(liveProduct(h, 'product-draft') ?? {}, { images: gallery });
+    for (const productId of ['product-mug', 'product-draft']) {
+      const proposal = stored(h, await h.submit('product.update', { id: productId, title: 'Renamed', description: 'New text' }));
+
+      expect(proposal.effect).toEqual({
+        title: { before: liveProduct(h, productId)?.title, after: 'Renamed' },
+        description: { before: '', after: 'New text' },
+      });
+      expect(unknownKeys(proposal.input, PREVIOUS_RELEASE_PRODUCT_UPDATE_INPUT_KEYS)).toEqual([]);
+    }
+  });
+
+  it('stores a draft deletion of a product without gallery images with effect keys the previous release knows', async () => {
+    const h = harness();
+    const proposal = stored(h, await h.submit('product.delete-draft', { productId: 'product-draft' }));
+
+    expect(Object.keys(proposal.effect)).toContain('downloads');
+    expect(unknownKeys(proposal.effect, PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS)).toEqual([]);
+  });
+
+  it('stores the gallery key the previous release refuses only when a proposal sends images or deletes a product that has them', async () => {
+    const h = harness();
+    const back = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000002.webp', alt: 'Back' };
+    Object.assign(liveProduct(h, 'product-draft') ?? {}, { images: gallery });
+    Object.assign(liveProduct(h, 'product-mug') ?? {}, { images: [...gallery, back] });
+    const created = stored(h, await h.submit('product.create', { title: 'Teapot', slug: 'teapot', priceCents: 0, images: [] }));
+    const updated = stored(h, await h.submit('product.update', { id: 'product-mug', images: [back, ...gallery] }));
+    const deleted = stored(h, await h.submit('product.delete-draft', { productId: 'product-draft' }));
+
+    expect(unknownKeys(created.input, PREVIOUS_RELEASE_PRODUCT_CREATE_INPUT_KEYS)).toEqual(['images']);
+    expect(unknownKeys(updated.input, PREVIOUS_RELEASE_PRODUCT_UPDATE_INPUT_KEYS)).toEqual(['images']);
+    expect(unknownKeys(deleted.effect, PREVIOUS_RELEASE_PRODUCT_EFFECT_KEYS)).toEqual(['images']);
   });
 });
 

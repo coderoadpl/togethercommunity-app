@@ -120,6 +120,8 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.courseCoverComplete,
     API_ROUTES.productCoverUpload,
     API_ROUTES.productCoverComplete,
+    API_ROUTES.productImageUpload,
+    API_ROUTES.productImageComplete,
     API_ROUTES.brandingAssetUpload,
     API_ROUTES.brandingAssetComplete,
     API_ROUTES.lessonEditionMark,

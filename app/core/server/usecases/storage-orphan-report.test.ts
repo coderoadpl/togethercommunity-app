@@ -164,6 +164,29 @@ describe('reportStorageOrphans', () => {
     expect(result.value.objects.find((object) => object.key === branding)?.classification).toBe('referenced');
   });
 
+  it('counts product gallery images in a current product and in a product version as referenced', async () => {
+    const { deps, inventory, objects } = fixture();
+    const galleryImage = (n: number) => `00000000-0000-4000-8000-00000000000${String(n)}.webp`;
+    const current = `image-assets/tenant-a/product-image/${galleryImage(2)}`;
+    const historical = `image-assets/tenant-a/product-image/${galleryImage(3)}`;
+    const unattached = `image-assets/tenant-a/product-image/${galleryImage(4)}`;
+    objects.push(...[current, historical, unattached].map((key) => ({ key, sizeBytes: 123, lastModified: OLD })));
+    inventory.currentDocuments.push({
+      id: 'shared', coverUrl: null, description: '',
+      images: [{ url: `/api/public/assets/product-image/${galleryImage(2)}`, alt: 'Front' }],
+    });
+    inventory.historyDocuments.push({
+      title: 'Lamp', images: [{ url: `https://shop.example.test/api/public/assets/product-image/${galleryImage(3)}`, alt: '' }],
+    });
+    const result = await reportStorageOrphans({ tenantId: 'tenant-a' }, deps);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const classification = (key: string) => result.value.objects.find((object) => object.key === key)?.classification;
+    expect(classification(current)).toBe('referenced');
+    expect(classification(historical)).toBe('referenced-by-history');
+    expect(classification(unattached)).toBe('unreferenced-candidate');
+  });
+
   it('counts the quarantined images the database records as pending and published content-addressed images as referenced', async () => {
     const { deps, inventory, objects } = fixture();
     const digest = 'a'.repeat(64);

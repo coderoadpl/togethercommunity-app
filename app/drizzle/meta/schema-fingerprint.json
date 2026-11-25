@@ -1,6 +1,6 @@
 {
-  "hash": "7c832045a64777e0899b544df9d43b7908a878bd44006d6c762d2ee449b98af6",
-  "shortId": "7c832045a647",
+  "hash": "60516d92cc79421abd5d7390cafadb8093ed22d32f3b8dd97ff89f6dcdbb9787",
+  "shortId": "60516d92cc79",
   "schema": {
     "constraints": [
       {
@@ -4489,6 +4489,14 @@
             "generated": "",
             "identity": "",
             "name": "checkout_consent_definition_ids",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": "'[]'::jsonb",
+            "generated": "",
+            "identity": "",
+            "name": "images",
             "notNull": true,
             "type": "jsonb"
           },

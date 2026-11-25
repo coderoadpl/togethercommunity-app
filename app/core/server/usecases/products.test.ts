@@ -252,6 +252,22 @@ describe('products use-cases', () => {
     expect(await updateProduct(ctx, { id: 'p1', personalization: { ...setting, maxLength: 501 } }, deps(repo, ['version-6']))).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
+  it('stores an ordered gallery, keeps it across unrelated edits, snapshots it and clears it with an empty list', async () => {
+    const { repo, entityVersions } = fakeRepo([draft('p1', 't-acme')]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const back = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000002.webp', alt: 'Back view' };
+    const front = { url: 'https://cdn.example.test/front.jpg', alt: '' };
+    const gallery = [back, front];
+    expect(await createProduct(ctx, { title: 'Workshop', priceCents: 4900 }, deps(repo, ['product-2']))).toMatchObject({ ok: true, value: { images: [] } });
+    expect(await createProduct(ctx, { title: 'Printed book', priceCents: 4900, images: [{ url: front.url }] }, deps(repo, ['product-3'])))
+      .toMatchObject({ ok: true, value: { images: [front] } });
+    expect(await updateProduct(ctx, { id: 'p1', images: gallery }, deps(repo, ['version-1']))).toMatchObject({ ok: true, value: { images: gallery } });
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed workshop' }, deps(repo, ['version-2']))).toMatchObject({ ok: true, value: { images: gallery } });
+    expect(entityVersions.at(-1)?.payload).toMatchObject({ images: gallery });
+    expect(await updateProduct(ctx, { id: 'p1', images: [back, back] }, deps(repo, ['version-3']))).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await updateProduct(ctx, { id: 'p1', images: [] }, deps(repo, ['version-4']))).toMatchObject({ ok: true, value: { images: [] } });
+  });
+
   it('switches a physical product to shipping and refuses shipping for other product types', async () => {
     const { repo } = fakeRepo([{ ...draft('p1', 't-acme'), type: 'physical' }, draft('p2', 't-acme')]);
     const ctx = { identity: identity('t-acme', 'owner') };

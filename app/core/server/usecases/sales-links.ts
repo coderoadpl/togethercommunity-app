@@ -86,7 +86,7 @@ const buildPublicSalesLink = async (tenantId: string, salesLink: SalesLink, deps
     const vat = resolveProductVat(product, settings);
     if (vat === null || price === undefined || base === undefined) return [];
     const vatRate = vat.kind === 'rate' ? vat.percent : 'exempt';
-    return [{ baseProductId: base.id, variants: productVariants(base, siblings(base), stockOf), productId: product.id, name: product.title, coverUrl: product.coverUrl, type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), personalization: toPublicPersonalization(product.personalization), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null, maxQuantity: purchasableLineQuantity(SINGLE_CHECKOUT_LINE_QUANTITY, stockOf(product.id)) }];
+    return [{ baseProductId: base.id, variants: productVariants(base, siblings(base), stockOf), productId: product.id, name: product.title, coverUrl: product.coverUrl, images: product.images ?? [], type: product.type, deliveryMethod: product.deliveryMethod, compliance: toPublicCompliance(product.compliance), personalization: toPublicPersonalization(product.personalization), ...splitProductGross(price.amountCents, vatRate), vatRate, vatExemptionBasis: vat.kind === 'exempt' ? vat.basis : null, maxQuantity: purchasableLineQuantity(SINGLE_CHECKOUT_LINE_QUANTITY, stockOf(product.id)) }];
   });
   if (lines.length !== products.value.products.length) return err(notFound('Sales link was not found'));
   const available = purchasableSets(selected.value.map((product) => ({ productId: product.id, quantity: SINGLE_CHECKOUT_LINE_QUANTITY })), stock);

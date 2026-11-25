@@ -27,7 +27,7 @@ and no session route accepts it. The shop routes look keys up only in
 | Order and fulfilment routes, including InPost ShipX (below) | Available |
 | Shop settings and branding image routes (below) | Available |
 | Typed client `createShopManagementClient` and CLI `shop` commands | Available |
-| Product cover image and sales-link routes (below) | Available |
+| Product cover, gallery image and sales-link routes (below) | Available |
 | Download files of digital products: staging, server-side copy and live attach, replace and remove for a direct-mode key; staging and proposed attach, replace and remove for a propose-mode key ([below](#download-files)) | Available |
 | Payment, storage, shipping and invoicing credential routes (below) | Available |
 | Builder guide, error taxonomy and deployment checklist (below) | Available |
@@ -526,23 +526,29 @@ writes takes an optional third argument `{ groupId }` that sends the
 `group` receipt; `createProposalGroup`, `getProposalGroup` and
 `withdrawProposalGroup` reach the key's own groups.
 
-## Product covers and sales links
+## Product covers, gallery images and sales links
 
 These routes reuse the session image-asset and sales-link schemas and use-cases.
-Cover upload and completion require `shop:catalog:write`. Completion checks the
-candidate workspace, size and image signature before publishing it; it returns a
-public asset URL without changing any product. Attach it with product update.
-The public asset URL retains its existing redirect to signed storage. For a
-propose-mode key completion publishes nothing: it keeps the image private and
-answers `quarantined: true` with the address an approval publishes it at
+Cover and gallery image upload and completion require `shop:catalog:write`.
+Completion checks the candidate workspace, size and image signature before
+publishing it; it returns a public asset URL without changing any product.
+Attach a cover with product update and `coverUrl`; add gallery images with
+product update and the ordered `images` list (at most 12 `{ url, alt }`
+entries; see [Product gallery](shop-integration.md#product-gallery)). The
+public asset URL retains its existing redirect to signed storage. For a
+propose-mode key cover completion publishes nothing: it keeps the image private
+and answers `quarantined: true` with the address an approval publishes it at
 ([Images](change-proposals.md#images)). Only the key that started a
 propose-mode upload can complete it; any other key, and an owner session,
-gets `404 not_found` for that candidate.
+gets `404 not_found` for that candidate. Gallery image upload and completion
+refuse a propose-mode key with `403`.
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|
 | `POST /api/m2m/shop/image-assets/product-cover/upload` | `shop:catalog:write` | `POST /api/image-assets/product-cover/upload` |
 | `POST /api/m2m/shop/image-assets/product-cover/complete` | `shop:catalog:write` | `POST /api/image-assets/product-cover/complete` |
+| `POST /api/m2m/shop/image-assets/product-image/upload` | `shop:catalog:write` | `POST /api/image-assets/product-image/upload` |
+| `POST /api/m2m/shop/image-assets/product-image/complete` | `shop:catalog:write` | `POST /api/image-assets/product-image/complete` |
 | `GET /api/m2m/shop/sales-links` | `shop:catalog:read` | `GET /api/sales-links` |
 | `POST /api/m2m/shop/sales-links` | `shop:catalog:write` | `POST /api/sales-links` |
 | `GET /api/m2m/shop/sales-links/:id` | `shop:catalog:read` | `GET /api/sales-links/:id` |
@@ -555,11 +561,12 @@ revision returns the existing `409 conflict`. Foreign sales-link ids return
 `404 not_found`. The same publication, product ownership, subscription and VAT
 checks apply as on session routes. Write scope does not grant read access.
 
-The typed client exposes `uploadProductCover`, `listSalesLinks`, `getSalesLink`,
-`createSalesLink`, `updateSalesLink` and `deleteSalesLink`. The cover helper runs
-upload → signed storage PUT → completion; only the two API requests carry the
-shop key, never the storage PUT. With a propose-mode key the completed result
-also carries `quarantined: true`. `shop cover upload` first reads the product's
+The typed client exposes `uploadProductCover`, `uploadProductImage`,
+`listSalesLinks`, `getSalesLink`, `createSalesLink`, `updateSalesLink` and
+`deleteSalesLink`. The two image helpers run upload → signed storage PUT →
+completion; only the two API requests carry the shop key, never the storage
+PUT. With a propose-mode key the completed cover also carries
+`quarantined: true`. `shop cover upload` first reads the product's
 prices to check that the product exists in the key's workspace, so its key needs
 `shop:catalog:read` as well as `shop:catalog:write`; an unknown product fails
 with `not_found` (exit code 5) before anything is uploaded. Only with
@@ -569,10 +576,15 @@ other id. The CLI adds the product update after successful completion, and never
 updates the product when upload or completion fails. With a propose-mode key
 that update is a proposal: the command prints the receipt and the image address,
 which stays private until the owner approves, and `--group <id>` adds the
-proposal to a group.
+proposal to a group. `shop images upload <file>` only uploads a gallery image
+and prints its URL; `shop products update <product-id> --images-file <path>`
+then sets the ordered gallery from a JSON array of `{ "url", "alt" }` objects
+(`-` reads it from stdin, `[]` removes every image).
 
 ```bash
 pnpm --silent run cli --tenant acme shop cover upload <product-id> ./cover.png
+pnpm --silent run cli --tenant acme shop images upload ./front.png
+pnpm --silent run cli --tenant acme shop products update <product-id> --images-file ./images.json
 pnpm --silent run cli --tenant acme shop sales-links list
 pnpm --silent run cli --tenant acme shop sales-links show <sales-link-id>
 pnpm --silent run cli --tenant acme shop sales-links create --json-file ./sales-link.json

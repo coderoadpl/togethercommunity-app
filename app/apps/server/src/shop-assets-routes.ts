@@ -5,8 +5,10 @@ import { SHOP_ASSETS_ROUTES, shopAssetsContracts } from '#core/contract/index.js
 import { err, internal, ok, validation, type AppError, type Result } from '#core/domain/index.js';
 import {
   beginProductCoverUpload,
+  beginProductImageUpload,
   beginProposedProductCoverUpload,
   completeProductCoverUpload,
+  completeProductImageUpload,
   completeProposedProductCoverUpload,
   createSalesLink,
   deleteSalesLink,
@@ -19,7 +21,7 @@ import type { AppVars } from './app-vars.js';
 import type { AppDeps } from './composition.js';
 import { readJson } from './read-json.js';
 import { respond, retryAfterHeaders } from './respond.js';
-import { imageUploadAnswer, isProposeModeKey, PROPOSED_IMAGE_UPLOAD, type ShopMachineRoute } from './shop-machine-auth.js';
+import { imageUploadAnswer, isProposeModeKey, notInRelease, PROPOSED_IMAGE_UPLOAD, type ShopMachineRoute } from './shop-machine-auth.js';
 
 type SalesLinkCreateInput = z.output<typeof shopAssetsContracts.createSalesLink.input>;
 type SalesLinkUpdateInput = z.output<typeof shopAssetsContracts.updateSalesLink.input>;
@@ -59,6 +61,26 @@ export const shopAssetsRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => 
       const result = isProposeModeKey(request)
         ? await completeProposedProductCoverUpload(request.ctx, parsed.data, deps)
         : await completeProductCoverUpload(request.ctx, parsed.data, deps);
+      return respond(result, result.ok ? {} : { headers: retryAfterHeaders(result.error) });
+    },
+  },
+  {
+    ...SHOP_ASSETS_ROUTES.productImageUpload,
+    proposeMode: notInRelease('product gallery images'),
+    handler: async (c, { ctx }) => {
+      const parsed = shopAssetsContracts.productImageUpload.input.safeParse(await readJson(c.req.raw));
+      if (!parsed.success) return respond(err(validation('Invalid image asset payload', parsed.error.flatten())));
+      const result = await beginProductImageUpload(ctx, parsed.data, deps);
+      return respond(result.ok ? ok(imageUploadAnswer(result.value, parsed.data.contentType, false)) : result);
+    },
+  },
+  {
+    ...SHOP_ASSETS_ROUTES.productImageComplete,
+    proposeMode: notInRelease('product gallery images'),
+    handler: async (c, { ctx }) => {
+      const parsed = shopAssetsContracts.productImageComplete.input.safeParse(await readJson(c.req.raw));
+      if (!parsed.success) return respond(err(validation('Invalid image asset completion', parsed.error.flatten())));
+      const result = await completeProductImageUpload(ctx, parsed.data, deps);
       return respond(result, result.ok ? {} : { headers: retryAfterHeaders(result.error) });
     },
   },

@@ -60,4 +60,24 @@ describe('storage reference inventory', () => {
       lessonIds: [], productIds: [], attachments: [], downloads: [], quarantinedImages: [], stagedDownloads: [], currentDocuments: [], historyDocuments: [],
     });
   });
+
+  it('reads the gallery of a current product and of a product version', async () => {
+    const tenantId = 'tenant-gallery';
+    const current = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000002.webp', alt: 'Front' };
+    const historical = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000003.webp', alt: '' };
+    await db.insert(tenants).values({ id: tenantId, slug: tenantId, name: tenantId, createdAt: NOW });
+    await db.insert(products).values({
+      id: 'gallery-product', tenantId, slug: 'lamp', title: 'Lamp', description: '', priceCents: 100, currency: 'USD', createdAt: NOW, images: [current],
+    });
+    await db.insert(entityVersions).values({
+      id: `${tenantId}-product-snapshot`, tenantId, entityKind: 'product', entityId: 'gallery-product', schemaVersion: 12,
+      payload: { title: 'Lamp', images: [historical] }, createdAt: NOW,
+    });
+
+    const inventory = await createStorageReferenceRepository(db).readInventory(tenantId);
+
+    expect(inventory.productIds).toEqual(['gallery-product']);
+    expect(inventory.currentDocuments).toContainEqual(expect.objectContaining({ id: 'gallery-product', images: [current] }));
+    expect(inventory.historyDocuments).toContainEqual({ title: 'Lamp', images: [historical] });
+  });
 });

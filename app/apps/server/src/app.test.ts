@@ -12933,6 +12933,7 @@ describe('image upload publication boundary', () => {
     ['logo', 'owner', API_PATHS.brandingAssetUpload, API_PATHS.brandingAssetComplete],
     ['course-cover', 'staff', API_PATHS.courseCoverUpload, API_PATHS.courseCoverComplete],
     ['product-cover', 'staff', API_PATHS.productCoverUpload, API_PATHS.productCoverComplete],
+    ['product-image', 'staff', API_PATHS.productImageUpload, API_PATHS.productImageComplete],
     ['avatar', 'member', API_PATHS.avatarUpload, API_PATHS.avatarComplete],
   ] as const)('keeps %s candidates private and publishes only server-owned bytes', async (kind, role, uploadPath, completePath) => {
     const base = deps();

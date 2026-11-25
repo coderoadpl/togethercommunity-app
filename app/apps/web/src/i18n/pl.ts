@@ -1013,6 +1013,9 @@ export const pl: Messages = {
       title: 'Tytuł',
       description: 'Opis',
       coverUrl: 'Okładka',
+      images: 'Galeria zdjęć',
+      galleryImage: 'Zdjęcie',
+      galleryImageAlt: 'Tekst alternatywny',
       priceCents: 'Cena',
       currency: 'Waluta',
       published: 'Opublikowany',
@@ -2614,6 +2617,7 @@ export const pl: Messages = {
       chapters: 'Rozdziały',
       blocks: 'Bloki treści',
       price: 'Cena',
+      images: 'Galeria',
     },
     versionBlockType: {
       video: 'Wideo',

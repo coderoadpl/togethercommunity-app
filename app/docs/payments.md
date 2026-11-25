@@ -589,10 +589,13 @@ route records it after the answer is decided, in `payment_event_rejections`
 
 The workspace staff recipients get one e-mail per event: the workspace support
 address when one is set, otherwise every staff member once per address (outbox
-id `payment-event-rejected:<tenantId>:<eventId>:<recipient index>`, kept on
-conflict). Every refusal while the row is open and no live order exists queues
+id `payment-event-rejected:<tenantId>:<eventId>:<recipient key>`, where the key
+is the first 16 hex characters of the SHA-256 of the trimmed, lower-cased
+address, kept on conflict). Every refusal while the row is open and no live order exists queues
 the alert again, so a queue that failed after the row was written is filled on
-the next retry, and the fixed outbox id keeps it to one e-mail per recipient. It says the payment succeeded at Stripe but no order was recorded,
+the next retry, and the outbox id fixed per address keeps it to one e-mail per
+recipient whatever order the staff list comes back in; a staff member added
+during Stripe's retries gets the alert on the next retry. It says the payment succeeded at Stripe but no order was recorded,
 that Stripe retries for up to three days, not to refund or ask the buyer to pay
 again before support has checked it, and the reason.
 

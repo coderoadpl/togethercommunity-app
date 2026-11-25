@@ -7,6 +7,7 @@ import {
   notFound,
   ok,
   paymentEventRejectedEmail,
+  paymentEventRejectedOutboxId,
   prerenderedTransactionalPayload,
   renderEmailOutboxPayload,
   tenantSettingsSchema,
@@ -27,6 +28,8 @@ import {
 } from './payment-event-rejections.js';
 
 const tenant = { id: 'tenant-acme', slug: 'acme', name: 'Acme' };
+
+const alertId = (email: string): string => paymentEventRejectedOutboxId(tenant.id, 'evt_paid', email);
 
 const createRejectionStore = () => {
   const rows = new Map<string, PaymentEventRejection>();
@@ -147,8 +150,8 @@ describe('recordStripeWebhookOutcome', () => {
       `[payment-webhook-rejected] tenant=${tenant.id} event=evt_paid type=checkout.session.completed reason=validation`,
     );
     expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
-      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'owner@togethercommunity.app'],
-      [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'admin@togethercommunity.app'],
+      [alertId('owner@togethercommunity.app'), 'owner@togethercommunity.app'],
+      [alertId('admin@togethercommunity.app'), 'admin@togethercommunity.app'],
     ]);
     const [queued] = [...outbox.values()];
     expect(queued).toMatchObject({ tenantId: tenant.id, onConflict: 'keep-existing', sourceApp: 'payment-event-rejections', tenantTransportRequired: false });
@@ -198,13 +201,13 @@ describe('recordStripeWebhookOutcome', () => {
 
     expect(enqueue).toHaveBeenCalledTimes(8);
     expect(new Set(enqueue.mock.calls.map(([input]) => input.id))).toEqual(new Set([
-      `payment-event-rejected:${tenant.id}:evt_paid:0`,
-      `payment-event-rejected:${tenant.id}:evt_paid:1`,
+      alertId('owner@togethercommunity.app'),
+      alertId('second-owner@togethercommunity.app'),
     ]));
     expect(dispatchEmail).toHaveBeenCalledTimes(4);
     expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
-      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'owner@togethercommunity.app'],
-      [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'second-owner@togethercommunity.app'],
+      [alertId('owner@togethercommunity.app'), 'owner@togethercommunity.app'],
+      [alertId('second-owner@togethercommunity.app'), 'second-owner@togethercommunity.app'],
     ]);
     expect(enqueue.mock.calls.every(([input]) => input.onConflict === 'keep-existing')).toBe(true);
   });
@@ -228,8 +231,8 @@ describe('recordStripeWebhookOutcome', () => {
 
     expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', attempts: 2 }]);
     expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
-      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'owner@togethercommunity.app'],
-      [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'admin@togethercommunity.app'],
+      [alertId('owner@togethercommunity.app'), 'owner@togethercommunity.app'],
+      [alertId('admin@togethercommunity.app'), 'admin@togethercommunity.app'],
     ]);
     expect(dispatchEmail).toHaveBeenCalledTimes(1);
   });
@@ -252,8 +255,8 @@ describe('recordStripeWebhookOutcome', () => {
 
     expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', attempts: 2 }]);
     expect([...outbox.values()].map((input) => input.id)).toEqual([
-      `payment-event-rejected:${tenant.id}:evt_paid:0`,
-      `payment-event-rejected:${tenant.id}:evt_paid:1`,
+      alertId('owner@togethercommunity.app'),
+      alertId('admin@togethercommunity.app'),
     ]);
     expect(dispatchEmail).toHaveBeenCalledTimes(1);
   });
@@ -264,7 +267,7 @@ describe('recordStripeWebhookOutcome', () => {
     await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
 
     expect([...outbox.values()].map((input) => [input.id, input.to, input.payload])).toEqual([
-      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'support@togethercommunity.app', prerenderedTransactionalPayload(paymentEventRejectedEmail('pl', {
+      [alertId('support@togethercommunity.app'), 'support@togethercommunity.app', prerenderedTransactionalPayload(paymentEventRejectedEmail('pl', {
         tenantName: 'Acme', eventId: 'evt_paid', checkoutSessionId: 'cs_paid', reasonCode: 'validation',
         reasonMessage: 'Checkout snapshot not found', firstSeenAt: '2026-11-20T10:00:00.000Z', studioUrl: 'https://acme.togethercommunity.app/panel/sales',
       }))],
@@ -281,6 +284,36 @@ describe('recordStripeWebhookOutcome', () => {
     await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
 
     expect([...outbox.values()].map((input) => input.to)).toEqual(['admin@togethercommunity.app', 'second-admin@togethercommunity.app']);
+  });
+
+  it('a retry that lists the staff in another order fills only the address the first queue missed', async () => {
+    const owner = { userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: 'pl' } as const;
+    const admin = { userId: 'admin-1', email: 'admin@togethercommunity.app', staffRole: 'admin', language: 'en' } as const;
+    const { deps, outbox, advance } = setup({ staff: [owner, admin] });
+    const enqueue = deps.emailOutbox.enqueue;
+    deps.emailOutbox.enqueue = async (input) => input.to === admin.email ? err(internal('outbox unavailable')) : enqueue(input);
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+    deps.emailOutbox.enqueue = enqueue;
+    deps.tenantAccess = { listStaffForTenant: async () => [admin, owner] };
+    advance('2026-11-20T11:00:00.000Z');
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+
+    expect([...outbox.values()].map((input) => input.to).sort()).toEqual([admin.email, owner.email]);
+  });
+
+  it('a staff member added between deliveries gets one e-mail and the others no second', async () => {
+    const owner = { userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: 'pl' } as const;
+    const admin = { userId: 'admin-1', email: 'admin@togethercommunity.app', staffRole: 'admin', language: 'en' } as const;
+    const added = { userId: 'admin-2', email: 'new-admin@togethercommunity.app', staffRole: 'admin', language: null } as const;
+    const { deps, outbox, advance } = setup({ staff: [owner, admin] });
+
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+    deps.tenantAccess = { listStaffForTenant: async () => [added, owner, admin] };
+    advance('2026-11-20T11:00:00.000Z');
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+
+    expect([...outbox.values()].map((input) => input.to).sort()).toEqual([admin.email, added.email, owner.email]);
   });
 
   it('marks the record resolved when a later delivery of the same event succeeds', async () => {

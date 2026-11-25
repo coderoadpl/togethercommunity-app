@@ -2,6 +2,7 @@ import {
   err,
   ok,
   paymentEventRejectedEmail,
+  paymentEventRejectedOutboxId,
   paymentEventRejectionListQuerySchema,
   prerenderedTransactionalPayload,
   validation,
@@ -97,9 +98,9 @@ const notifyStaff = async (
   if (recipients.length === 0) return false;
   const studioUrl = `${await resolveTenantOrigin(tenant, deps)}/panel/sales`;
   let queuedAny = false;
-  for (const [index, recipient] of recipients.entries()) {
+  for (const recipient of recipients) {
     const queued = await deps.emailOutbox.enqueue({
-      id: `payment-event-rejected:${tenant.id}:${rejection.eventId}:${String(index)}`,
+      id: paymentEventRejectedOutboxId(tenant.id, rejection.eventId, recipient.email),
       tenantId: tenant.id,
       to: recipient.email,
       payload: prerenderedTransactionalPayload(paymentEventRejectedEmail(recipient.language, {
@@ -171,7 +172,7 @@ export const recordStripeWebhookOutcome = async (
     return rejection;
   });
   if (recorded === undefined) return;
-  // Every refusal re-queues: the outbox ids are fixed per event and recipient index, so a retry fills a gap left by a failed or interrupted queue without a second e-mail.
+  // Every refusal re-queues: the outbox ids are fixed per event and recipient address, so a retry fills a gap left by a failed or interrupted queue, or a staff member added since, without a second e-mail to anyone, whatever order the staff list comes back in.
   await guarded('notify', async () => {
     if (await notifyStaff(tenant, recorded, deps)) deps.dispatchEmail();
   });

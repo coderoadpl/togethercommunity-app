@@ -23,6 +23,7 @@ import {
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
+import { paymentEventRejectedOutboxId } from '#core/domain/payment-event-rejection.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -9389,7 +9390,7 @@ describe('checkout consent ordering', () => {
         eventId: 'evt_refused_paid', checkoutSessionId: 'cs_refused_paid', reasonCode: 'validation',
       }));
       expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
-        id: `payment-event-rejected:${acme.id}:evt_refused_paid:0`, to: 'owner@togethercommunity.app',
+        id: paymentEventRejectedOutboxId(acme.id, 'evt_refused_paid', 'owner@togethercommunity.app'), to: 'owner@togethercommunity.app',
         payload: expect.objectContaining({ kind: 'm2m-transactional' }), sourceApp: 'payment-event-rejections',
       }));
       expect(error).toHaveBeenCalledWith(`[payment-webhook-rejected] tenant=${acme.id} event=evt_refused_paid type=checkout.session.completed reason=validation`);

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ERROR_CODES } from './errors.js';
+import { sha256Hex } from './sha256.js';
 
 const PAYMENT_EVENT_REJECTION_MESSAGE_MAX_LENGTH = 500;
 
@@ -22,3 +23,8 @@ export type PaymentEventRejection = z.output<typeof paymentEventRejectionSchema>
 export const paymentEventRejectionListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });
+
+const RECIPIENT_KEY_LENGTH = 16;
+
+export const paymentEventRejectedOutboxId = (tenantId: string, eventId: string, recipientEmail: string): string =>
+  `payment-event-rejected:${tenantId}:${eventId}:${sha256Hex(recipientEmail.trim().toLowerCase()).slice(0, RECIPIENT_KEY_LENGTH)}`;

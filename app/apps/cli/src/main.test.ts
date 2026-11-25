@@ -37,6 +37,7 @@ interface Hoisted {
   shipOrderAnyway: ReturnType<typeof vi.fn>;
   correctOrderPersonalization: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
+  listPaymentEventRejections: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
   shipxRefresh: ReturnType<typeof vi.fn>;
   shipxCreate: ReturnType<typeof vi.fn>;
@@ -73,6 +74,7 @@ interface Hoisted {
   saved: CliConfig[];
   createProduct: ReturnType<typeof vi.fn>;
   updateProduct: ReturnType<typeof vi.fn>;
+  uploadProductImage: ReturnType<typeof vi.fn>;
   archiveCourse: ReturnType<typeof vi.fn>;
   restoreCourse: ReturnType<typeof vi.fn>;
   restoreContentVersion: ReturnType<typeof vi.fn>;
@@ -147,6 +149,7 @@ const h = vi.hoisted(
     shipOrderAnyway: vi.fn(),
     correctOrderPersonalization: vi.fn(),
     ordersPackingList: vi.fn(),
+    listPaymentEventRejections: vi.fn(),
     shipxShipment: vi.fn(),
     shipxRefresh: vi.fn(),
     shipxCreate: vi.fn(),
@@ -189,6 +192,7 @@ const h = vi.hoisted(
     loadError: null,
     saved: [],
     createProduct: vi.fn(),
+    uploadProductImage: vi.fn(),
     updateProduct: vi.fn(),
     archiveCourse: vi.fn(),
     restoreCourse: vi.fn(),
@@ -305,6 +309,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     shipOrderAnyway: h.shipOrderAnyway,
     correctOrderPersonalization: h.correctOrderPersonalization,
     ordersPackingList: h.ordersPackingList,
+    listPaymentEventRejections: h.listPaymentEventRejections,
     shipxShipment: h.shipxShipment,
     shipxRefresh: h.shipxRefresh,
     shipxCreate: h.shipxCreate,
@@ -337,6 +342,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     getMarketingSignupForm: h.getMarketingSignupForm,
     createMarketingSignupForm: h.createMarketingSignupForm,
     createProduct: h.createProduct,
+    uploadProductImage: h.uploadProductImage,
     updateProduct: h.updateProduct,
     archiveCourse: h.archiveCourse,
     restoreCourse: h.restoreCourse,
@@ -461,6 +467,7 @@ beforeEach(() => {
   h.createOrderRefund.mockReset().mockResolvedValue(ok({ created: true, refund: { id: 'refund-1', kind: 'amount', status: 'pending', amountCents: 1250, currency: 'PLN', restocked: false, removedFromPackingList: false } }));
   h.shipOrderAnyway.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' } }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
+  h.listPaymentEventRejections.mockReset().mockResolvedValue(ok({ rejections: [] }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
@@ -482,6 +489,7 @@ beforeEach(() => {
   h.createMarketingSignupForm.mockReset().mockResolvedValue(ok({ form: { id: 'form-newsletter' } }));
   h.createProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
   h.updateProduct.mockReset().mockResolvedValue(ok({ product: { id: 'product-1', title: 'Course' } }));
+  h.uploadProductImage.mockReset().mockResolvedValue(ok({ url: '/api/public/assets/product-image/1.png' }));
   h.archiveCourse.mockReset().mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course' } }));
   h.restoreCourse.mockReset().mockResolvedValue(ok({ course: { id: 'course-1', name: 'Course' } }));
   h.restoreContentVersion.mockReset().mockResolvedValue(ok({ restored: { entityKind: 'course', entityId: 'course-1', restoredFromOrdinal: 2 } }));
@@ -1811,6 +1819,45 @@ describe('order verification commands', () => {
   });
 });
 
+describe('orders rejected-payments command', () => {
+  const rejection = {
+    tenantId: 'workspace', eventId: 'evt_1', eventType: 'checkout.session.completed', checkoutSessionId: 'cs_1',
+    reasonCode: 'validation', reasonMessage: 'Checkout snapshot not found', firstSeenAt: '2026-11-20T10:00:00.000Z',
+    lastSeenAt: '2026-11-20T12:00:00.000Z', attempts: 3, resolvedAt: null,
+  };
+
+  it('emits the unresolved records in one JSON envelope', async () => {
+    h.listPaymentEventRejections.mockResolvedValue(ok({ rejections: [rejection] }));
+    await run('--json', 'orders', 'rejected-payments');
+    expect(h.listPaymentEventRejections).toHaveBeenCalledExactlyOnceWith({});
+    expect(soleJson()).toEqual({ ok: true, data: { rejections: [rejection] } });
+  });
+
+  it('prints one line per record with its reason, sightings and ids', async () => {
+    h.listPaymentEventRejections.mockResolvedValue(ok({ rejections: [rejection] }));
+    await run('orders', 'rejected-payments', '--limit', '5');
+    expect(h.listPaymentEventRejections).toHaveBeenCalledExactlyOnceWith({ limit: 5 });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('2026-11-20T10:00:00.000Z\t2026-11-20T12:00:00.000Z\t3 attempts\tvalidation: Checkout snapshot not found\tevt_1\tcs_1');
+  });
+
+  it('says so when every payment was recorded', async () => {
+    await run('orders', 'rejected-payments');
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('no payments that could not be recorded');
+  });
+
+  it('rejects a limit that is not a positive integer before calling the API', async () => {
+    await run('--json', 'orders', 'rejected-payments', '--limit', '0');
+    expect(h.listPaymentEventRejections).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('preserves the forbidden exit code for a member', async () => {
+    h.listPaymentEventRejections.mockResolvedValue(err(appError('forbidden', 'order:reconcile is not permitted')));
+    await run('--json', 'orders', 'rejected-payments');
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(4);
+  });
+});
 
 describe('consumer sales CLI parity', () => {
   it('emits one summary envelope and forwards the calendar range', async () => {
@@ -2470,6 +2517,53 @@ describe('fulfilment CLI', () => {
     await run('--json', 'product', 'create', '--title', 'Printed stand', '--price-cents', '4900', '--compliance', '{"manufacturerName":"Only a name"}');
     expect(h.createProduct).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('product image-upload CLI', () => {
+  const imageFile = async (name: string): Promise<string> => {
+    const directory = await mkdtemp(join(tmpdir(), 'product-image-'));
+    const path = join(directory, name);
+    await writeFile(path, new Uint8Array([137, 80, 78, 71]));
+    return path;
+  };
+
+  it('uploads a gallery image and prints only its URL', async () => {
+    const path = await imageFile('front.PNG');
+    await run('product', 'image-upload', path);
+    expect(h.uploadProductImage).toHaveBeenCalledExactlyOnceWith({
+      kind: 'product-image', fileName: 'front.PNG', contentType: 'image/png', sizeBytes: 4, body: new Uint8Array([137, 80, 78, 71]),
+    });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('/api/public/assets/product-image/1.png');
+    expect(h.createProduct).not.toHaveBeenCalled();
+    expect(h.updateProduct).not.toHaveBeenCalled();
+    await rm(join(path, '..'), { recursive: true, force: true });
+  });
+
+  it('prints the upload result as JSON with --json and passes a server refusal through', async () => {
+    const path = await imageFile('side.jpeg');
+    await run('--json', 'product', 'image-upload', path);
+    expect(soleJson()).toEqual({ ok: true, data: { url: '/api/public/assets/product-image/1.png' } });
+    expect(h.uploadProductImage).toHaveBeenCalledWith(expect.objectContaining({ fileName: 'side.jpeg', contentType: 'image/jpeg' }));
+    logSpy.mockClear();
+    h.uploadProductImage.mockResolvedValue(err(appError('forbidden', 'Not allowed')));
+    await run('--json', 'product', 'image-upload', path);
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.forbidden);
+    await rm(join(path, '..'), { recursive: true, force: true });
+  });
+
+  it('refuses a missing file and an unsupported type with the validation exit code before any upload', async () => {
+    const gif = await imageFile('front.gif');
+    for (const file of [join(gif, '..', 'missing.png'), gif]) {
+      process.exitCode = 0;
+      logSpy.mockClear();
+      await run('--json', 'product', 'image-upload', file);
+      expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(process.exitCode).toBe(EXIT_CODE_BY_ERROR_CODE.validation);
+    }
+    expect(h.uploadProductImage).not.toHaveBeenCalled();
+    await rm(join(gif, '..'), { recursive: true, force: true });
   });
 });
 

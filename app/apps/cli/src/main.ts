@@ -85,6 +85,7 @@ import { formatLessonPreviews, lessonPreviewOptionsSchema, planLessonPreviews } 
 import { formatSchedulerRun, formatSchedulerRuns } from './scheduler-runs-output.js';
 import { CLI_VERSION } from './version.js';
 import { changeProposalAppliedLine, changeProposalNoteText, changeProposalStaleReason } from './change-proposal-output.js';
+import { imageUploadInput, productImagesFileOption } from './image-files.js';
 
 const wantsJson = process.argv.includes('--json');
 const wantsVersion = process.argv.includes('--version') || process.argv.includes('-V');
@@ -223,6 +224,7 @@ const productCreateOptionsSchema = z.object({
   compliance: z.string().optional(),
   personalizationFile: z.string().min(1).optional(),
   personalization: z.boolean().default(true),
+  imagesFile: z.string().min(1).optional(),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
 });
@@ -240,6 +242,7 @@ const productUpdateOptionsSchema = z.object({
   compliance: z.string().optional(),
   personalizationFile: z.string().min(1).optional(),
   personalization: z.boolean().default(true),
+  imagesFile: z.string().min(1).optional(),
   variantGroup: variantGroupSchema.optional(),
   variantLabel: variantLabelSchema.optional(),
   clearVariant: z.boolean().default(false),
@@ -376,6 +379,9 @@ const ordersReconciliationOptionsSchema = z.object({
     .regex(/^[1-9]\d*$/, 'limit must be a positive integer')
     .transform((value) => Number.parseInt(value, 10))
     .optional(),
+});
+const rejectedPaymentsOptionsSchema = z.object({
+  limit: ordersReconciliationOptionsSchema.shape.limit,
 });
 const supportMessageOptionsSchema = z.object({
   subject: z.string().trim().min(1),
@@ -1600,6 +1606,7 @@ product
   .option('--currency <currency>', '3-letter uppercase currency code')
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
+  .option('--images-file <path>', 'JSON file with the ordered gallery, e.g. [{"url":"/api/public/assets/product-image/<file>","alt":"Front view"}], or - for stdin; [] removes every gallery image')
   .option('--access-items <json>', 'inline JSON access items, e.g. [{"level":"course","courseId":"c1"},{"level":"modules","courseId":"c1","moduleIds":["m1"]}]')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
@@ -1645,10 +1652,16 @@ product
         emit(personalization, ctx.json, () => '');
         return;
       }
+      const images = await productImagesFileOption(options.imagesFile);
+      if (!images.ok) {
+        emit(images, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.createProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
           ...personalization.value,
+          ...images.value,
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
           ...(options.visibility === undefined ? {} : { visibility: options.visibility }),
@@ -1710,7 +1723,7 @@ product
 
 product
   .command('update <id>')
-  .description('Update product title, description, cover, visibility, sales channel, delivery method, parcel size, safety information, personalisation or variant')
+  .description('Update product title, description, cover, gallery, visibility, sales channel, delivery method, parcel size, safety information, personalisation or variant')
   .option('--visibility <visibility>', 'listed or unlisted')
   .option('--sales-channel <channel>', 'any or sales_links_only (sold only as part of a sales link)')
   .option('--delivery-method <method>', 'pickup or shipping (physical products only)')
@@ -1721,6 +1734,7 @@ product
   .option('--description <description>')
   .option('--cover-url <url>', 'absolute cover image URL')
   .option('--clear-cover', 'remove the current cover image')
+  .option('--images-file <path>', 'JSON file with the ordered gallery, e.g. [{"url":"/api/public/assets/product-image/<file>","alt":"Front view"}], or - for stdin; [] removes every gallery image')
   .option('--compliance <json>', 'product safety information (GPSR) as a JSON object, or null to remove it; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
   .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
   .option('--no-personalization', 'remove the buyer personalisation')
@@ -1747,10 +1761,16 @@ product
         emit(personalization, ctx.json, () => '');
         return;
       }
+      const images = await productImagesFileOption(options.imagesFile);
+      if (!images.ok) {
+        emit(images, ctx.json, () => '');
+        return;
+      }
       emit(
         await ctx.api.updateProduct({
           ...(compliance.value === undefined ? {} : { compliance: compliance.value }),
           ...personalization.value,
+          ...images.value,
           ...(options.clearVariant ? { variantGroup: null, variantLabel: null } : {}),
           ...(options.variantGroup === undefined ? {} : { variantGroup: options.variantGroup }),
           ...(options.variantLabel === undefined ? {} : { variantLabel: options.variantLabel }),
@@ -1770,6 +1790,16 @@ product
         ctx.json,
         (data) => `updated: ${data.product.title}${salesChannelLabel(data.product)} (${data.product.id.slice(0, 8)})`,
       );
+    }),
+  );
+
+product
+  .command('image-upload <file>')
+  .description('Upload a product gallery image and print its URL for --images-file; the image joins a gallery only through product create or update')
+  .action(
+    withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [file]) => {
+      const input = await imageUploadInput('product-image', file);
+      emit(input.ok ? await ctx.api.uploadProductImage(input.value) : input, ctx.json, (data) => data.url);
     }),
   );
 
@@ -2146,6 +2176,25 @@ ordersCommand
                   (row) =>
                     `${row.createdAt}\t${row.memberEmail}\t${row.productTitle}\t${row.amountCents} ${row.currency}\t(${row.orderId.slice(0, 8)})`,
                 )
+                .join('\n'),
+      );
+    }),
+  );
+
+ordersCommand
+  .command('rejected-payments')
+  .description('List payments Stripe reported as paid that the webhook could not record as an order')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([rejectedPaymentsOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listPaymentEventRejections(options.limit === undefined ? {} : { limit: options.limit }),
+        ctx.json,
+        (data) =>
+          data.rejections.length === 0
+            ? 'no payments that could not be recorded'
+            : data.rejections
+                .map((row) => `${row.firstSeenAt}\t${row.lastSeenAt}\t${row.attempts} attempts\t${row.reasonCode}: ${row.reasonMessage}\t${row.eventId}\t${row.checkoutSessionId ?? '-'}`)
                 .join('\n'),
       );
     }),

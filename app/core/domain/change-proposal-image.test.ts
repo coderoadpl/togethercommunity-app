@@ -4,6 +4,7 @@ import { sha256HexOfBytes } from './change-proposal-group-digest.js';
 import {
   changeProposalImageChanges,
   changeProposalImageMissingNote,
+  changeProposalImageNotProposable,
   changeProposalImageReferences,
   changeProposalUnproposableImageChanges,
   isChangeProposalImageMissingNote,
@@ -74,6 +75,29 @@ describe('the image fields of a proposal', () => {
       expect(changeProposalUnproposableImageChanges('settings.update', { checkoutAppearance: { before: live, after } })).toEqual([]);
     }
     expect(changeProposalUnproposableImageChanges('product.update', { checkoutAppearance: { before: null, after: { logoUrl: '/x' } } })).toEqual([]);
+  });
+
+  it('lists a product gallery address the live gallery does not hold, never a kept, reordered, re-described or removed one', () => {
+    const front = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000001.png', alt: 'Front' };
+    const back = { url: 'https://cdn.example.test/back.jpg', alt: '' };
+    const added = 'https://cdn.example.test/new.jpg';
+    expect(changeProposalUnproposableImageChanges('product.update', {
+      images: { before: [front, back], after: [back, { url: added, alt: 'New' }, front] },
+    })).toEqual([{ field: 'images', name: added }]);
+    expect(changeProposalUnproposableImageChanges('product.create', { images: { before: null, after: [front] } }))
+      .toEqual([{ field: 'images', name: front.url }]);
+    for (const after of [[back, front], [{ ...front, alt: 'Front cover' }], [], null]) {
+      expect(changeProposalUnproposableImageChanges('product.update', { images: { before: [front, back], after } })).toEqual([]);
+    }
+    expect(changeProposalUnproposableImageChanges('settings.update', { images: { before: null, after: [front] } })).toEqual([]);
+  });
+
+  it('names the gallery rule in the refusal of a new gallery address', () => {
+    expect(changeProposalImageNotProposable('Invalid product payload', [{ field: 'images', name: 'https://cdn.example.test/new.jpg' }]))
+      .toMatchObject({
+        code: 'validation',
+        details: { fieldErrors: { images: [expect.stringContaining('only an image already in the live gallery')] } },
+      });
   });
 });
 

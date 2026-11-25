@@ -31,6 +31,7 @@ interface ImageAssetFieldProps {
 const uploadActionByKind = {
   'course-cover': 'uploadCourseCover',
   'product-cover': 'uploadProductCover',
+  'product-image': 'uploadProductImage',
   logo: 'uploadBrandingAsset',
   'logo-dark': 'uploadBrandingAsset',
   favicon: 'uploadBrandingAsset',

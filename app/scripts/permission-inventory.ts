@@ -158,6 +158,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/public/assets/:kind/:file') return 'offer:read';
   if (path === '/api/image-assets/course-cover/upload' || path === '/api/image-assets/course-cover/complete') return 'course:write';
   if (path === '/api/image-assets/product-cover/upload' || path === '/api/image-assets/product-cover/complete') return 'product:write';
+  if (path === '/api/image-assets/product-image/upload' || path === '/api/image-assets/product-image/complete') return 'product:write';
   if (path === '/api/image-assets/branding/upload' || path === '/api/image-assets/branding/complete') return 'tenant:settings:write';
   if (path === '/api/public/payment-config' || path === '/api/public/checkout/session-status' || path === '/api/public/checkout/coupon' || path === '/api/public/parcel-lockers/:code') return 'checkout:read';
   if (path === '/api/public/checkout/session' || path === '/api/public/sales-links/:slug/checkout') return 'checkout:start';
@@ -304,7 +305,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/changes') return 'order:read';
   if (path === '/api/orders/:orderId/shipx') return method === 'GET' ? 'order:read' : 'order:write';
   if (['/api/orders/:orderId/shipx/refresh', '/api/orders/:orderId/shipx/label', '/api/orders/:orderId/shipx/discard'].includes(path)) return 'order:write';
-  if (path === '/api/orders/reconciliation') return 'order:reconcile';
+  if (path === '/api/orders/reconciliation' || path === '/api/orders/rejected-payments') return 'order:reconcile';
   if (path === '/api/orders' || /^\/api\/orders\/:[^/]+$/.test(path)) return 'order:read';
   if (path === '/api/orders/consumer-sales-summary') return 'order:export';
   if (path === '/api/orders/export') return 'order:export';

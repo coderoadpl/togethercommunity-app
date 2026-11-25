@@ -134,6 +134,8 @@ import {
   orderListItemSchema,
   orderReconciliationQuerySchema,
   paidWithoutGrantRowSchema,
+  paymentEventRejectionListQuerySchema,
+  paymentEventRejectionSchema,
   invoiceSchema,
   importBatchResponseSchema,
   importAuditEventSchema,
@@ -191,6 +193,7 @@ import {
   postSearchHitSchema,
   productAccessIssuesSchema,
   productCoverUrlSchema,
+  productImageSchema,
   productSlugSchema,
   productSchema,
   productTypeSchema,
@@ -454,6 +457,7 @@ export const publicOfferOutputSchema = z.object({
       title: z.string(),
       description: z.string(),
       coverUrl: productCoverUrlSchema.nullable(),
+      images: z.array(productImageSchema).default([]),
       vatRate: productVatRateSchema.nullable().optional(),
       vatExemptionBasis: z.string().nullable().optional(),
       priceCents: z.number().int().nonnegative(),
@@ -836,6 +840,14 @@ export type OrdersReconciliationQueryInput = z.input<typeof ordersReconciliation
 export const ordersReconciliationOutputSchema = z.object({
   rows: z.array(paidWithoutGrantRowSchema),
   checkedThrough: z.string().datetime(),
+});
+
+export const paymentEventRejectionsQuerySchema = paymentEventRejectionListQuerySchema;
+
+export type PaymentEventRejectionsQueryInput = z.input<typeof paymentEventRejectionsQuerySchema>;
+
+export const paymentEventRejectionsOutputSchema = z.object({
+  rejections: z.array(paymentEventRejectionSchema),
 });
 
 export const salesSummaryOutputSchema = z.object({
@@ -2112,6 +2124,7 @@ export const API_ROUTES = {
   productStockThreshold: { method: 'POST', path: '/api/products/stock/threshold' },
   orders: { method: 'GET', path: '/api/orders' },
   ordersReconciliation: { method: 'GET', path: '/api/orders/reconciliation' },
+  paymentEventRejections: { method: 'GET', path: '/api/orders/rejected-payments' },
   order: { method: 'GET', path: '/api/orders/:orderId' },
   invoiceIssue: { method: 'POST', path: '/api/orders/:orderId/invoice' },
   invoiceSend: { method: 'POST', path: '/api/orders/:orderId/invoice/send' },
@@ -2159,6 +2172,8 @@ export const API_ROUTES = {
   courseCoverComplete: { method: 'POST', path: '/api/image-assets/course-cover/complete' },
   productCoverUpload: { method: 'POST', path: '/api/image-assets/product-cover/upload' },
   productCoverComplete: { method: 'POST', path: '/api/image-assets/product-cover/complete' },
+  productImageUpload: { method: 'POST', path: '/api/image-assets/product-image/upload' },
+  productImageComplete: { method: 'POST', path: '/api/image-assets/product-image/complete' },
   brandingAssetUpload: { method: 'POST', path: '/api/image-assets/branding/upload' },
   brandingAssetComplete: { method: 'POST', path: '/api/image-assets/branding/complete' },
   studentCourses: { method: 'GET', path: '/api/student/courses' },
@@ -2542,6 +2557,7 @@ export const API_PATHS = {
   productStockThreshold: API_ROUTES.productStockThreshold.path,
   orders: API_ROUTES.orders.path,
   ordersReconciliation: API_ROUTES.ordersReconciliation.path,
+  paymentEventRejections: API_ROUTES.paymentEventRejections.path,
   order: API_ROUTES.order.path,
   invoiceIssue: API_ROUTES.invoiceIssue.path,
   invoiceSend: API_ROUTES.invoiceSend.path,
@@ -2588,6 +2604,8 @@ export const API_PATHS = {
   courseCoverComplete: API_ROUTES.courseCoverComplete.path,
   productCoverUpload: API_ROUTES.productCoverUpload.path,
   productCoverComplete: API_ROUTES.productCoverComplete.path,
+  productImageUpload: API_ROUTES.productImageUpload.path,
+  productImageComplete: API_ROUTES.productImageComplete.path,
   brandingAssetUpload: API_ROUTES.brandingAssetUpload.path,
   brandingAssetComplete: API_ROUTES.brandingAssetComplete.path,
   studentCourses: API_ROUTES.studentCourses.path,

@@ -206,7 +206,7 @@ const nestedAddress = (value: unknown, name: string): string | null => {
   return typeof address === 'string' && address.length > 0 ? address : null;
 };
 
-export const changeProposalUnproposableImageChanges = (operation: string, effect: ChangeProposalEffect): Array<{ field: string; name: string }> =>
+const nestedUnproposableImages = (operation: string, effect: ChangeProposalEffect): Array<{ field: string; name: string }> =>
   Object.entries(UNPROPOSABLE_IMAGE_FIELDS[operation] ?? {}).flatMap(([field, names]) => {
     const change = effect[field];
     if (change === undefined || !('after' in change)) return [];
@@ -218,13 +218,34 @@ export const changeProposalUnproposableImageChanges = (operation: string, effect
       .map((name) => ({ field, name }));
   });
 
+const GALLERY_OPERATIONS: ReadonlySet<string> = new Set(['product.create', 'product.update']);
+
+const galleryAddressesSchema = z.array(z.object({ url: z.string() })).nullable().catch(null);
+
+const galleryAddresses = (value: unknown): string[] => galleryAddressesSchema.parse(value)?.map((entry) => entry.url) ?? [];
+
+const unproposableGalleryImages = (operation: string, effect: ChangeProposalEffect): Array<{ field: string; name: string }> => {
+  const change = effect['images'];
+  if (!GALLERY_OPERATIONS.has(operation) || change === undefined || !('after' in change)) return [];
+  const live = galleryAddresses(change.before);
+  return galleryAddresses(change.after).filter((url) => !live.includes(url)).map((url) => ({ field: 'images', name: url }));
+};
+
+export const changeProposalUnproposableImageChanges = (operation: string, effect: ChangeProposalEffect): Array<{ field: string; name: string }> =>
+  [...nestedUnproposableImages(operation, effect), ...unproposableGalleryImages(operation, effect)];
+
+const NOT_PROPOSABLE_REASONS: Readonly<Record<string, string>> = {
+  images: 'only an image already in the live gallery can be kept, reordered, re-described or removed',
+};
+
 export const changeProposalImageNotProposable = (
   invalidInputMessage: string,
   changes: ReadonlyArray<{ field: string; name: string }>,
 ): AppError => {
   const fieldErrors: Record<string, string[]> = {};
   for (const { field, name } of changes) {
-    fieldErrors[field] = [...fieldErrors[field] ?? [], `${name} cannot be proposed yet: this image must be empty or unchanged`];
+    const reason = NOT_PROPOSABLE_REASONS[field] ?? 'this image must be empty or unchanged';
+    fieldErrors[field] = [...fieldErrors[field] ?? [], `${name} cannot be proposed yet: ${reason}`];
   }
   return validation(invalidInputMessage, { formErrors: [], fieldErrors });
 };

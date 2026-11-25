@@ -1198,6 +1198,20 @@
       "when": 1790964000126,
       "tag": "0170_key_download_files",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1790964000127,
+      "tag": "0171_product_images",
+      "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1795564617529,
+      "tag": "0172_payment_event_rejections",
+      "breakpoints": true
     }
   ]
 }

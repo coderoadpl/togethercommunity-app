@@ -117,6 +117,7 @@ import {
   notificationsListInputSchema,
   ordersExportQuerySchema,
   ordersReconciliationQuerySchema,
+  paymentEventRejectionsQuerySchema,
   postCreateInputSchema,
   postDeleteInputSchema,
   postPinInputSchema,
@@ -213,6 +214,7 @@ import {
   beginCourseCoverUpload,
   beginLessonAttachmentUpload,
   beginProductCoverUpload,
+  beginProductImageUpload,
   beginProductDownloadUpload,
   authenticateApiKey,
   authLinkBaseUrl,
@@ -251,6 +253,7 @@ import {
   completeCourseCoverUpload,
   completeLessonAttachmentUpload,
   completeProductCoverUpload,
+  completeProductImageUpload,
   completeProductDownloadUpload,
   deactivateProductPrice,
   deleteLesson,
@@ -353,6 +356,7 @@ import {
   listNotifications,
   listOrders,
   listPaidOrdersWithoutGrant,
+  listPaymentEventRejections,
   listProductAccessIssues,
   listProductDownloadAssets,
   listDownloadCopies,
@@ -2235,6 +2239,16 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respondImageAssetCompletion(completeProductCoverUpload, ctxOf(c), body, deps);
   });
 
+  app.post(API_PATHS.productImageUpload, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    return respondImageAssetUpload(beginProductImageUpload, ctxOf(c), body, deps);
+  });
+
+  app.post(API_PATHS.productImageComplete, async (c) => {
+    const body: unknown = await readJson(c.req.raw);
+    return respondImageAssetCompletion(completeProductImageUpload, ctxOf(c), body, deps);
+  });
+
   app.post(API_PATHS.brandingAssetUpload, async (c) => {
     const body: unknown = await readJson(c.req.raw);
     return respondImageAssetUpload(beginBrandingAssetUpload, ctxOf(c), body, deps);
@@ -2969,6 +2983,15 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
     return respond(
       await listPaidOrdersWithoutGrant(ctxOf(c), parsed.data, deps),
     );
+  });
+
+  app.get(API_PATHS.paymentEventRejections, async (c) => {
+    const query = c.req.query('limit') === undefined ? {} : { limit: c.req.query('limit') };
+    const parsed = paymentEventRejectionsQuerySchema.safeParse(query);
+    if (!parsed.success) {
+      return respond(err(validation('Invalid payment event rejection query', parsed.error.flatten())));
+    }
+    return respond(await listPaymentEventRejections(ctxOf(c), parsed.data, deps));
   });
 
   registerConsumerSalesRoutes(app, deps);

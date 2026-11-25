@@ -175,6 +175,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   NotificationsStreamHandle: 'Browser event-stream lifecycle handle.',
   NotificationsStreamOptions: 'Browser event-stream callback configuration.',
   OrderRefundDispatchTrigger: 'Use-case refund dispatch callback with no persistence access.',
+  PaymentEventRejectionDeps: 'Use-case email dispatch callback and operator logger.',
   PaymentProvider: 'External payment-provider boundary.',
   PendingWork: 'In-process handle on work the shutdown drain waits for, with no persistence access.',
   PersonalisationSlots: 'Instance-local memory reservations with no persistence or tenant data access.',

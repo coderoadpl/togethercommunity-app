@@ -1095,6 +1095,33 @@ describe('ProposalsPanel', () => {
     expect(screen.getByTestId(`proposal-history-${stock.id}`)).toHaveTextContent(polish.outcomeFailed({ reason: 'Stock cannot go below zero' }));
   });
 
+  it('shows a reordered gallery with translated entry labels, same-origin images as pictures and a foreign address as text', () => {
+    const front = { url: '/api/public/assets/product-image/front.webp', alt: 'Front' };
+    const back = { url: 'https://images.example.org/back.jpg', alt: 'Back' };
+    const galleryProposal: ChangeProposalOwnerView = {
+      ...settingsProposal,
+      id: 'proposal-gallery-order',
+      operation: 'product.update',
+      target: { kind: 'product', id: 'product-mug' },
+      targetLabel: 'Mug',
+      input: { id: 'product-mug', images: [back, front] },
+      effect: { images: { before: [front, back], after: [back, front] } },
+    };
+    languagePreference.save('pl');
+    const { container } = renderWithProviders(
+      <LanguageProvider><ProposalFieldRows proposal={galleryProposal} targetKind="product" pendingProposalId={galleryProposal.id} /></LanguageProvider>,
+    );
+
+    const polish = pl.changeProposals.fields;
+    const row = screen.getByTestId('proposal-field-images');
+    expect(row).toHaveTextContent(polish.images);
+    expect(within(row).getAllByText(`${polish.galleryImage}:`, { exact: false })).toHaveLength(4);
+    expect(within(row).getAllByText(`${polish.galleryImageAlt}:`, { exact: false })).toHaveLength(4);
+    expect(row).not.toHaveTextContent(/\b(url|alt):/u);
+    expect(within(row).getAllByText(back.url)).toHaveLength(2);
+    expect([...container.querySelectorAll('img')].map((image) => image.getAttribute('src'))).toEqual([front.url, front.url]);
+  });
+
   it('words an emptied list in Polish in the row', () => {
     languagePreference.save('pl');
     renderWithProviders(<LanguageProvider><ProposalFieldRows proposal={accessClearProposal} pendingProposalId={accessClearProposal.id} /></LanguageProvider>);

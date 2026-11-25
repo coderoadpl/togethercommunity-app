@@ -19,10 +19,12 @@ import {
   beginAvatarUpload,
   beginCourseCoverUpload,
   beginProductCoverUpload,
+  beginProductImageUpload,
   completeBrandingAssetUpload,
   completeAvatarUpload,
   completeCourseCoverUpload,
   completeProductCoverUpload,
+  completeProductImageUpload,
   getPublicImageAssetUrl,
   importGoogleAvatar,
   removeAvatar,
@@ -247,6 +249,7 @@ describe('image assets', () => {
   it.each([
     ['course-cover', adminCtx, beginCourseCoverUpload],
     ['product-cover', adminCtx, beginProductCoverUpload],
+    ['product-image', adminCtx, beginProductImageUpload],
     ['logo', ownerCtx, beginBrandingAssetUpload],
     ['logo-dark', ownerCtx, beginBrandingAssetUpload],
     ['favicon', ownerCtx, beginBrandingAssetUpload],
@@ -283,6 +286,23 @@ describe('image assets', () => {
     expect(signed).toEqual([]);
   });
 
+  it.each([memberCtx, authenticatedCtx])('rejects non-staff product gallery uploads', async (ctx) => {
+    const { deps, signed } = testDeps();
+    const begun = await beginProductImageUpload(ctx, {
+      kind: 'product-image',
+      fileName: 'front.webp',
+      contentType: 'image/webp',
+      sizeBytes: 1024,
+    }, deps);
+    const completed = await completeProductImageUpload(ctx, {
+      key: `image-asset-candidates/${TENANT_ID}/product-image/${ASSET_ID}.webp`,
+    }, deps);
+
+    expect(begun).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(completed).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(signed).toEqual([]);
+  });
+
   it('keeps branding uploads owner-only', async () => {
     const { deps } = testDeps();
     const result = await beginBrandingAssetUpload(adminCtx, {
@@ -316,6 +336,8 @@ describe('image assets', () => {
     ['logo', beginCourseCoverUpload],
     ['course-cover', beginBrandingAssetUpload],
     ['favicon', beginProductCoverUpload],
+    ['product-image', beginProductCoverUpload],
+    ['product-cover', beginProductImageUpload],
   ] as const)('rejects a %s upload on a use-case that does not accept it', async (kind, begin) => {
     const { deps, signed } = testDeps();
     const result = await begin(ownerCtx, {
@@ -333,6 +355,8 @@ describe('image assets', () => {
     ['logo', completeCourseCoverUpload],
     ['course-cover', completeBrandingAssetUpload],
     ['favicon', completeProductCoverUpload],
+    ['product-image', completeProductCoverUpload],
+    ['product-cover', completeProductImageUpload],
   ] as const)('rejects a stored %s key on a use-case that does not accept it', async (kind, complete) => {
     const { deps } = testDeps();
     const result = await complete(
@@ -411,8 +435,34 @@ describe('image assets', () => {
   });
 
   it.each([
+    `image-asset-candidates/tenant-2/product-image/${ASSET_ID}.png`,
+    `image-assets/tenant-2/product-image/${ASSET_ID}.png`,
+    `image-asset-candidates/${TENANT_ID}/product-cover/${ASSET_ID}.png`,
+  ])('rejects a gallery image completion key of another workspace or kind', async (key) => {
+    const { deps } = testDeps();
+    const result = await completeProductImageUpload(ownerCtx, { key }, deps);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('never publishes a gallery image candidate that a propose-mode key started', async () => {
+    const { deps } = testDeps();
+    const findUpload = vi.fn<typeof deps.quarantinedImages.findUpload>(async () => ({
+      apiKeyId: 'key-1', objectKey: 'image-asset-quarantine/upload', createdAt: '2026-01-01T00:00:00.000Z', completed: null,
+    }));
+    deps.quarantinedImages = { ...deps.quarantinedImages, findUpload };
+    const put = vi.spyOn(deps.storage, 'putObject');
+    const key = `image-asset-candidates/${TENANT_ID}/product-image/${ASSET_ID}.png`;
+
+    expect(await completeProductImageUpload(ownerCtx, { key }, deps)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(findUpload).toHaveBeenCalledWith(TENANT_ID, key);
+    expect(put).not.toHaveBeenCalled();
+  });
+
+  it.each([
     ['course-cover', completeCourseCoverUpload],
     ['product-cover', completeProductCoverUpload],
+    ['product-image', completeProductImageUpload],
     ['logo', completeBrandingAssetUpload],
     ['logo-dark', completeBrandingAssetUpload],
     ['favicon', completeBrandingAssetUpload],
@@ -475,6 +525,7 @@ describe('image assets', () => {
   it.each([
     ['course-cover', completeCourseCoverUpload],
     ['product-cover', completeProductCoverUpload],
+    ['product-image', completeProductImageUpload],
     ['logo', completeBrandingAssetUpload],
     ['logo-dark', completeBrandingAssetUpload],
     ['favicon', completeBrandingAssetUpload],

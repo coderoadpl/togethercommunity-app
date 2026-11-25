@@ -118,6 +118,7 @@ import type {
   ProductStockThresholdInput,
   OrdersListQueryInput,
   OrdersReconciliationQueryInput,
+  PaymentEventRejectionsQueryInput,
   OrdersExportQueryInput,
   SimulatePurchaseInput,
   TenantCreateInput,
@@ -303,6 +304,8 @@ const salesScopes = {
   summary: () => ['sales', 'summary'] as const,
   reconciliation: (input: OrdersReconciliationQueryInput) =>
     ['sales', 'reconciliation', input] as const,
+  rejectedPayments: (input: PaymentEventRejectionsQueryInput) =>
+    ['sales', 'rejected-payments', input] as const,
 };
 
 const couponScopes = {
@@ -892,6 +895,12 @@ export const uploadProductCoverMutation = (api: ApiClient) =>
     call: (input: ImageAssetFileUpload) => api.uploadProductCover(input),
   });
 
+export const uploadProductImageMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: [...imageAssetsScopes.all(), 'product-image', 'upload'],
+    call: (input: ImageAssetFileUpload) => api.uploadProductImage(input),
+  });
+
 export const uploadBrandingAssetMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: [...imageAssetsScopes.all(), 'branding', 'upload'],
@@ -921,6 +930,15 @@ export const orderReconciliationQuery = (
   defineQuery({
     queryKey: salesScopes.reconciliation(input),
     call: ({ signal }) => api.listOrderReconciliation(input, signal),
+  });
+
+export const paymentEventRejectionsQuery = (
+  api: ApiClient,
+  input: PaymentEventRejectionsQueryInput = {},
+) =>
+  defineQuery({
+    queryKey: salesScopes.rejectedPayments(input),
+    call: ({ signal }) => api.listPaymentEventRejections(input, signal),
   });
 
 export const memberBillingOrdersQuery = (api: ApiClient) =>

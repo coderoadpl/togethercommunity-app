@@ -307,6 +307,26 @@ export const completeProductCoverUpload = async (
   return completeLiveUpload(tenant.value, ['product-cover'], input, deps);
 };
 
+export const beginProductImageUpload = async (
+  ctx: Ctx,
+  input: ImageAssetUploadInput,
+  deps: ImageAssetDeps,
+): Promise<Result<ImageAssetUploadStart, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'product:write');
+  if (!tenant.ok) return tenant;
+  return beginCandidateUpload(tenant.value, ['product-image'], input, deps);
+};
+
+export const completeProductImageUpload = async (
+  ctx: Ctx,
+  input: { key: string },
+  deps: LiveImageCompleteDeps,
+): Promise<Result<{ url: string }, AppError>> => {
+  const tenant = authorizeTenant(ctx, 'product:write');
+  if (!tenant.ok) return tenant;
+  return completeLiveUpload(tenant.value, ['product-image'], input, deps);
+};
+
 export const beginBrandingAssetUpload = async (
   ctx: Ctx,
   input: ImageAssetUploadInput,

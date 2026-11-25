@@ -26,6 +26,7 @@ exactly the effect the owner saw, or applies nothing.
 | Images (product covers, branding): private upload, address checks, owner preview, publication on approval and cleanup ([Images](#images)) | Available |
 | Download files of digital products: private staging, proposed attach, replacement and removal, owner download link, review and decision in the owner panel, release on decisions ([Download files](#download-files)) | Available |
 | What a product grants: one shared check of courses, modules and lessons, proposed replacement of the whole list, course, module and lesson titles in the owner view, rows and confirmation in the owner panel ([Product access](#product-access)) | Available |
+| Product gallery images: new gallery addresses and gallery image upload ([Not yet available](#not-yet-available)) | Not yet available |
 
 ## What a proposal is
 
@@ -198,6 +199,7 @@ key is unaffected on every route.
 |---|---|---|
 | `proposal` | the eighteen write routes above | `202` with a receipt; the live handler never runs |
 | `direct` | branding and product cover image upload and completion; download file upload, completion, copy and discard (`POST /api/m2m/shop/downloads/upload`, `…/complete`, `…/copy`, `DELETE /api/m2m/shop/downloads/staged/:id`) | the handler runs; an image stays private until approval ([Images](#images)), and a staged file stays private and reaches buyers only through an approved proposal ([Download files](#download-files)) |
+| `refuse`, reason `not-in-release` | product gallery image upload and completion | `403 forbidden` |
 | `refuse`, reason `secret` | integration routes | `403 forbidden` |
 | `refuse`, reason `side-effect` | order fulfilment and carrier shipment routes | `403 forbidden` |
 | `proposal-management` | `/api/m2m/shop/proposals` routes | the key's own proposals; a direct-mode key gets `403` |
@@ -1174,7 +1176,8 @@ image of another kind, is refused at submit with `400` and the validation
 message of the live route, naming the field. The two checkout appearance
 images, `checkoutAppearance.logoUrl` and `checkoutAppearance.iconUrl`, cannot
 be proposed yet: a new address in either is refused at submit with `400` (see
-[Not yet available](#not-yet-available)). The stored effect shows the future public address as
+[Not yet available](#not-yet-available)). Neither can a product gallery entry
+whose `url` is not already in the product's live gallery. The stored effect shows the future public address as
 the "after" value. The proposal is stored in the transaction that checks again,
 holding the row, that each attached image is still quarantined for the key; one
 released meanwhile is refused with `400` and the live route's message, with a
@@ -2464,14 +2467,21 @@ and the modules and products whose exclusions close again, with the query in
 
 ## Not yet available
 
+- **Product gallery images.** The product gallery image upload and completion
+  routes refuse a propose-mode key. A `product.create` or `product.update` that
+  sets `images` may reorder, remove or re-describe images already in the live
+  gallery; a gallery entry whose `url` is not in the live gallery is refused at
+  submit with `400` and a validation message on `images` saying that the image
+  cannot be proposed yet. An owner session and a direct-mode key set the gallery
+  as before.
 - **Other file changes.** Renaming and reordering files cannot be proposed.
 - **Spaces of a product.** Which spaces a product opens is set on the space
   (`space:write`); no shop management key can change it, directly or as a
   proposal.
 - **Course reads.** No shop route serves a key a course, module or lesson; the
   key sees their ids only in the access items of the products it lists.
-- **Other images.** Images other than product covers and branding (course
-  covers, avatars) cannot be proposed.
+- **Other images.** Images other than product covers, branding and the
+  product gallery (course covers, avatars) cannot be proposed.
 - **Checkout appearance images.** A propose-mode key cannot propose a new
   `checkoutAppearance.logoUrl` or `checkoutAppearance.iconUrl`: a
   `settings.update` that sets either to an address other than the live one is

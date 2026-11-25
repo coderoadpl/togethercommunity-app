@@ -501,6 +501,7 @@ configure a log drain and alert for `[member-removal]`, and capture failures fro
 the response array or panel warning when they occur.
 
 Before launch, also alert on `[stripe-webhook] ignored ... reason=ownership conflict`
+and on `[payment-webhook-rejected]` (a paid checkout that could not be recorded),
 and follow the recovery steps in [`docs/payments.md`](payments.md).
 
 The `already_canceled` outcome is also an operational risk. The Stripe adapter

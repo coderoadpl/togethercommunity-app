@@ -17,7 +17,6 @@ import {
   changeProposalGroupCreateInputSchema,
   changeProposalGroupIdSchema,
   changeProposalListQuerySchema,
-  imageAssetUploadRequestSchema,
   type ChangeProposalProposedOutput,
   shopAssetsContracts,
   shopCatalogContracts,
@@ -31,7 +30,6 @@ import {
   deliveryMethodSchema,
   err,
   fulfilmentStatusSchema,
-  IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION,
   isChangeProposalReference,
   KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION,
   keyDownloadAttachInputSchema,
@@ -61,6 +59,7 @@ import {
 } from '#core/domain/index.js';
 
 import { changeProposalAppliedLine } from './change-proposal-output.js';
+import { imageUploadInput, productImagesFileOption } from './image-files.js';
 import { emit, orderStatusLabel } from './output.js';
 import { readStdin, secretInput } from './secret-input.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
@@ -93,6 +92,7 @@ const productFieldsSchema = z.object({
   compliance: z.string().optional(),
   personalizationFile: z.string().min(1).optional(),
   personalization: z.boolean().default(true),
+  imagesFile: z.string().min(1).optional(),
   variantGroup: z.string().optional(),
   variantLabel: z.string().optional(),
 });
@@ -159,8 +159,6 @@ const issueSchema = keyOnlySchema.extend({ count: positiveIntSchema.optional() }
 const labelSchema = keyOnlySchema.extend({ out: z.string().min(1) });
 const settingsSetSchema = keyOnlySchema.extend({ jsonFile: z.string().min(1) });
 const brandingKindSchema = z.enum(['logo', 'logo-dark', 'favicon', 'share-image']);
-const imageExtensionSchema = z.enum(['png', 'jpg', 'jpeg', 'webp', 'svg', 'ico'])
-  .transform((extension) => IMAGE_ASSET_CONTENT_TYPE_BY_EXTENSION[extension === 'jpeg' ? 'jpg' : extension]);
 
 const shopSettingsPatchInput = async (source: string) => {
   let raw: string;
@@ -187,21 +185,6 @@ const salesLinkFileInput = async <S extends z.ZodTypeAny>(source: string, schema
   if (!fields.success) return err(validation('Invalid sales-link update'));
   if (fields.data['id'] !== undefined && fields.data['id'] !== id) return err(validation('Sales-link id must match the command argument'));
   return contractInput(schema, { ...fields.data, id }, 'Invalid sales-link update');
-};
-
-const imageUploadInput = async (kind: z.output<typeof brandingKindSchema> | 'product-cover', file: string) => {
-  const contentType = imageExtensionSchema.safeParse(extname(file).slice(1).toLowerCase());
-  if (!contentType.success) return err(validation('The image file must end in .png, .jpg, .jpeg, .webp, .svg or .ico'));
-  let bytes: Uint8Array<ArrayBuffer>;
-  try {
-    bytes = new Uint8Array(await readFile(file));
-  } catch (cause) {
-    return err(validation(`Could not read the image file "${file}": ${String(cause)}`));
-  }
-  const input = contractInput(imageAssetUploadRequestSchema, {
-    kind, fileName: basename(file), contentType: contentType.data, sizeBytes: bytes.byteLength,
-  }, kind === 'product-cover' ? 'Invalid product cover image' : 'Invalid branding image');
-  return input.ok ? ok({ ...input.value, body: bytes }) : input;
 };
 
 const fileNoteSchema = keyOnlySchema.extend({ note: keyDownloadAttachInputSchema.shape.versionNote });
@@ -413,9 +396,12 @@ const shopProductCreateInput = async (options: z.output<typeof productCreateSche
   if (!accessItems.ok) return accessItems;
   const personalization = await personalizationField(options);
   if (!personalization.ok) return personalization;
+  const images = await productImagesFileOption(options.imagesFile);
+  if (!images.ok) return images;
   return contractInput(shopCatalogContracts.createProduct.input, {
     ...sharedProductFields(options, compliance.value),
     ...personalization.value,
+    ...images.value,
     title: options.title,
     priceCents: priceCents.value,
     type: options.type,
@@ -434,9 +420,12 @@ const shopProductUpdateInput = async (id: string, options: z.output<typeof produ
   if (!compliance.ok) return compliance;
   const personalization = await personalizationField(options);
   if (!personalization.ok) return personalization;
+  const images = await productImagesFileOption(options.imagesFile);
+  if (!images.ok) return images;
   return contractInput(shopCatalogContracts.updateProduct.input, {
     ...sharedProductFields(options, compliance.value),
     ...personalization.value,
+    ...images.value,
     id,
     title: options.title,
     ...(options.clearCover ? { coverUrl: null } : {}),
@@ -615,6 +604,7 @@ export const registerShopKeyCommands = (
     .option('--vat-exemption-basis <text>', 'legal basis for VAT exemption')
     .option('--description <description>')
     .option('--cover-url <url>', 'absolute cover image URL')
+    .option('--images-file <path>', 'JSON file with the ordered gallery, e.g. [{"url":"/api/public/assets/product-image/<file>","alt":"Front view"}], or - for stdin; [] removes every gallery image')
     .option('--compliance <json>', 'product safety information (GPSR) as a JSON object; with manufacturerOutsideEu true it needs responsiblePersonName, responsiblePersonAddress and responsiblePersonEmail')
     .option('--personalization-file <path>', 'JSON file with the buyer personalisation the product offers at checkout')
     .option('--no-personalization', 'offer no buyer personalisation')
@@ -884,6 +874,13 @@ export const registerShopKeyCommands = (
       data.files.length === 0 ? 'no staged files' : data.files.map((file) => stagedFileLine(file)).join('\n')));
   keyed(files.command('discard <id>').description('Discard a staged file of this key and delete its stored copy; a pending proposal that attaches it can then no longer be applied'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [id]) => client.discardStagedDownload(id), () => 'discarded'));
+
+  const images = shop.command('images').description('Product gallery images');
+  keyed(images.command('upload <file>').description('Upload a product gallery image and print its URL for --images-file; the image joins a gallery only through products create or update'))
+    .action(run(z.tuple([z.string().min(1), keyOnlySchema]), async (client, [file]) => {
+      const input = await imageUploadInput('product-image', file);
+      return input.ok ? client.uploadProductImage(input.value) : input;
+    }, (data) => data.url));
 
   const salesLinks = shop.command('sales-links').description('Sales links of the key\'s workspace');
   keyed(salesLinks.command('list').description('List sales links'))

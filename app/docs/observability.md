@@ -484,7 +484,7 @@ creates a card payment method from the `tok_visa` test token and confirms it on
 the session's payment page (`/v1/payment_pages/<session>/confirm`, with the
 delivery address and rate when the session collects them). That endpoint is not
 in the public API reference; a provider-side change fails the purchase checks
-with the provider's own error and parameter name. The provider asks for testing
+with the provider's error code and parameter name. The provider asks for testing
 traffic to stay low because test mode is rate-limited more strictly than live
 mode ([Testing](https://docs.stripe.com/testing)); a run makes a few dozen
 provider calls.

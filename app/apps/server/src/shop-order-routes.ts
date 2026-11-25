@@ -145,7 +145,7 @@ export const shopOrderRoutes = (deps: AppDeps): readonly ShopMachineRoute[] => [
     handler: async (c, { ctx }) => {
       const shipxDeps = shipxOrderDeps(deps);
       if (shipxDeps === null) return unavailable('InPost ShipX is unavailable');
-      return respond(await discardInpostShipmentAttempt(ctx, { orderId: orderIdParam(c) }, shipxDeps));
+      return respond(await discardInpostShipmentAttempt(ctx, { orderId: orderIdParam(c) }, { ...shipxDeps, ids: deps.ids }));
     },
   },
   {

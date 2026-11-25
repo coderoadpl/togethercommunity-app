@@ -25,6 +25,7 @@ import { PanelBackLink } from '../PanelBackLink.js';
 import { OrderShipment } from './OrderShipment.js';
 import { OrderRefundJob, RefundStatusChip } from './OrderRefundJob.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
+import { OrderDeliveryCorrection } from './OrderDeliveryCorrection.js';
 import { OrderShipx } from './OrderShipx.js';
 import { OrderPersonalization } from './OrderPersonalization.js';
 import { OffPackingListNote, OrderPaymentCard, OrderStaffRefundHistory, type RefundActionState } from './OrderStaffRefunds.js';
@@ -439,7 +440,9 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                       {t.shipping.orderLockerUnverifiedHint}
                     </Alert>
                   ) : null}
-                  <OrderShipx
+                  <OrderDeliveryCorrection order={order} view={shipx.data} canCorrect={canShip}>
+                    {(onCorrectDelivery) => <OrderShipx
+                    onCorrectDelivery={onCorrectDelivery}
                     order={order}
                     view={shipx.data}
                     canCreate={canShip}
@@ -462,7 +465,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                       createShipment.reset();
                       downloadLabel.mutate(order.id);
                     }}
-                  />
+                  />}
+                  </OrderDeliveryCorrection>
                   <OrderShipment
                     order={order}
                     canShip={canShip}

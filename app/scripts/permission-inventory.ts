@@ -300,6 +300,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/:orderId/ship') return 'order:write';
   if (path === '/api/orders/:orderId/personalization') return 'order:write';
+  if (path === '/api/orders/:orderId/delivery-details') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
   if (['/api/orders/:orderId/refund-preview', '/api/orders/:orderId/refunds', '/api/orders/:orderId/packing-list'].includes(path)) return 'order:refund';
   if (path === '/api/orders/changes') return 'order:read';

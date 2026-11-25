@@ -1149,6 +1149,29 @@ export interface Messages {
     showMore: string;
     showLess: string;
   };
+  deliveryCorrection: {
+    discard: string;
+    discardBody: string;
+    action: string;
+    save: string;
+    saved: string;
+    recreate: string;
+    bought: string;
+    shipped: string;
+    history: string;
+    phone: string;
+    recipientName: string;
+    line1: string;
+    line2: string;
+    postalCode: string;
+    city: string;
+    country: string;
+    locker: string;
+    invalid: string;
+    postalInvalid: string;
+    fields: { phone: string; recipient_name: string; address: string; pickup_point: string };
+    reasons: { unchanged: string; history_full: string; country: string; postal_code: string; locker_not_allowed: string; locker_unavailable: string; locker_invalid: string; shipment_busy: string; draft_outdated: string };
+  };
   personalization: {
     forLine: (params: { name: string }) => string;
     characterCount: (params: { count: number; max: number }) => string;

@@ -1,4 +1,8 @@
-import type { AppError, EmailOutboxPayload, OrderListItem, OrderShipment, Result } from '#core/domain/index.js';
+import type { AppError, DeliveryCorrectionCommand, EmailOutboxPayload, OrderListItem, OrderShipment, Result } from '#core/domain/index.js';
+
+export interface OrderDeliveryRepository {
+  correctDelivery(tenantId: string, command: DeliveryCorrectionCommand): Promise<Result<{ order: OrderListItem; recreateShipment: boolean }, AppError>>;
+}
 
 export interface OrderShipmentEmail {
   id: string;

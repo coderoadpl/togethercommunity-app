@@ -44,6 +44,18 @@ describe('createApiClient', () => {
       .toEqual({ ok: false, error: { code: 'validation', message: 'This order line has no personalisation' } });
   });
 
+  it('posts delivery corrections to the tenant order route', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/orders/order%2F1/delivery-details');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ orderId: 'order/1', phone: '500000000' }));
+      return jsonResponse({ ok: false, error: { code: 'delivery_correction_shipment_bought', message: 'Already bought' } }, 409);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    expect(await client.correctOrderDelivery({ orderId: 'order/1', phone: '500000000' }))
+      .toEqual({ ok: false, error: { code: 'delivery_correction_shipment_bought', message: 'Already bought' } });
+  });
+
   it('selects archived courses without changing the active list request', async () => {
     const paths: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {

@@ -176,7 +176,7 @@ export type CheckoutShippingSnapshot = z.infer<typeof checkoutShippingSnapshotSc
 
 export type CheckoutShippingSelection = CheckoutShippingSnapshot & { deliveryEstimateDays?: { min: number; max: number } };
 
-const SHIPPING_FIELD_MAX_LENGTH = { name: 200, line1: 300, line2: 300, postalCode: 30, city: 120, phone: 40 } as const;
+export const SHIPPING_FIELD_MAX_LENGTH = { name: 200, line1: 300, line2: 300, postalCode: 30, city: 120, phone: 40 } as const;
 
 const shippingAddressSchema = z.object({
   name: z.string().max(SHIPPING_FIELD_MAX_LENGTH.name),
@@ -191,6 +191,14 @@ export const orderShippingSchema = z.object({
   ...shippingSelectionFields,
   address: shippingAddressSchema,
   phone: z.string().max(SHIPPING_FIELD_MAX_LENGTH.phone).nullable(),
+  corrections: z.array(z.object({
+    field: z.enum(['phone', 'recipient_name', 'address', 'pickup_point']),
+    from: z.string().nullable(),
+    to: z.string(),
+    at: z.string().datetime(),
+    byUserId: z.string().min(1),
+    byEmail: z.string().nullable(),
+  })).max(50).optional(),
 });
 
 export type OrderShipping = z.infer<typeof orderShippingSchema>;

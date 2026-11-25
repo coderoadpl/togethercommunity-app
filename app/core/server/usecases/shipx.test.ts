@@ -1467,7 +1467,7 @@ describe('label creation without dispatch', () => {
     expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toMatchObject({
       ok: true, value: { order: { fulfilmentStatus: markShipped ? 'shipped' : 'to_pack' }, shipment: { trackingNumber: TRACKING } },
     });
-    expect(h.deps.orderDetails.findById).toHaveBeenCalledTimes(2);
+    expect(h.deps.orderDetails.findById).toHaveBeenCalledTimes(3);
     expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
     if (markShipped) expect(h.ship.mock.calls[0]?.[1].email?.payload.shipment.trackingNumber).toBe(TRACKING);
     else expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
@@ -1617,4 +1617,49 @@ it('preserves a failed dispatch error while the bought label order remains to pa
   expect(await createInpostShipment(write, { orderId: 'order-1', markShipped: true }, h.deps)).toEqual({ ok: false, error: failure });
   expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
   expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'failed' } });
+});
+
+describe('corrected delivery shipment handling', () => {
+  const corrected = (): OrderListItem => ({ ...baseOrder, shipping: { ...lockerShipping, pickupPoint: { provider: 'inpost', code: 'ABC01M', name: null, address: null }, phone: '+48500000000', corrections: [
+    { field: 'phone', from: null, to: '+48500000000', at: NOW, byUserId: 'staff', byEmail: 'staff@example.org' },
+  ] } });
+  it('reloads delivery after acquiring the order lease before making a carrier request', async () => {
+    const h = harness();
+    vi.mocked(h.deps.orderDetails.findById).mockResolvedValueOnce({ ...baseOrder, shipping: { ...lockerShipping, phone: '+44 7700 900000' } }).mockResolvedValue(corrected());
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls.create[0]?.receiver.phone).toBe('500000000');
+  });
+  it('retries a draft created with corrected details even when its local claim is older', async () => {
+    const h = harness({ order: corrected() });
+    h.seed({ shipxShipmentId: 'draft', status: 'created', createAttemptedAt: NOW });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls.create).toHaveLength(0);
+  });
+  it('refuses to buy a stale remote draft after a delivery correction', async () => {
+    const h = harness({ order: corrected() });
+    h.seed({ shipxShipmentId: 'draft', status: 'offers_prepared' });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { details: { deliveryCorrection: 'draft_outdated' } } });
+    expect(h.real.calls.buy).toHaveLength(0);
+    expect(h.real.calls.create).toHaveLength(0);
+  });
+  it('explicitly discards an unpaid corrected draft after checking its live state', async () => {
+    const real = createScriptedShipxClient({ polls: [(id) => ok(remoteShipment(id, { status: 'offers_prepared' }))] });
+    const h = harness({ order: corrected(), real });
+    h.seed({ shipxShipmentId: 'draft', status: 'offers_prepared' });
+    expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toEqual({ ok: true, value: { discarded: true } });
+    expect(h.row()).toBeUndefined();
+    expect(real.calls.get).toEqual(['draft']);
+    expect(real.calls.buy).toHaveLength(0);
+    expect(real.calls.create).toHaveLength(0);
+  });
+  it('keeps a corrected draft that was bought remotely or still has an unresolved payment', async () => {
+    for (const remote of [remoteShipment('draft', { status: 'confirmed', trackingNumber: 'TRACK001' }), remoteShipment('draft', { status: 'offer_selected', transactions: [{ status: 'initiated' }] })]) {
+      const real = createScriptedShipxClient({ polls: [() => ok(remote)] });
+      const h = harness({ order: corrected(), real });
+      h.seed({ shipxShipmentId: 'draft', status: 'offers_prepared' });
+      expect(await discardInpostShipmentAttempt(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_bought' } });
+      expect(h.row()).toBeDefined();
+      expect(h.row()?.operationToken).toBeNull();
+    }
+  });
 });

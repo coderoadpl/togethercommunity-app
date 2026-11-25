@@ -33,6 +33,13 @@ const props = {
 };
 
 describe('OrderShipx', () => {
+  it('opens the delivery correction from a receiver validation failure', async () => {
+    const onCorrectDelivery = vi.fn();
+    renderWithProviders(<OrderShipx {...props} onCorrectDelivery={onCorrectDelivery} error={new ApiError({ code: 'validation', message: 'Invalid receiver', details: { state: 'receiver_invalid', field: 'phone' } })} />);
+    await userEvent.click(within(screen.getByTestId('order-shipx-error')).getByRole('button', { name: 'Correct delivery details' }));
+    expect(onCorrectDelivery).toHaveBeenCalledOnce();
+  });
+
   it('creates the shipment after a confirmation with the one-step checkbox off by default', async () => {
     const onCreate = vi.fn();
     renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);

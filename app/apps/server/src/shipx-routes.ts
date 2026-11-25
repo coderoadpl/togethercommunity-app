@@ -96,7 +96,7 @@ export const registerShipxRoutes = (app: Hono<AppVars>, deps: ShipxRouteDeps): v
   app.post(API_PATHS.shipxDiscard, async (c) => {
     const shipxDeps = orderDeps();
     if (shipxDeps === null) return unavailable();
-    return respond(await discardInpostShipmentAttempt(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, shipxDeps));
+    return respond(await discardInpostShipmentAttempt(ctxOf(c), { orderId: c.req.param('orderId') ?? '' }, { ...shipxDeps, ids: deps.ids }));
   });
   app.post(API_PATHS.shipxLabel, async (c) => {
     const shipxDeps = orderDeps();

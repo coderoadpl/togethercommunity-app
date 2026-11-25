@@ -5,6 +5,10 @@ export const shipOrderMutation = (api: ApiClient) => ({
   mutationFn: async (input: Parameters<ApiClient['shipOrder']>[0]) => unwrap(await api.shipOrder(input)),
 });
 
+export const correctOrderDeliveryMutation = (api: ApiClient) => ({
+  mutationFn: async (input: Parameters<ApiClient['correctOrderDelivery']>[0]) => unwrap(await api.correctOrderDelivery(input)),
+});
+
 export const correctOrderPersonalizationMutation = (api: ApiClient) => ({
   mutationFn: async (input: Parameters<ApiClient['correctOrderPersonalization']>[0]) => unwrap(await api.correctOrderPersonalization(input)),
 });

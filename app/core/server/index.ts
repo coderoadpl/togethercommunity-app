@@ -173,6 +173,7 @@ export * from './order-fulfilment-ports.js';
 export * from './order-change-ports.js';
 export * from './usecases/order-changes.js';
 export * from './usecases/order-fulfilment.js';
+export * from './usecases/order-delivery.js';
 export * from './shipx-ports.js';
 export * from './pickup-point-ports.js';
 export * from './usecases/pickup-points.js';

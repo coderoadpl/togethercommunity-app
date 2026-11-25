@@ -1,4 +1,4 @@
-import { ok, type AppError, type Result, type ShipxEnvironment, type ShipxRemoteShipment, type ShipxSender, type ShipxShipmentRequest } from '#core/domain/index.js';
+import { shipxShipmentBought, ok, type AppError, type Result, type ShipxEnvironment, type ShipxRemoteShipment, type ShipxSender, type ShipxShipmentRequest } from '#core/domain/index.js';
 
 import type {
   ShipxClient,
@@ -124,9 +124,9 @@ export const createShipxShipmentRepositoryFake = () => {
       record(tenantId, orderId, finished, { type: 'operation_finished', actorUserId: end.actorUserId, operationToken: token, details: { outcome: end.outcome }, createdAt: end.at });
       return { kind: 'finished' };
     },
-    release: async (tenantId, orderId, token, audit) => {
+    release: async (tenantId, orderId, token, audit, correctedDraftId) => {
       const existing = owned(tenantId, orderId, token);
-      if (existing === null || existing.shipxShipmentId !== null) return { kind: 'lost_lock' };
+      if (existing === null || (correctedDraftId === undefined ? existing.shipxShipmentId !== null : existing.shipxShipmentId !== correctedDraftId || existing.boughtAt !== null || shipxShipmentBought(existing))) return { kind: 'lost_lock' };
       rows.delete(key(tenantId, orderId));
       record(tenantId, orderId, existing, {
         type: 'attempt_released', actorUserId: audit.actorUserId, operationToken: token, details: attemptDetails(existing), createdAt: audit.at,

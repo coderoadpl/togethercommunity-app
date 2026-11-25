@@ -1976,6 +1976,27 @@ ordersCommand
       );
     }),
   );
+ordersCommand.command('delivery <orderId>').description('Correct delivery details of an order waiting to be packed')
+  .option('--phone <phone>', 'delivery phone')
+  .option('--recipient-name <name>', 'recipient name')
+  .option('--locker <code>', 'parcel locker code')
+  .option('--line1 <line>', 'street and building number')
+  .option('--line2 <line>', 'apartment or second address line')
+  .option('--postal-code <code>', 'postal code')
+  .option('--city <city>', 'city')
+  .action(withInput(z.tuple([z.string().min(1), z.object({
+    phone: z.string().optional(), recipientName: z.string().optional(), locker: z.string().optional(),
+    line1: z.string().optional(), line2: z.string().optional(), postalCode: z.string().optional(), city: z.string().optional(),
+  })]), async (ctx, [orderId, options]) => {
+    const addressChanged = options.line1 !== undefined || options.line2 !== undefined || options.postalCode !== undefined || options.city !== undefined;
+    emit(await ctx.api.correctOrderDelivery({
+      orderId,
+      ...(options.phone === undefined ? {} : { phone: options.phone }),
+      ...(options.recipientName === undefined ? {} : { recipientName: options.recipientName }),
+      ...(options.locker === undefined ? {} : { pickupPoint: { code: options.locker } }),
+      ...(addressChanged ? { address: { line1: options.line1 ?? '', line2: options.line2 ?? null, postalCode: options.postalCode ?? '', city: options.city ?? '' } } : {}),
+    }), ctx.json, (data) => JSON.stringify(data, null, 2));
+  }));
 const ordersShipx = ordersCommand.command('shipx').description('InPost ShipX shipments and labels');
 ordersShipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment').action(
   withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {

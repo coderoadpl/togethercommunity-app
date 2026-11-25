@@ -2938,13 +2938,13 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
       ));
       const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({
-        shipping: sql`case
+        shipping: sql`(case
           when jsonb_typeof(${orders.shipping}->'address') = 'object'
             then jsonb_set(${orders.shipping}, '{address}', (${orders.shipping}->'address') || ${erasedAddress})
           when jsonb_typeof(${orders.shipping}->'address') <> 'null'
             then jsonb_set(${orders.shipping}, '{address}', ${erasedAddress})
           else ${orders.shipping}
-        end || jsonb_build_object('phone', null)`,
+        end - 'corrections') || jsonb_build_object('phone', null)`,
       }).where(and(
         eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), isNotNull(orders.shipping),
         sql`jsonb_typeof(${orders.shipping}) = 'object'`,

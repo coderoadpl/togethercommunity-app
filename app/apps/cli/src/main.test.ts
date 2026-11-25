@@ -36,6 +36,7 @@ interface Hoisted {
   createOrderRefund: ReturnType<typeof vi.fn>;
   shipOrderAnyway: ReturnType<typeof vi.fn>;
   correctOrderPersonalization: ReturnType<typeof vi.fn>;
+  correctOrderDelivery: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   listPaymentEventRejections: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
@@ -148,6 +149,7 @@ const h = vi.hoisted(
     createOrderRefund: vi.fn(),
     shipOrderAnyway: vi.fn(),
     correctOrderPersonalization: vi.fn(),
+    correctOrderDelivery: vi.fn(),
     ordersPackingList: vi.fn(),
     listPaymentEventRejections: vi.fn(),
     shipxShipment: vi.fn(),
@@ -308,6 +310,7 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     createOrderRefund: h.createOrderRefund,
     shipOrderAnyway: h.shipOrderAnyway,
     correctOrderPersonalization: h.correctOrderPersonalization,
+    correctOrderDelivery: h.correctOrderDelivery,
     ordersPackingList: h.ordersPackingList,
     listPaymentEventRejections: h.listPaymentEventRejections,
     shipxShipment: h.shipxShipment,
@@ -466,6 +469,7 @@ beforeEach(() => {
   }));
   h.createOrderRefund.mockReset().mockResolvedValue(ok({ created: true, refund: { id: 'refund-1', kind: 'amount', status: 'pending', amountCents: 1250, currency: 'PLN', restocked: false, removedFromPackingList: false } }));
   h.shipOrderAnyway.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' } }));
+  h.correctOrderDelivery.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' }, recreateShipment: false }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.listPaymentEventRejections.mockReset().mockResolvedValue(ok({ rejections: [] }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
@@ -2607,6 +2611,11 @@ describe('personalisation CLI', () => {
     expect(h.updateProduct).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
     await rm(join(invalid, '..'), { recursive: true, force: true });
+  });
+
+  it('corrects delivery details through the order alias', async () => {
+    await run('--json', 'order', 'delivery', 'order-number', '--phone', '500000000', '--recipient-name', 'Example Buyer', '--locker', 'ABC01M');
+    expect(h.correctOrderDelivery).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', phone: '500000000', recipientName: 'Example Buyer', pickupPoint: { code: 'ABC01M' } });
   });
 
   it('corrects the personalisation text of an order line through the order alias', async () => {

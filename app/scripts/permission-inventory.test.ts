@@ -17,14 +17,16 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(558);
-    expect(inventory.useCases).toHaveLength(421);
+    expect(inventory.routes).toHaveLength(559);
+    expect(inventory.useCases).toHaveLength(422);
     expect(inventory.routes.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject).sort())
       .toEqual(Object.keys(KEY_MODE_ROUTES).sort());
     expect(inventory.useCases.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject)).toEqual(
       ['beginKeyDownloadUpload', 'completeKeyDownloadUpload', 'copyKeyDownloadFile', 'listKeyDownloadFiles', 'discardKeyDownloadFile']
         .map((name) => `key-download-files.ts#${name}`),
     );
+    expect(inventory.routes.find((entry) => entry.subject === 'POST /api/orders/:orderId/delivery-details'))
+      .toMatchObject({ capability: 'order:write', before: ['owner', 'admin'], after: ['owner', 'admin'] });
     expect(inventory.routes.find((entry) => entry.subject === 'OPTIONS /api/public/sales-links/:slug'))
       .toMatchObject({ capability: 'offer:read', before: ['public'], after: ['public'] });
     expect(inventory.routes.find((entry) => entry.subject === 'GET /api/public/parcel-lockers/:code'))

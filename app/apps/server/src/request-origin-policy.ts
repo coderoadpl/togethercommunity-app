@@ -63,6 +63,7 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.issueOrderLine,
     API_ROUTES.shipOrder,
     API_ROUTES.correctOrderPersonalization,
+    API_ROUTES.correctOrderDelivery,
     API_ROUTES.orderRefundCreate,
     API_ROUTES.orderShipAnyway,
     API_ROUTES.shipxRefresh,

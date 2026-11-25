@@ -9,6 +9,7 @@ import { account, user } from './schema.js';
 
 export interface SeedUsers {
   ensurePassworded(email: string, name: string, password: string): Promise<string>;
+  ensurePasswordedWithId(id: string, email: string, name: string, password: string): Promise<string>;
   ensurePasswordless(id: string, email: string, name: string): Promise<string>;
 }
 
@@ -71,6 +72,35 @@ export const createSeedUsers = (db: Db, clock: Clock): SeedUsers => {
         .set({ createdAt: seededAt, updatedAt: seededAt })
         .where(eq(account.userId, row.id));
       return row.id;
+    },
+
+    ensurePasswordedWithId: async (id, email, name, password) => {
+      const context = await auth.$context;
+      const hashed = await context.password.hash(password);
+      const seededAt = new Date(clock.nowIso());
+      const identity = { name, email, emailVerified: true, createdAt: seededAt, updatedAt: seededAt };
+      await db
+        .insert(user)
+        .values({ id, ...identity })
+        .onConflictDoUpdate({ target: user.id, set: identity });
+      const credentials = await db
+        .update(account)
+        .set({ password: hashed, createdAt: seededAt, updatedAt: seededAt })
+        .where(and(eq(account.userId, id), eq(account.providerId, 'credential')))
+        .returning({ id: account.id });
+      if (credentials.length === 0) {
+        await context.internalAdapter.linkAccount({
+          userId: id,
+          accountId: id,
+          providerId: 'credential',
+          password: hashed,
+        });
+        await db
+          .update(account)
+          .set({ createdAt: seededAt, updatedAt: seededAt })
+          .where(eq(account.userId, id));
+      }
+      return id;
     },
 
     ensurePasswordless: async (id, email, name) => {

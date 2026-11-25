@@ -1,7 +1,9 @@
-import { eq, getTableName, sql } from 'drizzle-orm';
+import { and, eq, getTableName, ne, sql } from 'drizzle-orm';
 
 import {
   SMOKE_TENANT_ID,
+  SMOKE_TENANT_PURCHASE_EMAIL,
+  SMOKE_TENANT_PURCHASE_USER_ID,
   SmokeTenantReseedRefused,
   smokeTenantReseedRefusal,
   type SmokeTenantPasswords,
@@ -10,8 +12,22 @@ import {
 import type { Db } from './client.js';
 import { DEMO_TENANT_WIPE_TABLES, type DemoTenantWipeTable } from './reseed-wipe-tables.js';
 import { createSeedUsers } from './seed-users.js';
-import { applySmokeTenantSeed, type SmokeTenantSeedSummary } from './smoke-tenant-seed.js';
-import { marketingConsents, members, tenants } from './schema.js';
+import {
+  applySmokeTenantSeed,
+  SMOKE_TENANT_PURCHASE_ADMIN_ID,
+  type SmokeTenantSeedSummary,
+} from './smoke-tenant-seed.js';
+import {
+  account,
+  marketingConsents,
+  members,
+  passkey,
+  session,
+  tenantAdmins,
+  tenants,
+  twoFactor,
+  user,
+} from './schema.js';
 
 /** Serverless instances can overlap, so every smoke-tenant reseed queues behind the same lock. */
 const SMOKE_TENANT_RESEED_LOCK_KEY = 4_820_914;
@@ -24,11 +40,34 @@ export interface SmokeTenantReseedSummary {
   seed: SmokeTenantSeedSummary;
 }
 
+/**
+ * Committed on its own so a later guard refusal or an unset purchase password
+ * still takes back every way into the account other than the reseeded password.
+ */
+const revokePurchaseAccess = async (db: Db): Promise<void> =>
+  db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(${SMOKE_TENANT_RESEED_LOCK_KEY})`);
+    await tx.delete(session).where(eq(session.userId, SMOKE_TENANT_PURCHASE_USER_ID));
+    await tx.delete(passkey).where(eq(passkey.userId, SMOKE_TENANT_PURCHASE_USER_ID));
+    await tx.delete(twoFactor).where(eq(twoFactor.userId, SMOKE_TENANT_PURCHASE_USER_ID));
+    await tx
+      .delete(account)
+      .where(and(eq(account.userId, SMOKE_TENANT_PURCHASE_USER_ID), ne(account.providerId, 'credential')));
+    await tx
+      .update(user)
+      .set({ twoFactorEnabled: false })
+      .where(eq(user.id, SMOKE_TENANT_PURCHASE_USER_ID));
+    await tx
+      .delete(tenantAdmins)
+      .where(and(eq(tenantAdmins.tenantId, SMOKE_TENANT_ID), eq(tenantAdmins.id, SMOKE_TENANT_PURCHASE_ADMIN_ID)));
+  });
+
 export const runSmokeTenantReseed = async (
   db: Db,
   options: { passwords: SmokeTenantPasswords; nowIso: () => string },
-): Promise<SmokeTenantReseedSummary> =>
-  db.transaction(async (tx) => {
+): Promise<SmokeTenantReseedSummary> => {
+  await revokePurchaseAccess(db);
+  return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(${SMOKE_TENANT_RESEED_LOCK_KEY})`);
 
     const [tenant] = await tx
@@ -44,11 +83,18 @@ export const runSmokeTenantReseed = async (
       .selectDistinct({ email: marketingConsents.email })
       .from(marketingConsents)
       .where(eq(marketingConsents.tenantId, SMOKE_TENANT_ID));
+    const purchaseEmailUsers = options.passwords.purchase === null
+      ? []
+      : await tx
+        .select({ id: user.id })
+        .from(user)
+        .where(sql`lower(${user.email}) = ${SMOKE_TENANT_PURCHASE_EMAIL}`);
 
     const refusal = smokeTenantReseedRefusal({
       tenant: tenant ?? null,
       memberEmails: memberRows.map((row) => row.email),
       consentEmails: consentRows.map((row) => row.email),
+      purchaseEmailUserIds: purchaseEmailUsers.map((row) => row.id),
     });
     if (refusal !== null) {
       throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${refusal}`);
@@ -84,3 +130,4 @@ export const runSmokeTenantReseed = async (
 
     return { tenantId: SMOKE_TENANT_ID, wiped, seed };
   });
+};

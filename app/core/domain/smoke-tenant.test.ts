@@ -8,6 +8,7 @@ import {
   SMOKE_TENANT_ID,
   SMOKE_TENANT_MEMBER_EMAIL,
   SMOKE_TENANT_PURCHASE_EMAIL,
+  SMOKE_TENANT_PURCHASE_USER_ID,
 } from './smoke-tenant.js';
 
 const DEMO_PASSWORD = 'demo-password-15';
@@ -127,6 +128,24 @@ describe('smokeTenantReseedRefusal', () => {
       memberEmails: [SMOKE_TENANT_MEMBER_EMAIL],
       consentEmails: [SMOKE_TENANT_PURCHASE_EMAIL.toUpperCase()],
     })).toBeNull();
+  });
+
+  it('allows the purchase email on the fixed purchase identity', () => {
+    expect(smokeTenantReseedRefusal({
+      tenant: { id: SMOKE_TENANT_ID, slug: 'acme' },
+      memberEmails: [],
+      consentEmails: [],
+      purchaseEmailUserIds: [SMOKE_TENANT_PURCHASE_USER_ID],
+    })).toBeNull();
+  });
+
+  it('refuses when the purchase email belongs to another identity', () => {
+    expect(smokeTenantReseedRefusal({
+      tenant: { id: SMOKE_TENANT_ID, slug: 'acme' },
+      memberEmails: [],
+      consentEmails: [],
+      purchaseEmailUserIds: ['user-someone-else'],
+    })).toBe('the purchase account email belongs to another identity');
   });
 
   it('refuses another address on the smoke accounts domain', () => {

@@ -11,6 +11,7 @@ export const SMOKE_TENANT_SLUG = 'acme';
 export const SMOKE_TENANT_MEMBER_EMAIL = 'kontakt+smoke-member@togethercommunity.app';
 export const SMOKE_TENANT_CREATOR_EMAIL = 'kontakt+smoke-creator@togethercommunity.app';
 export const SMOKE_TENANT_PURCHASE_EMAIL = 'kontakt+smoke-purchase@togethercommunity.app';
+export const SMOKE_TENANT_PURCHASE_USER_ID = 'user-acme-purchase';
 export const SMOKE_TENANT_COURSE_TITLE = 'Acme Course';
 export const SMOKE_TENANT_COURSE_PRODUCT_ID = 'product-acme-course';
 export const DEMO_SEED_PASSWORD = 'demo-password-15';
@@ -160,6 +161,7 @@ export interface SmokeTenantReseedSubject {
    * evidence.
    */
   consentEmails: readonly string[];
+  purchaseEmailUserIds?: readonly string[];
 }
 
 const foreignEmail = (emails: readonly string[]): string | undefined =>
@@ -180,6 +182,9 @@ export const smokeTenantReseedRefusal = (subject: SmokeTenantReseedSubject): str
   }
   if (foreignEmail(subject.consentEmails) !== undefined) {
     return `${SMOKE_TENANT_ID} holds a marketing consent ${outsideSeededAccounts}`;
+  }
+  if (subject.purchaseEmailUserIds?.some((id) => id !== SMOKE_TENANT_PURCHASE_USER_ID) === true) {
+    return 'the purchase account email belongs to another identity';
   }
   return null;
 };

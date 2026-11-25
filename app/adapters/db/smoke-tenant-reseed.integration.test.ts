@@ -9,6 +9,7 @@ import {
   SMOKE_TENANT_CREATOR_EMAIL,
   SMOKE_TENANT_MEMBER_EMAIL,
   SMOKE_TENANT_PURCHASE_EMAIL,
+  SMOKE_TENANT_PURCHASE_USER_ID,
 } from '#core/domain/index.js';
 
 import { createTestDatabase } from './test-database-name.js';
@@ -153,6 +154,85 @@ const addForeignMarketingConsent = async (): Promise<void> => {
        NOW()
      )`,
   );
+};
+
+const userIdFor = async (email: string): Promise<string> => {
+  const found = await client.query<{ id: string }>(`SELECT id FROM "user" WHERE email = $1`, [email]);
+  return found.rows[0]?.id ?? '';
+};
+
+const grantSignIns = async (userId: string, suffix: string): Promise<void> => {
+  await client.query(
+    `INSERT INTO session (id, expires_at, token, created_at, updated_at, user_id)
+     VALUES ($1, NOW() + INTERVAL '7 days', $2, NOW(), NOW(), $3)`,
+    [`session-${suffix}`, `token-${suffix}`, userId],
+  );
+  await client.query(
+    `INSERT INTO passkey (id, public_key, user_id, credential_id, counter, device_type, backed_up)
+     VALUES ($1, 'public-key', $2, $3, 0, 'singleDevice', false)`,
+    [`passkey-${suffix}`, userId, `credential-${suffix}`],
+  );
+  await client.query(
+    `INSERT INTO two_factor (id, secret, backup_codes, user_id) VALUES ($1, 'secret', 'codes', $2)`,
+    [`two-factor-${suffix}`, userId],
+  );
+  await client.query(
+    `INSERT INTO account (id, account_id, provider_id, user_id, created_at, updated_at)
+     VALUES ($1, $2, 'google', $3, NOW(), NOW())`,
+    [`account-google-${suffix}`, `google-${suffix}`, userId],
+  );
+  await client.query(`UPDATE "user" SET two_factor_enabled = true WHERE id = $1`, [userId]);
+};
+
+const signInsOf = async (userId: string) => {
+  const ids = async (table: string): Promise<string[]> => {
+    const rows = await client.query<{ id: string }>(
+      `SELECT id FROM "${table}" WHERE user_id = $1 ORDER BY id`,
+      [userId],
+    );
+    return rows.rows.map(({ id }) => id);
+  };
+  const accounts = await client.query<{ provider_id: string }>(
+    `SELECT provider_id FROM account WHERE user_id = $1 ORDER BY provider_id`,
+    [userId],
+  );
+  const flags = await client.query<{ two_factor_enabled: boolean | null }>(
+    `SELECT two_factor_enabled FROM "user" WHERE id = $1`,
+    [userId],
+  );
+  return {
+    sessions: await ids('session'),
+    passkeys: await ids('passkey'),
+    twoFactors: await ids('two_factor'),
+    providers: accounts.rows.map((row) => row.provider_id),
+    twoFactorEnabled: flags.rows[0]?.two_factor_enabled ?? null,
+  };
+};
+
+const revokedPurchaseAccount = {
+  sessions: [],
+  passkeys: [],
+  twoFactors: [],
+  providers: ['credential'],
+  twoFactorEnabled: false,
+};
+
+const withPurchase = { SMOKE_PURCHASE_PASSWORD: PURCHASE_PASSWORD };
+
+const seedPurchaseAccountWithSignIns = async (): Promise<string> => {
+  runSucceeds('reseed-acme.ts', withPurchase);
+  await grantSignIns(SMOKE_TENANT_PURCHASE_USER_ID, 'purchase');
+  const creatorUserId = await userIdFor(SMOKE_TENANT_CREATOR_EMAIL);
+  await grantSignIns(creatorUserId, 'creator');
+  return creatorUserId;
+};
+
+const untouchedCreatorSignIns = {
+  sessions: ['session-creator'],
+  passkeys: ['passkey-creator'],
+  twoFactors: ['two-factor-creator'],
+  providers: ['credential', 'google'],
+  twoFactorEnabled: true,
 };
 
 beforeAll(async () => {
@@ -355,7 +435,6 @@ describe('smoke tenant reseed', () => {
   }, 180_000);
 
   it('repeats with the purchase account without adding rows', async () => {
-    const withPurchase = { SMOKE_PURCHASE_PASSWORD: PURCHASE_PASSWORD };
     runSucceeds('reseed-acme.ts', withPurchase);
     const firstCounts = await rowCounts();
 
@@ -375,5 +454,66 @@ describe('smoke tenant reseed', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('SMOKE_PURCHASE_PASSWORD must not be the shared demo password');
+  }, 180_000);
+
+  it('seeds the purchase account under its fixed identity', async () => {
+    runSucceeds('reseed-acme.ts', withPurchase);
+
+    expect(await userIdFor(SMOKE_TENANT_PURCHASE_EMAIL)).toBe(SMOKE_TENANT_PURCHASE_USER_ID);
+  }, 180_000);
+
+  it('refuses a purchase email that belongs to another identity and grants it nothing', async () => {
+    await client.query(
+      `INSERT INTO "user" (id, name, email, email_verified, created_at, updated_at)
+       VALUES ('user-someone-else', 'Someone Else', $1, false, NOW(), NOW())`,
+      [SMOKE_TENANT_PURCHASE_EMAIL],
+    );
+    const before = await rowCounts();
+
+    const result = runDatabaseScript('reseed-acme.ts', withPurchase);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('the purchase account email belongs to another identity');
+    expect(await credentialHashFor(SMOKE_TENANT_PURCHASE_EMAIL)).toBe('');
+    expect(await idsOf(`SELECT id FROM tenant_admins WHERE user_id = 'user-someone-else'`)).toEqual([]);
+    expect(await idsOf(`SELECT id FROM "user" WHERE id = '${SMOKE_TENANT_PURCHASE_USER_ID}'`)).toEqual([]);
+    expect(await rowCounts()).toEqual(before);
+  }, 180_000);
+
+  it('ends every sign-in of the purchase account on a reseed with an unchanged password', async () => {
+    const creatorUserId = await seedPurchaseAccountWithSignIns();
+
+    runSucceeds('reseed-acme.ts', withPurchase);
+
+    expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(revokedPurchaseAccount);
+    await expect(verifyPassword({
+      hash: await credentialHashFor(SMOKE_TENANT_PURCHASE_EMAIL),
+      password: PURCHASE_PASSWORD,
+    })).resolves.toBe(true);
+    expect((await purchaseFixtureState()).roles).toEqual(['admin']);
+    expect(await signInsOf(creatorUserId)).toEqual(untouchedCreatorSignIns);
+  }, 180_000);
+
+  it('ends every sign-in and the admin role of the purchase account when the guard refuses', async () => {
+    const creatorUserId = await seedPurchaseAccountWithSignIns();
+    await addForeignMarketingConsent();
+
+    const result = runDatabaseScript('reseed-acme.ts', withPurchase);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('holds a marketing consent outside @together.dev and the smoke accounts');
+    expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(revokedPurchaseAccount);
+    expect((await purchaseFixtureState()).roles).toEqual([]);
+    expect(await signInsOf(creatorUserId)).toEqual(untouchedCreatorSignIns);
+  }, 180_000);
+
+  it('ends every sign-in and the admin role of the purchase account when its password is unset', async () => {
+    const creatorUserId = await seedPurchaseAccountWithSignIns();
+
+    runSucceeds('reseed-acme.ts');
+
+    expect(await signInsOf(SMOKE_TENANT_PURCHASE_USER_ID)).toEqual(revokedPurchaseAccount);
+    expect((await purchaseFixtureState()).roles).toEqual([]);
+    expect(await signInsOf(creatorUserId)).toEqual(untouchedCreatorSignIns);
   }, 180_000);
 });

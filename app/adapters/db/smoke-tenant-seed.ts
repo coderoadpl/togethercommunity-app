@@ -12,6 +12,7 @@ import {
   SMOKE_TENANT_ID,
   SMOKE_TENANT_MEMBER_EMAIL,
   SMOKE_TENANT_PURCHASE_EMAIL,
+  SMOKE_TENANT_PURCHASE_USER_ID,
   SMOKE_TENANT_SLUG,
   salesLinkSchema,
   type AccessItem,
@@ -70,6 +71,8 @@ const CHAPTERS: Chapter[] = [
 
 const ACCESS_ITEMS: AccessItem[] = [{ level: 'course', courseId: COURSE_ID }];
 
+export const SMOKE_TENANT_PURCHASE_ADMIN_ID = `admin-${SMOKE_TENANT_SLUG}-purchase`;
+
 export interface SmokeTenantSeedSummary {
   tenantId: string;
   creator: { email: string; tenantSlug: string };
@@ -89,7 +92,8 @@ const seedPurchaseFixtures = async (
   options: SmokeTenantSeedOptions,
   password: string,
 ): Promise<NonNullable<SmokeTenantSeedSummary['purchase']>> => {
-  const purchaseUserId = await options.users.ensurePassworded(
+  const purchaseUserId = await options.users.ensurePasswordedWithId(
+    SMOKE_TENANT_PURCHASE_USER_ID,
     SMOKE_TENANT_PURCHASE_EMAIL,
     'Purchase Test Staff',
     password,
@@ -98,7 +102,7 @@ const seedPurchaseFixtures = async (
   await db
     .insert(tenantAdmins)
     .values({
-      id: `admin-${SMOKE_TENANT_SLUG}-purchase`,
+      id: SMOKE_TENANT_PURCHASE_ADMIN_ID,
       tenantId: SMOKE_TENANT_ID,
       userId: purchaseUserId,
       role: 'admin',

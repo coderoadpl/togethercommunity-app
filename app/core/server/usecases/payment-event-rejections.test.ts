@@ -184,25 +184,54 @@ describe('recordStripeWebhookOutcome', () => {
     }]);
   });
 
-  it('queues the staff e-mails only on the first refusal of an event', async () => {
-    const { deps, outbox, dispatchEmail } = setup({ staff: [
+  it('a retry after a successful first queue adds no second e-mail', async () => {
+    const { deps, outbox, dispatchEmail, advance } = setup({ staff: [
       { userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: null },
       { userId: 'owner-2', email: 'second-owner@togethercommunity.app', staffRole: 'owner', language: 'en' },
     ] });
     const enqueue = vi.spyOn(deps.emailOutbox, 'enqueue');
-    const staffLookup = deps.tenantAccess === undefined ? undefined : vi.spyOn(deps.tenantAccess, 'listStaffForTenant');
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
+      advance(`2026-11-20T1${String(attempt)}:00:00.000Z`);
       await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
     }
 
-    expect(enqueue).toHaveBeenCalledTimes(2);
-    expect(staffLookup).toHaveBeenCalledTimes(1);
-    expect(dispatchEmail).toHaveBeenCalledTimes(1);
+    expect(enqueue).toHaveBeenCalledTimes(8);
+    expect(new Set(enqueue.mock.calls.map(([input]) => input.id))).toEqual(new Set([
+      `payment-event-rejected:${tenant.id}:evt_paid:0`,
+      `payment-event-rejected:${tenant.id}:evt_paid:1`,
+    ]));
+    expect(dispatchEmail).toHaveBeenCalledTimes(4);
     expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
       [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'owner@togethercommunity.app'],
       [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'second-owner@togethercommunity.app'],
     ]);
+    expect(enqueue.mock.calls.every(([input]) => input.onConflict === 'keep-existing')).toBe(true);
+  });
+
+  it('queueing fails on the first refusal, a retry queues it', async () => {
+    const { deps, store, outbox, logger, dispatchEmail, advance } = setup();
+    const enqueue = deps.emailOutbox.enqueue;
+    deps.emailOutbox.enqueue = async () => { throw new Error('outbox unavailable'); };
+
+    await expect(recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps)).resolves.toBeUndefined();
+
+    expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', attempts: 1, resolvedAt: null }]);
+    expect(outbox.size).toBe(0);
+    expect(dispatchEmail).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(`[payment-webhook-rejected] notify failed tenant=${tenant.id} event=evt_paid`));
+    expect(logger.error).not.toHaveBeenCalledWith(expect.stringContaining('record failed'));
+
+    deps.emailOutbox.enqueue = enqueue;
+    advance('2026-11-20T11:00:00.000Z');
+    await recordStripeWebhookOutcome(tenant, paidCheckout(), refused, deps);
+
+    expect([...store.rows.values()]).toMatchObject([{ eventId: 'evt_paid', attempts: 2 }]);
+    expect([...outbox.values()].map((input) => [input.id, input.to])).toEqual([
+      [`payment-event-rejected:${tenant.id}:evt_paid:0`, 'owner@togethercommunity.app'],
+      [`payment-event-rejected:${tenant.id}:evt_paid:1`, 'admin@togethercommunity.app'],
+    ]);
+    expect(dispatchEmail).toHaveBeenCalledTimes(1);
   });
 
   it('sends the alert to the workspace support address when one is set', async () => {

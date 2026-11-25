@@ -134,11 +134,12 @@ export const recordStripeWebhookOutcome = async (
   deps: PaymentEventRejectionDeps,
 ): Promise<void> => {
   if (!isLivePaidCheckout(event)) return;
-  const guarded = async (action: 'resolve' | 'record', run: () => Promise<void>): Promise<void> => {
+  const guarded = async <T>(action: 'resolve' | 'record' | 'notify', run: () => Promise<T>): Promise<T | undefined> => {
     try {
-      await run();
+      return await run();
     } catch (cause) {
       deps.logger.error(`[payment-webhook-rejected] ${action} failed tenant=${tenant.id} event=${event.id} error=${serializeErrorChain(cause)}`);
+      return undefined;
     }
   };
   if (outcome.ok) {
@@ -151,11 +152,11 @@ export const recordStripeWebhookOutcome = async (
   }
   const error = outcome.error;
   if (error.code === 'conflict') return;
-  await guarded('record', async () => {
-    const checkoutSessionId = event.objectId;
-    if (await hasLiveOrder(tenant.id, checkoutSessionId, deps)) return;
+  const checkoutSessionId = event.objectId;
+  const recorded = await guarded('record', async () => {
+    if (await hasLiveOrder(tenant.id, checkoutSessionId, deps)) return undefined;
     deps.logger.error(`[payment-webhook-rejected] tenant=${tenant.id} event=${event.id} type=${event.type} reason=${error.code}`);
-    const recorded = await deps.paymentEventRejections.record(tenant.id, {
+    const rejection = await deps.paymentEventRejections.record(tenant.id, {
       eventId: event.id,
       eventType: event.type,
       checkoutSessionId,
@@ -165,9 +166,14 @@ export const recordStripeWebhookOutcome = async (
     });
     if (await hasLiveOrder(tenant.id, checkoutSessionId, deps)) {
       await deps.paymentEventRejections.resolve(tenant.id, event.id, deps.clock.nowIso());
-      return;
+      return undefined;
     }
-    if (recorded.attempts === 1 && await notifyStaff(tenant, recorded, deps)) deps.dispatchEmail();
+    return rejection;
+  });
+  if (recorded === undefined) return;
+  // Every refusal re-queues: the outbox ids are fixed per event and recipient, so a retry fills a gap left by a failed or interrupted queue without a second e-mail.
+  await guarded('notify', async () => {
+    if (await notifyStaff(tenant, recorded, deps)) deps.dispatchEmail();
   });
 };
 

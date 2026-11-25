@@ -587,11 +587,12 @@ route records it after the answer is decided, in `payment_event_rejections`
 - Recording never changes the answer: a failed write is only logged, so the
   refusal still makes Stripe retry and an acceptance stays an acceptance.
 
-The workspace staff recipients get one e-mail per event, on its first refusal
-only: the workspace support address when one is set, otherwise every staff
-member once per address (outbox id
-`payment-event-rejected:<tenantId>:<eventId>:<recipient index>`, kept on
-conflict). It says the payment succeeded at Stripe but no order was recorded,
+The workspace staff recipients get one e-mail per event: the workspace support
+address when one is set, otherwise every staff member once per address (outbox
+id `payment-event-rejected:<tenantId>:<eventId>:<recipient index>`, kept on
+conflict). Every refusal while the row is open and no live order exists queues
+the alert again, so a queue that failed after the row was written is filled on
+the next retry, and the fixed outbox id keeps it to one e-mail per recipient. It says the payment succeeded at Stripe but no order was recorded,
 that Stripe retries for up to three days, not to refund or ask the buyer to pay
 again before support has checked it, and the reason.
 
@@ -604,7 +605,9 @@ the CLI reads the same list with `together orders rejected-payments [--limit
 Each recorded refusal also logs one error line for the production health alarm:
 `[payment-webhook-rejected] tenant=<id> event=<id> type=<type> reason=<code>`.
 A failed record or resolve write logs
-`[payment-webhook-rejected] record failed ...` or `... resolve failed ...`.
+`[payment-webhook-rejected] record failed ...` or `... resolve failed ...`, and a
+failure while queueing the staff e-mail after the row was written logs
+`... notify failed ...`.
 
 Rollback: the e-mail is rendered when it is queued and stored as an
 `m2m-transactional` outbox message with source app `payment-event-rejections`

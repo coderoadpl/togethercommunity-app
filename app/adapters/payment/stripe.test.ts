@@ -1104,6 +1104,24 @@ describe('verifyWebhookEvent', () => {
   });
 });
 
+it('uses a supplied checkout credential for creation and cleanup without resolving it again', async () => {
+  const resolve = vi.fn(async (): Promise<never> => { throw new Error('Unexpected credential lookup'); });
+  const clientFactory = vi.fn((key: string) => new Stripe(key, { maxNetworkRetries: 0,
+    httpClient: Stripe.createFetchHttpClient(async () => stripeJson({ id: 'cs_test_fixed', url: 'https://checkout.stripe.test/session' })),
+  }));
+  const payment = createStripePaymentProvider({ resolver: { resolve }, clientFactory });
+  const input = { tenantId: 'tenant-1', mode: 'test' as const, productId: 'product-1', productName: 'Course', priceCents: 1000,
+    currency: 'PLN', successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel' };
+  const credential = { restrictedKey: 'rk_test_fixed' };
+  expect((await payment.createCheckoutSession(input, credential)).ok).toBe(true);
+  expect((await payment.expireCheckoutSession({ tenantId: input.tenantId, mode: 'test', sessionId: 'cs_test_fixed' }, credential)).ok).toBe(true);
+  expect(clientFactory.mock.calls).toEqual([['rk_test_fixed'], ['rk_test_fixed']]);
+  expect(resolve).not.toHaveBeenCalled();
+  expect(await payment.createCheckoutSession(input, { restrictedKey: 'rk_live_wrong' })).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(await payment.expireCheckoutSession({ tenantId: input.tenantId, mode: 'live', sessionId: 'cs_test_fixed' }, credential)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  expect(clientFactory).toHaveBeenCalledTimes(2);
+});
+
 it('selects the sandbox key for test checkout and cancellation', async () => {
   const slots: string[] = [];
   const keys: string[] = [];

@@ -1,6 +1,6 @@
 import type { AppError, PurchaseSmokeCheckout, PurchaseSmokeReceipt, PurchaseSmokeResult, PurchaseSmokeStart, Result } from '#core/domain/index.js';
 
-import type { CheckoutConsentCaptureRepository, Clock, IdGenerator, MemberRepository, ShopManagementKeyRepository, TenantRepository, ProductRepository, ProductPriceRepository, PaymentProvider, OrderRepository, TenantSecretRepository, SecretCrypto, SalesLinkRepository, TenantSecretResolver } from './ports.js';
+import type { CheckoutConsentCaptureRepository, Clock, IdGenerator, MemberRepository, ShopManagementKeyRepository, TenantRepository, ProductRepository, ProductPriceRepository, PaymentProvider, OrderRepository, TenantSecretRepository, SecretCrypto, SalesLinkRepository, TenantSecretResolver, EffectiveTenantConfigReader } from './ports.js';
 import type { CheckoutSnapshotRepository } from './checkout-snapshot-ports.js';
 
 export interface PurchaseSmokeRepository {
@@ -20,6 +20,7 @@ export interface PurchaseSmokeWriteDeps {
   tenantSecrets: TenantSecretRepository;
   secretCrypto: SecretCrypto;
   secretResolver: TenantSecretResolver;
+  effectiveConfig: Pick<EffectiveTenantConfigReader, 'findInheritedSecret'>;
   salesLinks: SalesLinkRepository;
   checkoutSnapshots: CheckoutSnapshotRepository;
   tenants: TenantRepository;

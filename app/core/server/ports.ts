@@ -1293,7 +1293,7 @@ export interface PaymentProvider {
     promotionCodeId?: string;
     couponCheckoutSessionId?: string;
     expiresAt?: string;
-  }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
+  }, credential?: { restrictedKey: string }): Promise<Result<{ url: string; sessionId: string }, AppError>>;
   ensureCouponPromotion?(input: {
     tenantId: string;
     couponId: string;
@@ -1309,7 +1309,7 @@ export interface PaymentProvider {
     mode?: 'live' | 'test';
     tenantId: string;
     sessionId: string;
-  }): Promise<Result<{ expired: true }, AppError>>;
+  }, credential?: { restrictedKey: string }): Promise<Result<{ expired: true }, AppError>>;
   cancelSubscription(input: {
     mode?: 'live' | 'test';
     tenantId: string;

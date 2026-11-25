@@ -75,7 +75,11 @@ const startLocked = async (
     const effective = await deps.secretResolver.resolve(SMOKE_TENANT_ID, name);
     if (effective.ok || effective.error.code !== 'not_found') return err(forbidden('Purchase smoke requires an empty effective live payment slot'));
   }
-  const testKey = await deps.secretResolver.resolve(SMOKE_TENANT_ID, 'stripe.testRestrictedKey');
+  const testSource = await deps.effectiveConfig.findInheritedSecret(SMOKE_TENANT_ID, 'stripe.testRestrictedKey');
+  if (testSource.source !== 'workspace') return err(forbidden('Purchase smoke requires workspace-owned test payments'));
+  const storedTestKey = await deps.tenantSecrets.findByKey(SMOKE_TENANT_ID, 'stripe.testRestrictedKey');
+  if (storedTestKey === null) return err(validation('Purchase smoke test payment credentials are unavailable'));
+  const testKey = deps.secretCrypto.decrypt(storedTestKey);
   const testWebhook = await deps.secretResolver.resolve(SMOKE_TENANT_ID, 'stripe.testWebhookSecret');
   const testEndpoint = await deps.secretResolver.resolve(SMOKE_TENANT_ID, 'stripe.testWebhookEndpointId');
   if (!testKey.ok || stripeModeFromKey(testKey.value) !== 'test' || !testWebhook.ok || !testEndpoint.ok) {
@@ -117,7 +121,12 @@ const startLocked = async (
       confirmationBaseUrl: `${baseUrl}/marketing/confirm` },
   });
   const checkout = await startCheckoutSession(tenant, baseUrl, { ...checkoutInput, clientReference: reference }, selection.value,
-    deps, captureId, { mode: 'test', memberId: member.id });
+    { ...deps, payment: {
+      ...deps.payment,
+      createCheckoutSession: (request) => deps.payment.createCheckoutSession(request, { restrictedKey: testKey.value }),
+      expireCheckoutSession: (request) => deps.payment.expireCheckoutSession(request, { restrictedKey: testKey.value }),
+    } },
+    captureId, { mode: 'test', memberId: member.id });
   if (!checkout.ok) return checkout;
   const parsed = purchaseSmokeCheckoutSchema.safeParse({ ...input, reference, sessionId: checkout.value.sessionId, url: checkout.value.url });
   if (!parsed.success) return err(validation('Provider returned an invalid test checkout'));

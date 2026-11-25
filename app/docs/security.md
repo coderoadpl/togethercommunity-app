@@ -1416,8 +1416,11 @@ Worst case for the platform key alone: create up to 40 fixed-fixture test
 checkouts per UTC day, including pending checkouts, and read only the results
 bound to that key. It cannot select buyers, amounts, products, prices, workspaces
 or modes, configure integrations, read generic orders, request platform refunds
-or create carrier shipments. The test slot must be configured and the live slot
-empty. The fixed buyer is the existing synthetic smoke member; provider events
+or create carrier shipments. The workspace's own test slot must be configured;
+organization-inherited test payments are refused, and the live slot must be
+empty. Checkout creation and cleanup use the exact local credential checked
+inside the checkout transaction, without a second provider credential lookup.
+The fixed buyer is the existing synthetic smoke member; provider events
 with a different buyer are rejected. Test purchases do not reserve live stock
 or grant live access. Applied-event evidence commits with order reconciliation;
 a valid signature or merely claimed event is not an application receipt.

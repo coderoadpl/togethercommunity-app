@@ -15,6 +15,7 @@ import { marketingConsents, members, tenants, shopManagementKeys, shopManagement
 import { lockSmokeFixture } from './smoke-fixture-lock.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const RESTORE_BATCH_SIZE = 500;
 
 export interface SmokeTenantReseedSummary {
   tenantId: string;
@@ -52,20 +53,18 @@ export const runSmokeTenantReseed = async (
       throw new SmokeTenantReseedRefused(`Smoke tenant reseed refused because ${refusal}`);
     }
 
-    const keptKeys = await tx.select().from(shopManagementKeys).where(and(
-      eq(shopManagementKeys.tenantId, SMOKE_TENANT_ID), eq(shopManagementKeys.purpose, 'purchase-smoke'),
-    ));
-    const keyIds = keptKeys.map((key) => key.id);
-    const keptEvents = keyIds.length === 0 ? [] : await tx.select().from(shopManagementKeyEvents).where(and(
+    const keptKeyFilter = and(eq(shopManagementKeys.tenantId, SMOKE_TENANT_ID), eq(shopManagementKeys.purpose, 'purchase-smoke'));
+    const keptKeys = await tx.select().from(shopManagementKeys).where(keptKeyFilter);
+    const keyIds = tx.select({ id: shopManagementKeys.id }).from(shopManagementKeys).where(keptKeyFilter);
+    const keptEvents = await tx.select().from(shopManagementKeyEvents).where(and(
       eq(shopManagementKeyEvents.tenantId, SMOKE_TENANT_ID), inArray(shopManagementKeyEvents.apiKeyId, keyIds),
     ));
-    const keptLimits = keyIds.length === 0 ? [] : await tx.select().from(shopManagementKeyRateLimitBuckets)
+    const keptLimits = await tx.select().from(shopManagementKeyRateLimitBuckets)
       .where(inArray(shopManagementKeyRateLimitBuckets.apiKeyId, keyIds));
-    const keptCheckouts = keyIds.length === 0 ? [] : await tx.select().from(purchaseSmokeCheckouts).where(and(
-      eq(purchaseSmokeCheckouts.tenantId, SMOKE_TENANT_ID), inArray(purchaseSmokeCheckouts.apiKeyId, keyIds),
-    ));
-    const references = keptCheckouts.map((checkout) => checkout.reference);
-    const keptReceipts = references.length === 0 ? [] : await tx.select().from(purchaseSmokeReceipts).where(and(
+    const keptCheckoutFilter = and(eq(purchaseSmokeCheckouts.tenantId, SMOKE_TENANT_ID), inArray(purchaseSmokeCheckouts.apiKeyId, keyIds));
+    const keptCheckouts = await tx.select().from(purchaseSmokeCheckouts).where(keptCheckoutFilter);
+    const references = tx.select({ reference: purchaseSmokeCheckouts.reference }).from(purchaseSmokeCheckouts).where(keptCheckoutFilter);
+    const keptReceipts = await tx.select().from(purchaseSmokeReceipts).where(and(
       eq(purchaseSmokeReceipts.tenantId, SMOKE_TENANT_ID), inArray(purchaseSmokeReceipts.reference, references),
     ));
 
@@ -98,10 +97,20 @@ export const runSmokeTenantReseed = async (
       relativeIso: (days) => new Date(Date.parse(options.nowIso()) + days * DAY_MS).toISOString(),
     });
 
-    if (keptKeys.length > 0) await tx.insert(shopManagementKeys).values(keptKeys);
-    if (keptEvents.length > 0) await tx.insert(shopManagementKeyEvents).values(keptEvents);
-    if (keptLimits.length > 0) await tx.insert(shopManagementKeyRateLimitBuckets).values(keptLimits);
-    if (keptCheckouts.length > 0) await tx.insert(purchaseSmokeCheckouts).values(keptCheckouts);
-    if (keptReceipts.length > 0) await tx.insert(purchaseSmokeReceipts).values(keptReceipts);
+    for (let offset = 0; offset < keptKeys.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(shopManagementKeys).values(keptKeys.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptEvents.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(shopManagementKeyEvents).values(keptEvents.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptLimits.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(shopManagementKeyRateLimitBuckets).values(keptLimits.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptCheckouts.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(purchaseSmokeCheckouts).values(keptCheckouts.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
+    for (let offset = 0; offset < keptReceipts.length; offset += RESTORE_BATCH_SIZE) {
+      await tx.insert(purchaseSmokeReceipts).values(keptReceipts.slice(offset, offset + RESTORE_BATCH_SIZE));
+    }
     return { tenantId: SMOKE_TENANT_ID, wiped, seed };
   });

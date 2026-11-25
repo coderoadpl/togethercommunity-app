@@ -105,6 +105,7 @@ interface EventApplication {
   emailsQueued?: boolean;
   consumed?: boolean;
   paidOrder?: Order;
+  refundedOrder?: Order;
   pendingConsent?: string;
   refundQueued?: boolean;
 }
@@ -950,11 +951,10 @@ const applyPaymentAdjustment = async (
   if (order.mode !== (event.mode ?? 'live')) return ignorePaymentMode(tenant, event, deps, 'order mode mismatch');
 
   if (adjustment.refund != null && !adjustment.refund.full) {
-    if (order.status === 'paid') {
-      await deps.paymentRefunds.markOrderPartiallyRefunded(tenant.id, order.id);
-    }
+    const refundedOrder = order.status === 'paid'
+      ? await deps.paymentRefunds.markOrderPartiallyRefunded(tenant.id, order.id) : null;
     const staffRefundsDue = await noteStaffRefundsDue(tenant, order, event, deps);
-    return ok({ processed: true, ...(staffRefundsDue ? { refundQueued: true } : {}) });
+    return ok({ processed: true, ...(refundedOrder === null ? {} : { refundedOrder }), ...(staffRefundsDue ? { refundQueued: true } : {}) });
   }
 
   const providerSubscriptionId = order.providerObjectIds['subscription'];
@@ -984,10 +984,9 @@ const applyPaymentAdjustment = async (
     }
   }
 
-  if (order.status !== 'refunded') {
-    const refunded = await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id);
-    if (!refunded) return ok({ processed: false });
-  }
+  const refundedOrder = order.status !== 'refunded'
+    ? await deps.paymentRefunds.markOrderRefunded(tenant.id, order.id) : null;
+  if (order.status !== 'refunded' && refundedOrder === null) return ok({ processed: false });
   let refundQueued = false;
   if (order.cancelReason == null) {
     await revokeRefundedAccess(tenant, order, deps);
@@ -1009,7 +1008,7 @@ const applyPaymentAdjustment = async (
       deps,
     );
   }
-  return ok({ processed: true, ...(refundQueued ? { refundQueued } : {}) });
+  return ok({ processed: true, ...(refundedOrder === null ? {} : { refundedOrder }), ...(refundQueued ? { refundQueued } : {}) });
 };
 
 const asyncPaymentFailed = (
@@ -1398,11 +1397,7 @@ export const fulfillStripeWebhook = async (
           await enqueueAutoInvoice(tenant.id, event, deps, transactionDeps);
           if (event.mode === 'test' && provider === 'stripe' && transactionDeps.purchaseSmoke !== undefined
             && (event.type === 'checkout.session.completed' || event.type === 'charge.refunded')) {
-            const ids = event.type === 'checkout.session.completed' ? { checkoutSession: event.objectId ?? '' } : {
-              ...(event.adjustment?.paymentIntentId == null ? {} : { paymentIntent: event.adjustment.paymentIntentId }),
-              ...(event.adjustment?.chargeId == null ? {} : { charge: event.adjustment.chargeId }),
-            };
-            const order = await transactionDeps.paymentRefunds.findOrderByProviderObjectIds(tenant.id, ids, 'test');
+            const order = event.type === 'checkout.session.completed' ? result.value.paidOrder : result.value.refundedOrder;
             const sessionId = order?.providerObjectIds['checkoutSession'];
             if (order?.mode === 'test' && sessionId !== undefined) {
               await transactionDeps.purchaseSmoke.recordAppliedEvent(tenant.id, sessionId, {

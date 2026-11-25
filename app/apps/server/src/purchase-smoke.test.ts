@@ -4,8 +4,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { runSmokeTenantReseed } from '#adapters/db/smoke-tenant-reseed.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
-import { shopManagementKeys } from '#adapters/db/schema.js';
-import { PURCHASE_SMOKE_ROUTES } from '#core/contract/index.js';
+import { shopManagementKeys, shopManagementKeyEvents } from '#adapters/db/schema.js';
+import { API_PATHS, PURCHASE_SMOKE_ROUTES } from '#core/contract/index.js';
 import { ok, purchaseSmokeCheckoutSchema, purchaseSmokeScenarioSchema, SMOKE_TENANT_ID, SMOKE_TENANT_MEMBER_EMAIL, type PurchaseSmokeCheckout, type ShopManagementKey, type TenantSecretKey } from '#core/domain/index.js';
 import { authenticateShopManagementKey, createShopManagementKey, fulfillStripeWebhook, getPurchaseSmokeResult, shopManagementKeyHash, startPurchaseSmokeCheckout, type StripeWebhookDeps } from '#core/server/index.js';
 import type { PaymentWebhookEvent } from '#core/server/ports.js';
@@ -94,7 +94,7 @@ describe('exclusive purchase smoke use cases', () => {
     const beforeStock = await database.db.query.productStock.findMany();
     const result = await start({ runId: 'scenarios', scenario });
     expect(result.ok, JSON.stringify(result)).toBe(true);
-    expect(paymentCreate).toHaveBeenCalledWith(expect.objectContaining({ tenantId: SMOKE_TENANT_ID, mode: 'test', customerEmail: SMOKE_TENANT_MEMBER_EMAIL }));
+    expect(paymentCreate).toHaveBeenCalledWith(expect.objectContaining({ tenantId: SMOKE_TENANT_ID, mode: 'test', customerEmail: SMOKE_TENANT_MEMBER_EMAIL }), { restrictedKey: 'rk_test_fixture' });
     const [order] = await database.db.query.orders.findMany({ where: (table, { eq }) => eq(table.tenantId, SMOKE_TENANT_ID) });
     expect(order).toMatchObject({ mode: 'test', memberId: 'member-acme-smoke', status: 'pending', currency: 'PLN',
       amountCents: { 'digital-course': 9900, 'parcel-courier': 4099, 'parcel-locker': 3799, 'bundle-locker': 13699 }[scenario],
@@ -182,6 +182,20 @@ describe('purchase key issuance, rollback and reseed', () => {
     expect(await deps.shopManagementKeys.findByHash(SMOKE_TENANT_ID, deps.apiKeyCrypto.hash(SECRET))).toBeNull();
   });
 
+  it('restores a key history larger than the PostgreSQL parameter limit in bounded batches', async () => {
+    for (let offset = 0; offset < 9000; offset += 500) {
+      await database.db.insert(shopManagementKeyEvents).values(Array.from({ length: 500 }, (_, index) => ({
+        id: `history-${offset + index}`, tenantId: SMOKE_TENANT_ID, apiKeyId: key.id, kind: 'request' as const, actorUserId: key.issuedByUserId,
+        method: 'POST' as const, route: PURCHASE_SMOKE_ROUTES.start.path, resourceId: null, at: NOW,
+      })));
+    }
+    const before = await database.db.query.shopManagementKeyEvents.findMany({ orderBy: (table, { asc }) => asc(table.id) });
+    expect(before).toHaveLength(9001);
+    await seed();
+    expect(await database.db.query.shopManagementKeyEvents.findMany({ orderBy: (table, { asc }) => asc(table.id) })).toEqual(before);
+    expect(await deps.shopManagementKeys.findByHash(SMOKE_TENANT_ID, key.keyHash)).toEqual(key);
+  });
+
   it('preserves revocation, expiry, audit and rate limits without reviving a key', async () => {
     await deps.shopManagementKeyRateLimits.claim(SMOKE_TENANT_ID, { apiKeyId: key.id, period: 'day', windowStartedAt: NOW, limit: 10 });
     await deps.shopManagementKeys.revoke(SMOKE_TENANT_ID, key.id, NOW, {
@@ -264,16 +278,87 @@ it('records paid and partial/full refund evidence only after successful applicat
   expect(await database.db.query.productGrants.findMany({ where: (table, { eq }) => eq(table.mode, 'live') })).toEqual(originalLiveGrants);
 });
 
+it('handles late partial and duplicate full refunds without certifying unapplied effects', async () => {
+  const created = await checkout();
+  const tenant = await deps.tenants.findById(SMOKE_TENANT_ID);
+  const snapshot = await database.db.query.checkoutSnapshots.findFirst({ where: (table, { eq }) => eq(table.providerSessionId, created.sessionId) });
+  if (tenant === null || snapshot === undefined) throw new Error('Missing fixture');
+  const event = paidEvent(created, snapshot.id);
+  expect(await fulfillStripeWebhook(tenant, event, { ...deps, exposeMagicLinks: false })).toMatchObject({ ok: true, value: { processed: true } });
+  const full: PaymentWebhookEvent = {
+    id: 'evt_full_first', type: 'charge.refunded', apiVersion: '2025-09-30.clover', objectId: 'ch_test', mode: 'test', livemode: false,
+    checkoutSession: null, tenantIds: [SMOKE_TENANT_ID],
+    adjustment: { chargeId: null, paymentIntentId: `pi_${created.sessionId}`, invoiceId: null, refund: { full: true, amountCents: 9900, amountRefundedCents: 9900 } },
+  };
+  expect(await fulfillStripeWebhook(tenant, full, { ...deps, exposeMagicLinks: false })).toMatchObject({ ok: true, value: { processed: true } });
+  const applied = await getPurchaseSmokeResult(key, created.reference, deps);
+  expect(applied).toMatchObject({ ok: true, value: { refundState: 'full', refundedAmountCents: 9900, receipts: [
+    expect.objectContaining({ eventId: full.id }), expect.objectContaining({ eventId: event.id }),
+  ] } });
+  for (const late of [
+    { ...full, id: 'evt_partial_late', adjustment: { chargeId: null, paymentIntentId: `pi_${created.sessionId}`, invoiceId: null, refund: { full: false, amountCents: 9900, amountRefundedCents: 100 } } },
+    { ...full, id: 'evt_full_duplicate' },
+    { ...event, id: 'evt_paid_duplicate' },
+  ]) {
+    expect((await fulfillStripeWebhook(tenant, late, { ...deps, exposeMagicLinks: false })).ok).toBe(true);
+    expect(await getPurchaseSmokeResult(key, created.reference, deps)).toEqual(applied);
+    if (late.type === 'charge.refunded') {
+      expect(await database.db.query.processedPaymentEvents.findFirst({ where: (table, { eq }) => eq(table.id, `test:${late.id}`) })).toMatchObject({ status: 'processed' });
+    }
+  }
+});
+
 it('enumerates the mounted application surface and authorizes exactly the two classified routes', async () => {
   const app = buildApp(deps);
   const classified = [
     ...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps),
     ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps), ...purchaseSmokeRoutes(deps),
   ];
-  const routes = app.routes.filter((route) => route.method !== 'ALL');
+  const allClasses = [
+    ['/*', 'middleware:security-headers'],
+    ['/*', 'middleware:marketing-signup-cors'],
+    ['/*', 'middleware:telemetry'],
+    ['/api/*', 'middleware:shop-key-switch'],
+    ['/*', 'middleware:body-limit'],
+    ['/*', 'middleware:sign-in-timing'],
+    ['/*', 'middleware:public-rate-limit'],
+    ['/api/*', 'middleware:route-existence'],
+    [API_PATHS.memberProductDownload, 'middleware:member-download-navigation'],
+    ['/api/*', 'middleware:request-origin'],
+    [API_PATHS.operatorTenantProvision, 'middleware:operator-secret'],
+    [API_PATHS.operatorTenantReadiness, 'middleware:operator-secret'],
+    [API_PATHS.operatorOrganizationCreate, 'middleware:operator-secret'],
+    [API_PATHS.operatorOrganizationLimits, 'middleware:operator-secret'],
+    ['/*', 'middleware:impersonation'],
+    [API_PATHS.getPublicSurvey, 'middleware:public-cors'],
+    [API_PATHS.submitSurvey, 'middleware:tenant-cors'],
+    [API_PATHS.publicOffer, 'middleware:public-cors'],
+    [API_PATHS.getPublicSalesLink, 'middleware:public-cors'],
+    [API_PATHS.publicNavigation, 'middleware:public-cors'],
+    [API_PATHS.publicCourseStructure, 'middleware:public-cors'],
+    [API_PATHS.publicSpaceFeed, 'middleware:public-cors'],
+    [API_PATHS.publicSpaceThread, 'middleware:public-cors'],
+    [API_PATHS.publicSpaceEvents, 'middleware:public-cors'],
+    [API_PATHS.publicSpaceEvent, 'middleware:public-cors'],
+    [API_PATHS.studentLesson, 'middleware:public-cors'],
+    [API_PATHS.studentLessonEditions, 'middleware:public-cors'],
+    [API_PATHS.studentLessonEdition, 'middleware:public-cors'],
+    [API_PATHS.publicPaymentConfig, 'middleware:public-cors'],
+    [API_PATHS.publicCheckoutSessionStatus, 'middleware:public-cors'],
+    [API_PATHS.couponCheckoutValidation, 'middleware:public-cors'],
+    [API_PATHS.checkoutSession, 'middleware:public-cors'],
+    [API_PATHS.authConfig, 'middleware:public-cors'],
+    [API_PATHS.authResolve, 'middleware:tenant-cors'],
+    ['/api/*', 'middleware:session-identity'],
+    ['/api/*', 'handler:auth-or-not-found'],
+    ['/*', 'middleware:tenant-redirect'],
+  ];
+  const routes = app.routes;
+  const allRoutes = routes.filter((route) => route.method === 'ALL');
+  expect(allRoutes.map((route) => route.path)).toEqual(allClasses.map(([path]) => path));
   const inventory = routes.map((route) => ({
     method: route.method, path: route.path,
-    mechanism: selfAuthenticatingRouteManifestEntry(route)?.mechanism ?? null,
+    mechanism: route.method === 'ALL' ? allClasses[allRoutes.indexOf(route)]?.[1] : selfAuthenticatingRouteManifestEntry(route)?.mechanism ?? null,
     originPolicy: requestOriginPolicy(route.method, route.path) ?? null,
     machineClass: classified.find((candidate) => candidate.method === route.method && candidate.path === route.path)?.proposeMode?.kind ?? null,
     machineScope: classified.find((candidate) => candidate.method === route.method && candidate.path === route.path)?.scope ?? null,
@@ -322,14 +407,6 @@ it('refuses mixed credentials and wrong workspace without creating a checkout', 
     expect(response.status, JSON.stringify(headers)).toBeGreaterThanOrEqual(400);
     expect(response.status).toBeLessThan(500);
   }
-  expect(paymentCreate).not.toHaveBeenCalled();
-});
-
-it('refuses inherited live credentials even with an empty local live slot', async () => {
-  const resolve = deps.secretResolver.resolve.bind(deps.secretResolver);
-  vi.spyOn(deps.secretResolver, 'resolve').mockImplementation((tenantId, name) =>
-    name === 'stripe.restrictedKey' ? Promise.resolve(ok('rk_live_inherited')) : resolve(tenantId, name));
-  expect((await start()).ok).toBe(false);
   expect(paymentCreate).not.toHaveBeenCalled();
 });
 

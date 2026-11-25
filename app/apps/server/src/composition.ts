@@ -1754,7 +1754,7 @@ export const createDeps = (
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
     purchaseSmoke: createPurchaseSmokeRepository(db),
-    purchaseSmokeTransaction: createPurchaseSmokeTransaction(db, { payment, secretCrypto, secretResolver, ids, clock }),
+    purchaseSmokeTransaction: createPurchaseSmokeTransaction(db, { payment, secretCrypto, ids, clock }),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),

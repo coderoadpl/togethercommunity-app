@@ -1959,7 +1959,8 @@ This purpose authorizes exactly two routes:
   from successfully applied provider webhooks.
 
 Checkouts always use the fixed synthetic member, fixture products and TEST
-payments. The live slot must be empty. A workspace-wide 40-checkout daily cap
+payments from the workspace's own stored test slot, never an inherited
+organization slot. The live slot must be empty. A workspace-wide 40-checkout daily cap
 includes pending sessions, and key/run/scenario retries are idempotent. Existing
 purpose keys, expiry, revocation, audit, rate limits and bindings survive the
 operator reseed; orders do not. A result whose order was removed is unavailable,

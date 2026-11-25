@@ -542,8 +542,10 @@ with reseeding. The reseed still removes orders: an old binding is not a fresh
 purchase, and its result is unavailable after that order is removed. Use a new
 run id after reseeding; retained bindings keep the daily cap from resetting.
 
-Receipts are written in the same transaction as successful payment/refund
-application, never on signature acceptance alone. A provider refund tests
+Receipts are written in the same transaction as a payment/refund transition on
+that order, never on signature acceptance or event handling alone. A late partial
+refund after a full refund and a duplicate full refund produce no new receipt.
+A provider refund tests
 inbound refund reconciliation, not staff refund authorization or dispatch.
 The runner needs a separate restricted provider key from this same exclusive
 sandbox, without webhook-configuration permissions. It does not receive the

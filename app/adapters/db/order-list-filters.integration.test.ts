@@ -29,6 +29,7 @@ beforeAll(async () => {
   }
   await database.db.insert(invoices).values([
     { id: 'invoice-workspace', tenantId: 'workspace', orderId: 'company-invoiced', status: 'issued', provider: 'simulated', createdAt: '2026-11-01T11:00:00.000Z' },
+    { id: 'invoice-mismatched-tenant', tenantId: 'other', orderId: 'company-pending', status: 'issued', provider: 'simulated', createdAt: '2026-11-02T11:00:00.000Z' },
     { id: 'invoice-other', tenantId: 'other', orderId: 'other-company', status: 'issued', provider: 'simulated', createdAt: '2026-11-05T11:00:00.000Z' },
   ]);
 });

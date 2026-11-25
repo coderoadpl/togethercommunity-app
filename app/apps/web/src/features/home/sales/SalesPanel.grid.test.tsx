@@ -1,5 +1,6 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, render as renderReact, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { http, HttpResponse } from 'msw';
 import { createMemoryHistory, createRootRoute, createRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,18 +8,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { listLayoutSchema, type ListLayout, type OrderListItem } from '#core/domain/index.js';
 import { z } from 'zod';
 
-import { loadStudioDataGrid } from '../../../components/ui/data-grid/load-studio-data-grid.js';
+import { loadStudioDataGrid, reloadStudioGridPage } from '../../../components/ui/data-grid/load-studio-data-grid.js';
 import { en } from '../../../i18n/en.js';
 import { LanguageProvider } from '../../../i18n/index.js';
 import { pl } from '../../../i18n/pl.js';
-import { renderWithProviders } from '../../../test/render.js';
+import { clearListLayoutCopies } from '../../../theme-mode.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider, type PanelContextValue } from '../panel-context.js';
+import { validateOrdersSearch } from './order-filters.js';
 import { SalesPanel } from './SalesPanel.js';
+import { heldInvoice } from './sales-test-fixtures.js';
 
 vi.mock('../../../components/ui/data-grid/load-studio-data-grid.js', async (importOriginal) => {
   const actual = await importOriginal<{ loadStudioDataGrid: typeof loadStudioDataGrid }>();
-  return { loadStudioDataGrid: vi.fn(actual.loadStudioDataGrid) };
+  return { loadStudioDataGrid: vi.fn(actual.loadStudioDataGrid), reloadStudioGridPage: vi.fn() };
 });
 
 const gridLoader = vi.mocked(loadStudioDataGrid);
@@ -65,10 +68,10 @@ const savedLayout: ListLayout = {
 
 const ownerContext: PanelContextValue = { tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner', memberId: 'm1' }, userId: 'u1', email: 'owner@example.com', emailVerified: true };
 
-interface Recorded { list: URLSearchParams[]; exports: URLSearchParams[]; saves: unknown[]; resets: number }
+interface Recorded { list: URLSearchParams[]; exports: URLSearchParams[]; packing: URLSearchParams[]; saves: unknown[]; resets: number }
 
-const serve = (layout: ListLayout | null, rows: OrderListItem[] = orders): Recorded => {
-  const recorded: Recorded = { list: [], exports: [], saves: [], resets: 0 };
+const serve = (layout: ListLayout | null, rows: OrderListItem[] = orders, total?: number): Recorded => {
+  const recorded: Recorded = { list: [], exports: [], packing: [], saves: [], resets: 0 };
   server.use(
     http.get('/api/panel/list-layouts/orders', () => HttpResponse.json({ ok: true, data: { layout } })),
     http.put('/api/panel/list-layouts/orders', async ({ request }) => {
@@ -81,11 +84,15 @@ const serve = (layout: ListLayout | null, rows: OrderListItem[] = orders): Recor
       const params = new URL(request.url).searchParams;
       recorded.list.push(params);
       const filtered = params.get('billing') === 'requested' ? rows.filter((row) => row.billing != null) : rows;
-      return HttpResponse.json({ ok: true, data: { orders: filtered, total: filtered.length, page: 1, pageSize: 25, sources: [] } });
+      return HttpResponse.json({ ok: true, data: { orders: filtered, total: total ?? filtered.length, page: Number(params.get('page') ?? 1), pageSize: 25, sources: [] } });
     }),
     http.get('/api/orders/export', ({ request }) => {
       recorded.exports.push(new URL(request.url).searchParams);
       return HttpResponse.json({ ok: true, data: { filename: 'sales.csv', mimeType: 'text/csv', content: 'date' } });
+    }),
+    http.get('/api/orders/packing-list', ({ request }) => {
+      recorded.packing.push(new URL(request.url).searchParams);
+      return HttpResponse.json({ ok: true, data: { filename: 'packing-list.csv', mimeType: 'text/csv', content: 'date' } });
     }),
   );
   return recorded;
@@ -94,17 +101,22 @@ const serve = (layout: ListLayout | null, rows: OrderListItem[] = orders): Recor
 const render = async ({ path = '/panel/sales', language = 'en', context = ownerContext }: { path?: string; language?: 'en' | 'pl'; context?: PanelContextValue } = {}) => {
   window.localStorage.setItem('together-language', language);
   const rootRoute = createRootRoute();
-  const route = createRoute({ getParentRoute: () => rootRoute, path: '/panel/sales', component: SalesPanel });
+  const route = createRoute({ getParentRoute: () => rootRoute, path: '/panel/sales', validateSearch: validateOrdersSearch, component: SalesPanel });
   const router = createRouter({ routeTree: rootRoute.addChildren([route]), history: createMemoryHistory({ initialEntries: [path] }) });
   await router.load();
-  const rendered = renderWithProviders(<LanguageProvider><PanelContextProvider value={context}><RouterProvider router={router} /></PanelContextProvider></LanguageProvider>);
-  return { ...rendered, router };
+  const panel = (value: PanelContextValue) => <LanguageProvider><PanelContextProvider value={value}><RouterProvider router={router} /></PanelContextProvider></LanguageProvider>;
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  const withClient = (value: PanelContextValue) => <QueryClientProvider client={queryClient}>{panel(value)}</QueryClientProvider>;
+  const rendered = renderReact(withClient(context));
+  const switchContext = (value: PanelContextValue) => rendered.rerender(withClient(value));
+  return { ...rendered, router, switchContext };
 };
 
 const headers = () => within(screen.getByTestId('sales-grid')).getAllByRole('columnheader', { hidden: true }).map((header) => header.textContent);
 
 beforeEach(() => {
   gridLoader.mockReset();
+  vi.mocked(reloadStudioGridPage).mockClear();
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false, media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined,
     addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
@@ -143,16 +155,16 @@ describe('orders grid', () => {
     expect(screen.queryByText(en.dataGrid.loading)).not.toBeInTheDocument();
   });
 
-  it('shows a localized error and loads the grid again on retry', async () => {
+  it('offers a full reload without changing the sales URL when the grid chunk is missing', async () => {
     const user = userEvent.setup();
-    gridLoader.mockRejectedValueOnce(new Error('Grid chunk unavailable'));
+    gridLoader.mockRejectedValue(new Error('Grid chunk unavailable'));
     serve(null);
-    await render({ language: 'pl' });
+    const { router } = await render({ language: 'pl', path: '/panel/sales?billing=company&search=buyer' });
     expect(await screen.findByText(pl.dataGrid.loadFailed)).toBeInTheDocument();
-    expect(gridLoader).toHaveBeenCalledTimes(1);
-    await user.click(screen.getByRole('button', { name: pl.common.retry }));
-    expect(await screen.findByTestId('sales-grid')).toBeInTheDocument();
-    expect(gridLoader).toHaveBeenCalledTimes(2);
+    await user.click(screen.getByRole('button', { name: pl.dataGrid.reloadPage }));
+    expect(reloadStudioGridPage).toHaveBeenCalledOnce();
+    expect(gridLoader).toHaveBeenCalledOnce();
+    expect(router.state.location.href).toBe('/panel/sales?billing=company&search=buyer');
   });
 
   it('renders phone cards without asking for the grid module', async () => {
@@ -166,7 +178,7 @@ describe('orders grid', () => {
     expect(gridLoader).not.toHaveBeenCalled();
   });
 
-  it('shows the invoice state, never empty, and the invoice data the buyer asked for', async () => {
+  it('shows the invoice state, never empty, and recorded billing data', async () => {
     serve(null, orders.map((row) => (row.id === 'issued' ? { ...row, invoice: issuedInvoice(row.id) } : row)));
     await render();
     const rows = await screen.findAllByTestId('sales-row');
@@ -237,19 +249,74 @@ describe('orders grid', () => {
     ]);
   });
 
-  it('counts the orders bought with an invoice with one click and removes the chip from the keyboard', async () => {
+  it('passes billing to sales exports in both-modes view but only mode and fulfilment to the packing list', async () => {
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sales');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const recorded = serve(null);
+    await render({ path: '/panel/sales?billing=company&fulfilmentStatus=to_pack' });
+    await waitFor(() => expect(recorded.list.at(-1)?.get('billing')).toBe('company'));
+    expect(recorded.list.at(-1)?.has('mode')).toBe(false);
+    await userEvent.click(screen.getByTestId('sales-export-csv'));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
+    await userEvent.click(screen.getByTestId('sales-export-json'));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(2));
+    await userEvent.click(screen.getByTestId('sales-packing-list'));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(3));
+    expect(recorded.exports.map((query) => [...query.entries()].sort())).toEqual([
+      [['billing', 'company'], ['format', 'csv'], ['fulfilmentStatus', 'to_pack']],
+      [['billing', 'company'], ['format', 'json'], ['fulfilmentStatus', 'to_pack']],
+    ]);
+    expect(recorded.packing.map((query) => [...query.entries()].sort())).toEqual([
+      [['format', 'csv'], ['fulfilmentStatus', 'to_pack'], ['mode', 'live']],
+    ]);
+  });
+
+  it('syncs same-route navigation and caps the search shared by the URL, request and export', async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:sales');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const recorded = serve(null, [order('held', { invoice: heldInvoice('held') })], 50);
+    const { router } = await render({ path: '/panel/sales?search=old' });
+    const search = await screen.findByTestId('sales-search');
+    expect(search).toHaveValue('old');
+    const next = await screen.findByRole('button', { name: 'Go to next page' });
+    await user.click(next);
+    await waitFor(() => expect(recorded.list.at(-1)?.get('page')).toBe('2'));
+    const checkbox = await screen.findByRole('checkbox', { name: `${en.sales.sendSelectedToKsef}: held` });
+    await user.click(checkbox);
+    expect(checkbox).toBeChecked();
+
+    await act(async () => { await router.navigate({ to: '/panel/sales', search: { search: 'new' } }); });
+    expect(search).toHaveValue('new');
+    expect(screen.getByRole('checkbox', { name: `${en.sales.sendSelectedToKsef}: held` })).not.toBeChecked();
+    await waitFor(() => expect(recorded.list.at(-1)?.get('search')).toBe('new'));
+    expect(recorded.list.at(-1)?.get('page')).toBe('1');
+
+    const capped = 'x'.repeat(200);
+    await user.clear(search);
+    await user.paste(`  ${capped}extra  `);
+    await waitFor(() => expect(recorded.list.at(-1)?.get('search')).toBe(capped));
+    expect(router.state.location.search).toEqual({ search: capped });
+    await user.click(screen.getByTestId('sales-export-csv'));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalledOnce());
+    expect(recorded.exports.at(-1)?.get('search')).toBe(capped);
+  });
+
+  it('counts orders with recorded billing data with one click and removes the chip from the keyboard', async () => {
     const user = userEvent.setup();
     const recorded = serve(null);
     const { router } = await render();
     await screen.findAllByTestId('sales-row');
-    const quick = screen.getByRole('button', { name: en.sales.boughtWithInvoice });
+    const quick = screen.getByRole('button', { name: en.sales.withBillingData });
     expect(quick).toHaveAttribute('aria-pressed', 'false');
     await user.click(quick);
     await waitFor(() => expect(recorded.list.at(-1)?.get('billing')).toBe('requested'));
     await waitFor(() => expect(screen.getByTestId('studio-grid-count')).toHaveTextContent(en.sales.orderCount({ count: 3 })));
     expect(router.state.location.search).toEqual({ billing: 'requested' });
-    expect(screen.getByRole('button', { name: en.sales.boughtWithInvoice })).toHaveAttribute('aria-pressed', 'true');
-    const chip = screen.getByRole('button', { name: en.dataGrid.removeFilter({ filter: `${en.sales.invoiceData}: ${en.sales.billingRequested}` }) });
+    expect(screen.getByRole('button', { name: en.sales.withBillingData })).toHaveAttribute('aria-pressed', 'true');
+    const chip = screen.getByRole('button', { name: en.dataGrid.removeFilter({ filter: `${en.sales.invoiceData}: ${en.sales.withBillingData}` }) });
     chip.focus();
     await user.keyboard('{Enter}');
     await waitFor(() => expect(recorded.list.at(-1)?.has('billing')).toBe(false));
@@ -315,6 +382,99 @@ describe('orders grid', () => {
     expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).toBeNull();
   });
 
+  it('does not carry local state, cached queries or a pending save to another account in the same workspace', async () => {
+    const user = userEvent.setup();
+    const recorded = serve(null);
+    let account = 'u1';
+    let finishSecondRead: () => void = () => undefined;
+    const secondRead = new Promise<void>((resolve) => { finishSecondRead = resolve; });
+    const readers: string[] = [];
+    server.use(http.get('/api/panel/list-layouts/orders', async () => {
+      readers.push(account);
+      if (account === 'u1') return HttpResponse.json({ ok: true, data: { layout: savedLayout } });
+      await secondRead;
+      return HttpResponse.json({ ok: true, data: { layout: null } });
+    }));
+    const { switchContext } = await render();
+    await waitFor(() => expect(headers().slice(1, 3)).toEqual([en.sales.amount, en.sales.date]));
+    await user.click(screen.getByRole('button', { name: en.dataGrid.columns }));
+    const dialog = await screen.findByRole('dialog', { name: en.dataGrid.columnsDialogTitle });
+    await user.click(within(dialog).getByRole('checkbox', { name: en.sales.date }));
+    expect(headers()).not.toContain(en.sales.date);
+
+    account = 'u2';
+    switchContext({ ...ownerContext, userId: account });
+    try {
+      await waitFor(() => expect(readers).toEqual(['u1', 'u2']));
+      await waitFor(() => expect(headers().slice(1, 3)).toEqual([en.sales.date, en.sales.member]));
+      await waitFor(() => expect(recorded.list.at(-1)?.has('status')).toBe(false));
+      await new Promise((resolve) => setTimeout(resolve, 850));
+      expect(recorded.saves).toEqual([]);
+    } finally {
+      finishSecondRead();
+    }
+  });
+
+  it('waits for a delayed save before resetting and discards a superseded queued save', async () => {
+    const user = userEvent.setup();
+    serve(null);
+    let finishPut: () => void = () => undefined;
+    const delayedPut = new Promise<void>((resolve) => { finishPut = resolve; });
+    const operations: string[] = [];
+    let stored: ListLayout | null = null;
+    server.use(
+      http.get('/api/panel/list-layouts/orders', () => HttpResponse.json({ ok: true, data: { layout: stored } })),
+      http.put('/api/panel/list-layouts/orders', async ({ request }) => {
+        const { layout } = z.object({ layout: listLayoutSchema }).parse(await request.json());
+        operations.push('put');
+        await delayedPut;
+        stored = layout;
+        return HttpResponse.json({ ok: true, data: { layout } });
+      }),
+      http.delete('/api/panel/list-layouts/orders', () => {
+        operations.push('delete');
+        stored = null;
+        return HttpResponse.json({ ok: true, data: { reset: true } });
+      }),
+    );
+    const { unmount } = await render();
+    await screen.findByTestId('sales-grid');
+    await user.click(screen.getByRole('button', { name: en.dataGrid.columns }));
+    const dialog = await screen.findByRole('dialog', { name: en.dataGrid.columnsDialogTitle });
+    try {
+      await user.click(within(dialog).getByRole('checkbox', { name: en.sales.invoiceData }));
+      await waitFor(() => expect(operations).toEqual(['put']), { timeout: 2000 });
+      await user.click(within(dialog).getByRole('checkbox', { name: en.sales.coupon }));
+      await new Promise((resolve) => setTimeout(resolve, 850));
+      await user.click(within(dialog).getByRole('button', { name: en.dataGrid.resetLayout }));
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(operations).toEqual(['put']);
+    } finally {
+      finishPut();
+    }
+    await waitFor(() => expect(operations).toEqual(['put', 'delete']));
+    expect(stored).toBeNull();
+    unmount();
+    await render();
+    await waitFor(() => expect(headers()).toContain(en.sales.invoiceData));
+  });
+
+  it('drops a pending save when sign-out clears layout copies before unmount', async () => {
+    const user = userEvent.setup();
+    const recorded = serve(null);
+    const { unmount } = await render();
+    await screen.findByTestId('sales-grid');
+    await user.click(screen.getByRole('button', { name: en.dataGrid.columns }));
+    const dialog = await screen.findByRole('dialog', { name: en.dataGrid.columnsDialogTitle });
+    await user.click(within(dialog).getByRole('checkbox', { name: en.sales.invoiceData }));
+    expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).not.toBeNull();
+    clearListLayoutCopies();
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    unmount();
+    expect(recorded.saves).toEqual([]);
+    expect(window.localStorage.getItem('together-list-layout:orders:t1:u1')).toBeNull();
+  });
+
   it('keeps changes on screen without saving them while impersonating', async () => {
     const user = userEvent.setup();
     const recorded = serve(null);
@@ -340,7 +500,7 @@ describe('orders grid', () => {
     expect(countSuffix(12)).toBe(countSuffix(5));
     expect(screen.getByRole('columnheader', { name: pl.sales.invoiceData })).toBeInTheDocument();
     expect(screen.getAllByText(pl.sales.noInvoice).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: pl.sales.boughtWithInvoice })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: pl.sales.withBillingData })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: pl.dataGrid.columns })).toBeInTheDocument();
   });
 });

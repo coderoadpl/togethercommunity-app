@@ -373,6 +373,7 @@ export interface Messages {
   dataGrid: {
     loading: string;
     loadFailed: string;
+    reloadPage: string;
     columns: string;
     columnsDialogTitle: string;
     columnsDialogHint: string;
@@ -383,7 +384,6 @@ export interface Messages {
     filter: string;
     addFilter: string;
     filterTitle: (params: { column: string }) => string;
-    clearFilter: string;
     filterChip: (params: { label: string; value: string }) => string;
     removeFilter: (params: { filter: string }) => string;
     clearAll: string;
@@ -1462,10 +1462,9 @@ export interface Messages {
     invoiceWith: string;
     invoiceWithout: string;
     invoiceData: string;
-    billingRequested: string;
     billings: Record<'company' | 'private' | 'none', string>;
     billingHints: Record<'company' | 'private' | 'none', string>;
-    boughtWithInvoice: string;
+    withBillingData: string;
   };
   coupons: {
     title: string;

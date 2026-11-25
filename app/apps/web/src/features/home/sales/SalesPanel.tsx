@@ -6,7 +6,7 @@ import { OrderProductSummary } from './OrderProductSummary.js';
 import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
 import { ChevronIcon } from './refund-icons.js';
-import { hasOrderFilters, ORDER_FILTER_KEYS, ORDER_FILTER_VALIDATORS, orderListFilters, validateOrdersSearch, type OrderFilterKey, type OrderFilters, type OrderSort } from './order-filters.js';
+import { hasOrderFilters, ORDER_FILTER_KEYS, ORDER_FILTER_VALIDATORS, normalizeOrdersSearchText, orderListFilters, validateOrdersSearch, type OrderFilterKey, type OrderFilters, type OrderSort } from './order-filters.js';
 import { lazy, Suspense, useState } from 'react';
 import {
   Alert,
@@ -25,18 +25,17 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import type { GridColDef } from '@mui/x-data-grid';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 
 import type { FulfilmentStatus, ListLayout, OrderExportFile, OrderExportFormat, OrderListItem } from '#core/domain/index.js';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { ORDER_SOURCE_FILTER_PREFIX, SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { GridColumnsDialog } from '../../../components/ui/data-grid/GridColumnsDialog.js';
 import { GridFilterBar, type GridFilterChip } from '../../../components/ui/data-grid/GridFilterBar.js';
-import type { StudioDataGridProps, StudioGridColumn } from '../../../components/ui/data-grid/StudioDataGrid.js';
-import { loadStudioDataGrid } from '../../../components/ui/data-grid/load-studio-data-grid.js';
+import type { StudioDataGridProps, StudioGridColumn, StudioGridLeadingColumn } from '../../../components/ui/data-grid/StudioDataGrid.js';
+import { loadStudioDataGrid, reloadStudioGridPage } from '../../../components/ui/data-grid/load-studio-data-grid.js';
 import { GRID_PAGE_SIZE_OPTIONS, validGridFilters, type GridLayoutSchema } from '../../../components/ui/data-grid/grid-layout.js';
 import { useSavedGridLayout } from '../data-grid/use-saved-grid-layout.js';
 import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
@@ -95,19 +94,17 @@ const OrdersGridSkeleton = ({ rowCount }: { rowCount: number }) => {
   );
 };
 
-const OrdersGridLoadError = ({ onRetry }: { onRetry: () => void }) => {
+const OrdersGridLoadError = () => {
   const t = useTranslations();
-  return <StatusView state={{ kind: 'error', message: t.dataGrid.loadFailed, retry: { label: t.common.retry, onRetry } }} />;
+  return <StatusView state={{ kind: 'error', message: t.dataGrid.loadFailed, retry: { label: t.dataGrid.reloadPage, onRetry: reloadStudioGridPage } }} />;
 };
 
-const renderGridLoadError = (retry: () => void) => (_error: unknown, reset: () => void) => (
-  <OrdersGridLoadError onRetry={() => { retry(); reset(); }} />
-);
+const renderOrdersGridLoadError = () => <OrdersGridLoadError />;
 
 const LazyOrdersGrid = (props: StudioDataGridProps<OrderListItem>) => {
-  const [OrdersGrid, setOrdersGrid] = useState(createLazyOrdersGrid);
+  const [OrdersGrid] = useState(createLazyOrdersGrid);
   return (
-    <ErrorBoundary fallback={renderGridLoadError(() => setOrdersGrid(createLazyOrdersGrid))}>
+    <ErrorBoundary fallback={renderOrdersGridLoadError}>
       <Suspense fallback={<OrdersGridSkeleton rowCount={props.rows.length} />}>
         <OrdersGrid {...props} />
       </Suspense>
@@ -134,13 +131,27 @@ export const SalesPanel = () => {
   const [columnsOpen, setColumnsOpen] = useState(false);
   const products = useQuery(actions.products);
   const coupons = useQuery(actions.couponOptions);
-  const [search, setSearch] = useState(urlSearch.search ?? '');
+  const urlSearchText = urlSearch.search ?? '';
+  const [searchDraft, setSearchDraft] = useState({ url: urlSearchText, value: urlSearchText });
+  const search = searchDraft.url === urlSearchText || normalizeOrdersSearchText(searchDraft.value) === urlSearchText
+    ? searchDraft.value
+    : urlSearchText;
   const [packing, setPacking] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState<OrderExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const debouncedSearch = useDebouncedValue(search);
+  const debouncedSearch = useDebouncedValue(urlSearchText);
+  const [pageSearch, setPageSearch] = useState(debouncedSearch);
+  const searchPending = debouncedSearch !== urlSearchText;
+  if (searchDraft.url !== urlSearchText) {
+    setSearchDraft({ url: urlSearchText, value: search });
+  }
+  if (searchDraft.url !== urlSearchText || pageSearch !== debouncedSearch) {
+    setPageSearch(debouncedSearch);
+    setPage(0);
+    setSelected([]);
+  }
 
   const filters: OrderFilters = hasOrderFilters(urlSearch)
     ? Object.fromEntries(ORDER_FILTER_KEYS.flatMap((key) => (urlSearch[key] === undefined ? [] : [[key, urlSearch[key]]])))
@@ -152,9 +163,10 @@ export const SalesPanel = () => {
 
   const resetPage = () => { setPage(0); setSelected([]); };
   const writeUrl = (nextFilters: OrderFilters, nextSearch: string) => {
+    const value = normalizeOrdersSearchText(nextSearch);
     void navigate({
       to: '/panel/sales',
-      search: { ...nextFilters, ...(nextSearch.trim().length === 0 ? {} : { search: nextSearch.trim() }) },
+      search: { ...nextFilters, ...(value === '' ? {} : { search: value }) },
       replace: true,
     });
   };
@@ -255,11 +267,11 @@ export const SalesPanel = () => {
       case 'productId': return (products.data?.products ?? []).map((product) => ({ value: product.id, label: product.title }));
       case 'kind': return [{ value: 'one_time', label: t.sales.oneTime }, { value: 'recurring', label: t.sales.recurring }];
       case 'couponId': return (coupons.data?.coupons ?? []).map((coupon) => ({ value: coupon.id, label: coupon.code }));
-      case 'source': return [{ value: 'none', label: t.sales.noSource }, ...(orders.data?.sources ?? []).map((value) => ({ value: `value:${value}`, label: value }))];
+      case 'source': return [{ value: 'none', label: t.sales.noSource }, ...(orders.data?.sources ?? []).map((value) => ({ value: `${ORDER_SOURCE_FILTER_PREFIX}${value}`, label: value }))];
       case 'fulfilmentStatus': return [{ value: 'to_pack', label: t.shipping.fulfilmentStatuses.to_pack }, { value: 'shipped', label: t.shipping.fulfilmentStatuses.shipped }];
       case 'invoice': return [{ value: 'with', label: t.sales.invoiceWith }, { value: 'without', label: t.sales.invoiceWithout }];
       case 'billing': return [
-        { value: 'requested', label: t.sales.billingRequested },
+        { value: 'requested', label: t.sales.withBillingData },
         { value: 'company', label: t.sales.billings.company },
         { value: 'private', label: t.sales.billings.private },
         { value: 'none', label: t.sales.billings.none },
@@ -267,7 +279,7 @@ export const SalesPanel = () => {
     }
   };
   const filterValueLabel = (key: OrderFilterKey, value: string): string =>
-    filterOptions(key).find((option) => option.value === value)?.label ?? (key === 'source' && value.startsWith('value:') ? value.slice(6) : value);
+    filterOptions(key).find((option) => option.value === value)?.label ?? (key === 'source' && value.startsWith(ORDER_SOURCE_FILTER_PREFIX) ? value.slice(ORDER_SOURCE_FILTER_PREFIX.length) : value);
   const isFilterKey = (key: string): key is OrderFilterKey => ORDER_FILTER_KEYS.some((candidate) => candidate === key);
   const renderFilters = (keys: readonly string[]) => keys.filter(isFilterKey).map((key) => {
     const value = filters[key] ?? '';
@@ -292,7 +304,7 @@ export const SalesPanel = () => {
       onRemove: () => setFilter(key, ''),
     }];
   });
-  const boughtWithInvoice = filters.billing === 'requested';
+  const withBillingData = filters.billing === 'requested';
 
   const orderLink = (order: OrderListItem) => (
     <SalesDateLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`} aria-label={formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)} data-testid="sales-order-link">
@@ -323,7 +335,7 @@ export const SalesPanel = () => {
   );
   const selectBox = (order: OrderListItem) => order.invoice?.ksef?.state === 'held' ? (
     <SalesCardControl data-testid="sales-ksef-control">
-      <Checkbox checked={selected.includes(order.id)} disabled={sending}
+      <Checkbox checked={selected.includes(order.id)} disabled={sending || searchPending}
         slotProps={{ input: { 'aria-label': `${t.sales.sendSelectedToKsef}: ${order.id}` } }}
         onChange={(event) => setSelected((current) => event.target.checked
           ? [...current, order.id] : current.filter((id) => id !== order.id))} />
@@ -381,7 +393,7 @@ export const SalesPanel = () => {
     column('invoice', { width: 140, filterKeys: billingVisible ? ['invoice'] : ['invoice', 'billing'], renderCell: ({ row }) => invoiceCell(row, !billingVisible) }),
     column('billing', { width: 108, filterKeys: ['billing'], renderCell: ({ row }) => <OrderBillingState order={row} /> }),
   ];
-  const leadingColumns: GridColDef<OrderListItem>[] = canWriteInvoice ? [{
+  const leadingColumns: StudioGridLeadingColumn<OrderListItem>[] = canWriteInvoice ? [{
     field: '__ksef',
     headerName: t.sales.sendSelectedToKsef,
     width: 44,
@@ -428,9 +440,8 @@ export const SalesPanel = () => {
             <SearchField
               value={search}
               onChange={(value) => {
-                setSearch(value);
-                writeUrl(filters, value);
-                resetPage();
+                setSearchDraft({ url: urlSearchText, value });
+                if (normalizeOrdersSearchText(value) !== urlSearchText) writeUrl(filters, value);
               }}
               label={t.sales.searchPlaceholder}
               placeholder={t.sales.searchPlaceholder}
@@ -440,7 +451,7 @@ export const SalesPanel = () => {
           actions: (
             <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
               {canWriteInvoice ? (
-                <Button variant="contained" disabled={sending || selectedHeld.length === 0}
+                <Button variant="contained" disabled={sending || searchPending || selectedHeld.length === 0}
                   onClick={() => void sendSelected(selectedHeld)}>
                   {t.sales.sendSelectedToKsef}
                 </Button>
@@ -455,10 +466,10 @@ export const SalesPanel = () => {
                   ) : null}
                 </Stack>
               ) : null}
-              <Button variant="outlined" disabled={exporting !== null || listFilters.mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
+              <Button variant="outlined" disabled={exporting !== null || searchPending || listFilters.mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
                 {exporting === 'csv' ? t.sales.exporting : t.sales.exportCsv}
               </Button>
-              <Button variant="outlined" disabled={exporting !== null || listFilters.mode === 'test'} onClick={() => void download('json')} data-testid="sales-export-json">
+              <Button variant="outlined" disabled={exporting !== null || searchPending || listFilters.mode === 'test'} onClick={() => void download('json')} data-testid="sales-export-json">
                 {exporting === 'json' ? t.sales.exporting : t.sales.exportJson}
               </Button>
             </Stack>
@@ -501,11 +512,11 @@ export const SalesPanel = () => {
           onClearAll={() => setFilters({})}
           quickActions={(
             <Chip
-              label={t.sales.boughtWithInvoice}
-              color={boughtWithInvoice ? 'primary' : 'default'}
-              variant={boughtWithInvoice ? 'filled' : 'outlined'}
-              aria-pressed={boughtWithInvoice}
-              onClick={() => setFilter('billing', boughtWithInvoice ? '' : 'requested')}
+              label={t.sales.withBillingData}
+              color={withBillingData ? 'primary' : 'default'}
+              variant={withBillingData ? 'filled' : 'outlined'}
+              aria-pressed={withBillingData}
+              onClick={() => setFilter('billing', withBillingData ? '' : 'requested')}
               data-testid="sales-quick-invoice"
             />
           )}

@@ -3416,9 +3416,10 @@ it('preserves the direct checkout NIP on the order and invoice job with an incom
 it.each([
   { companyName: 'Buyer Name', nip: null, address: '', postalCode: '00-001', city: '', country: 'PL' },
   { companyName: 'Buyer Name', nip: null, address: 'Main 1', postalCode: '10115', city: 'Berlin', country: 'DE' },
-])('retains direct checkout billing without a Polish NIP ($country)', async (billing) => {
+])('retains direct checkout address data without an invoice request or a Polish NIP ($country)', async (billing) => {
   const h = await directBundlePayment();
   if (h.event.checkoutSession === null) throw new Error('Missing session');
+  h.event.checkoutSession.metadata.checkoutConsentCaptureId = null;
   h.event.checkoutSession.billing = billing;
   expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
   expect(h.orders[0]?.billing).toEqual(billing);

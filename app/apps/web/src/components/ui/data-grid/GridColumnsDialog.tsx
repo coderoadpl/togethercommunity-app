@@ -19,6 +19,7 @@ export const GridColumnsDialog = ({ open, onClose, labels, layout, onChange, onR
   const columns = layout.columns.filter((column) => labels[column.field] !== undefined);
   const visibleCount = columns.filter((column) => column.visible).length;
   const prefix = useId();
+  const titleId = `${prefix}-title`;
   const buttonId = (field: string, direction: 'up' | 'down') => `${prefix}-${field}-${direction}`;
   const move = (field: string, direction: 'up' | 'down') => {
     onChange(moveGridColumn(layout, field, direction === 'up' ? -1 : 1));
@@ -30,8 +31,8 @@ export const GridColumnsDialog = ({ open, onClose, labels, layout, onChange, onR
     });
   };
   return (
-    <Dialog open={open} onClose={onClose} aria-labelledby="studio-grid-columns-title" fullWidth maxWidth="xs">
-      <DialogTitle id="studio-grid-columns-title">{t.dataGrid.columnsDialogTitle}</DialogTitle>
+    <Dialog open={open} onClose={onClose} aria-labelledby={titleId} fullWidth maxWidth="xs">
+      <DialogTitle id={titleId}>{t.dataGrid.columnsDialogTitle}</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: '0.75rem' }}>{t.dataGrid.columnsDialogHint}</Typography>
         <StudioGridColumnList data-testid="studio-grid-columns">

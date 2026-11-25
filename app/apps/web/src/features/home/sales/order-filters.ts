@@ -4,6 +4,9 @@ import {
   fulfilmentStatusSchema,
   orderBillingFilterSchema,
   orderInvoiceFilterSchema,
+  ORDER_SEARCH_MAX_LENGTH,
+  ORDER_SOURCE_FILTER_PREFIX,
+  ORDER_SOURCE_MAX_LENGTH,
   priceKindSchema,
   stripeModeSchema,
   type OrderListFilters,
@@ -14,7 +17,7 @@ import {
 const ORDER_STATUSES = ['paid', 'pending', 'failed', 'refunded', 'partially_refunded'] as const;
 const orderStatusFilterSchema = z.enum(ORDER_STATUSES);
 const identifierSchema = z.string().min(1).max(200);
-const sourceFilterSchema = z.union([z.literal('none'), z.string().regex(/^value:.{1,200}$/su)]);
+const sourceFilterSchema = z.union([z.literal('none'), z.string().min(ORDER_SOURCE_FILTER_PREFIX.length + 1).max(ORDER_SOURCE_FILTER_PREFIX.length + ORDER_SOURCE_MAX_LENGTH).startsWith(ORDER_SOURCE_FILTER_PREFIX)]);
 
 const ORDER_FILTER_SCHEMAS = {
   mode: stripeModeSchema,
@@ -43,14 +46,17 @@ export const ORDER_FILTER_VALIDATORS: Readonly<Record<string, (value: string) =>
 const searchValue = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : typeof value === 'number' || typeof value === 'boolean' ? String(value) : undefined;
 
+export const normalizeOrdersSearchText = (text: string): string =>
+  text.trim().slice(0, ORDER_SEARCH_MAX_LENGTH).trimEnd();
+
 export const validateOrdersSearch = (search: Record<string, unknown>): OrderSearch => {
   const result: OrderSearch = {};
   for (const key of ORDER_FILTER_KEYS) {
     const value = searchValue(search[key]);
     if (value !== undefined && isOrderFilterValue(key, value)) result[key] = value;
   }
-  const text = searchValue(search['search'])?.trim();
-  if (text !== undefined && text.length > 0) result.search = text.slice(0, 200);
+  const text = normalizeOrdersSearchText(searchValue(search['search']) ?? '');
+  if (text !== '') result.search = text;
   return result;
 };
 
@@ -75,7 +81,7 @@ export const orderListFilters = (filters: OrderFilters, search: string, sort: Or
     ...(productId === undefined ? {} : { productId }),
     ...(kind === undefined ? {} : { kind }),
     ...(couponId === undefined ? {} : { couponId }),
-    ...(source === undefined ? {} : source === 'none' ? { source } : { source: source.slice(6), sourceMatch: 'exact' as const }),
+    ...(source === undefined ? {} : source === 'none' ? { source } : { source: source.slice(ORDER_SOURCE_FILTER_PREFIX.length), sourceMatch: 'exact' as const }),
     ...(fulfilmentStatus === undefined ? {} : { fulfilmentStatus }),
     ...(invoice === undefined ? {} : { invoice }),
     ...(billing === undefined ? {} : { billing }),

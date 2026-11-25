@@ -691,7 +691,6 @@ export default tseslint.config(
               from: ['web-features'],
               allow: [
                 '@mui/material',
-                '@mui/x-data-grid',
                 '@mui/x-tree-view',
                 '@tanstack/react-query',
                 '@tanstack/react-router',

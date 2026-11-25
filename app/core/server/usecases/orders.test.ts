@@ -413,17 +413,17 @@ describe('invoice, billing and sort parameters', () => {
     expect(h.queries).toEqual([]);
   });
 
-  it('hands the export exactly the filters the list applies', async () => {
+  it.each(['csv', 'json'] as const)('exports %s with list filters and sorting but only live orders', async (format) => {
     const filters = {
       status: 'paid', productId: 'p1', kind: 'one_time', couponId: 'coupon-1', fulfilmentStatus: 'to_pack',
       search: 'anna', source: 'none', sourceMatch: 'exact', invoice: 'without', billing: 'company',
       sortBy: 'amountCents', sortDirection: 'asc',
     } as const;
     const h = harness();
-    await listOrders({ identity: identity('owner') }, { ...filters, mode: 'live' }, h.deps);
-    await exportOrders({ identity: identity('owner') }, { ...filters, format: 'csv' }, h.deps);
+    await listOrders({ identity: identity('owner') }, filters, h.deps);
+    await exportOrders({ identity: identity('owner') }, { ...filters, format }, h.deps);
     expect(h.queries).toEqual([
-      { ...filters, mode: 'live', page: 1, pageSize: 20 },
+      { ...filters, page: 1, pageSize: 20 },
       { ...filters, mode: 'live', page: 1, pageSize: 100 },
     ]);
   });

@@ -24,6 +24,8 @@ declare module '@mui/x-data-grid' {
   interface RowPropsOverrides { 'data-testid'?: string }
 }
 
+export type StudioGridLeadingColumn<R extends GridValidRowModel> = GridColDef<R>;
+
 export type StudioGridColumn<R extends GridValidRowModel> = GridColDef<R> & { filterKeys?: readonly string[] };
 
 interface StudioGridMenuContext {
@@ -74,7 +76,7 @@ export interface StudioDataGridProps<R extends GridValidRowModel> {
   label: string;
   rows: readonly R[];
   getRowId: (row: R) => string;
-  leadingColumns?: readonly GridColDef<R>[];
+  leadingColumns?: readonly StudioGridLeadingColumn<R>[];
   columns: readonly StudioGridColumn<R>[];
   layout: GridLayout;
   onLayoutChange: (layout: GridLayout) => void;

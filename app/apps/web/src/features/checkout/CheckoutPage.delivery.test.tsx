@@ -29,6 +29,7 @@ const offer = (deliveryMethod: 'pickup' | 'shipping') => ({
 const shippingRates = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', deliveryEstimateDays: { min: 1, max: 2 } },
   { id: 'courier', label: 'Courier', amountCents: 1999, carrier: 'other', pickupPoint: 'none' },
+  { id: 'inpost-courier', label: 'InPost courier', amountCents: 2299, carrier: 'inpost', pickupPoint: 'none' },
 ];
 
 const serve = (input: {
@@ -110,6 +111,23 @@ describe('checkout delivery step', () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ shipping: { rateId: 'courier' } });
     expect(bodies[0]).not.toHaveProperty('shipping.pickupPoint');
+  });
+
+  it('describes the Polish phone requirement only for the selected InPost option', async () => {
+    serve({});
+    renderCheckout();
+    const delivery = await screen.findByRole('radiogroup', { name: en.shipping.deliveryHeading });
+    expect(delivery).not.toHaveAccessibleDescription();
+
+    await userEvent.click(within(delivery).getByRole('radio', { name: lockerOption }));
+    expect(delivery).toHaveAccessibleDescription('InPost parcel lockers require a Polish mobile number (9 digits).');
+
+    await userEvent.click(within(delivery).getByRole('radio', { name: /^InPost courier/u }));
+    expect(delivery).toHaveAccessibleDescription('InPost courier delivery requires a Polish mobile number (9 digits).');
+
+    await userEvent.click(within(delivery).getByRole('radio', { name: /^Courier/u }));
+    expect(delivery).not.toHaveAccessibleDescription();
+    expect(screen.queryByText(/require.*a Polish mobile number/u)).not.toBeInTheDocument();
   });
 
   it('loads the parcel locker map in the picker on demand and fills the code from the point chosen on the map', async () => {

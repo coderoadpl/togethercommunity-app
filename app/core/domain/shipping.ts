@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
 import { appError, validation, type AppError } from './errors.js';
+import { DEFAULT_LANGUAGE, type Language } from './language.js';
 import type { ProductPersonalization } from './personalization.js';
 import type { ProductCompliance } from './product-compliance.js';
 import { err, ok, type Result } from './result.js';
+import { inpostCheckoutPhoneHintsPl } from './shipping.pl.js';
 
 export const SHIPPING_ALLOWED_COUNTRIES = ['PL'] as const;
 
@@ -36,6 +38,19 @@ const shippingVatRateSchema = z.union([z.literal(5), z.literal(8), z.literal(23)
 export const shippingCarrierSchema = z.enum(['inpost', 'other']);
 
 export type ShippingCarrier = z.infer<typeof shippingCarrierSchema>;
+
+const inpostCheckoutPhoneHintsEn = {
+  locker: 'InPost parcel lockers require a Polish mobile number (9 digits).',
+  courier: 'InPost courier delivery requires a Polish mobile number (9 digits).',
+};
+
+export const inpostCheckoutPhoneHint = (
+  carrier: ShippingCarrier,
+  delivery: 'locker' | 'courier',
+  language: Language = DEFAULT_LANGUAGE,
+): string | null => carrier === 'inpost'
+  ? (language === 'pl' ? inpostCheckoutPhoneHintsPl : inpostCheckoutPhoneHintsEn)[delivery]
+  : null;
 
 const pickupPointKindSchema = z.enum(['none', 'inpost_locker']);
 

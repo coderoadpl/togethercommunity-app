@@ -194,6 +194,7 @@ export const stripeCheckoutSessionParams = (
     else for (let offset = 0; offset < productList.length; offset += 500) productMetadata[`productIds_${offset / 500}`] = productList.slice(offset, offset + 500);
   }
   const terms = input.directCheckout ?? input.stripeTerms;
+  const phoneHint = input.shipping?.phoneHint;
   const metadata = {
     ...attribution,
     ...(input.directCheckout === undefined ? {} : { directCheckout: 'true' }),
@@ -229,12 +230,13 @@ export const stripeCheckoutSessionParams = (
     } : {
       subscription_data: { billing_mode: { type: 'classic' as const }, metadata: { tenantId: input.tenantId } },
     }),
-    ...(terms === undefined ? {} : {
-      consent_collection: { terms_of_service: 'required' as const },
+    ...(terms === undefined ? {} : { consent_collection: { terms_of_service: 'required' as const } }),
+    ...(terms === undefined && phoneHint === undefined ? {} : {
       custom_text: {
-        terms_of_service_acceptance: { message: terms.termsAcceptanceMessage },
+        ...(terms === undefined ? {} : { terms_of_service_acceptance: { message: terms.termsAcceptanceMessage } }),
         ...(input.promotionCodeId === undefined || input.directCheckout?.disclosureMessage === undefined
           ? {} : { submit: { message: input.directCheckout.disclosureMessage } }),
+        ...(phoneHint === undefined ? {} : { shipping_address: { message: phoneHint } }),
       },
     }),
     ...(input.directCheckout === undefined ? {} : {

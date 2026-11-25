@@ -1805,6 +1805,23 @@ it('collects a Polish shipping address and phone with exactly one inclusive fixe
   } }]);
 });
 
+it('shows a delivery phone hint alongside address collection without replacing the terms text', () => {
+  const phoneHint = 'InPost parcel lockers require a Polish mobile number (9 digits).';
+  const input = {
+    tenantId: 'tenant-a', productId: 'accessory', productName: 'Printed accessory', priceCents: 4900, currency: 'PLN',
+    successUrl: 'https://example.test/success', cancelUrl: 'https://example.test/cancel',
+    shipping: { allowedCountries: ['PL'], phone: true as const, phoneHint, option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN' } },
+  };
+  expect(stripeCheckoutSessionParams(input).custom_text).toEqual({ shipping_address: { message: phoneHint } });
+  const params = stripeCheckoutSessionParams({
+    ...input,
+    stripeTerms: { termsUrl: 'https://example.test/terms', privacyUrl: 'https://example.test/privacy', termsAcceptanceMessage: 'I accept the terms.' },
+  });
+  expect(params.custom_text).toEqual({ shipping_address: { message: phoneHint }, terms_of_service_acceptance: { message: 'I accept the terms.' } });
+  expect(params.consent_collection).toEqual({ terms_of_service: 'required' });
+  expect(params.phone_number_collection).toEqual({ enabled: true });
+});
+
 it('leaves shipping collection out of sessions without delivery', () => {
   const params = stripeCheckoutSessionParams({
     tenantId: 'tenant-a', productId: 'course', productName: 'Course', priceCents: 4900, currency: 'PLN',

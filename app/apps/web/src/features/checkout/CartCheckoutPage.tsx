@@ -510,6 +510,7 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
             checkLocker={checkLocker}
             currency={currency}
             language={language}
+            showPhoneHint={stripeConfigured}
             geowidget={paymentConfig.data.inpostGeowidgetWithheld ? { status: 'withheld_for_staff' } : geowidgetAccess({
               token: paymentConfig.data.inpostGeowidgetToken,
               staffSession: paymentConfig.data.canTest,

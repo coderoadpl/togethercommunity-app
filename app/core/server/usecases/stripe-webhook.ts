@@ -8,6 +8,7 @@ import {
   internal,
   nextPeriodEnd,
   normalizeEmail,
+  normalizeShipxPhone,
   ok,
   outOfStockRefundJob,
   isShippingLine,
@@ -730,6 +731,10 @@ const applyCheckoutCompleted = async (
     const cancelled = await recordOutOfStockCancellation(tenant, persistedOrder ?? paidOrder, { buyerEmail: normalizeEmail(email), buyerLanguage: metadata.language ?? null, shortProductIds }, deps);
     if (!cancelled.ok) return cancelled;
     return ok({ processed: true, paidOrder, emailsQueued: cancelled.value.emailsQueued, refundQueued: cancelled.value.refundQueued });
+  }
+
+  if (shipping?.carrier === 'inpost' && (shipping.phone === null || normalizeShipxPhone(shipping.phone) === null)) {
+    deps.logger.warn(`[stripe-webhook] tenant=${tenant.id} event=${event.id} order=${paidOrder.id} reason=invalid_inpost_phone`);
   }
 
   const stockCommit = event.mode === 'test'

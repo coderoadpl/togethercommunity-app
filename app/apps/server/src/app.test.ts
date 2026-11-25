@@ -9459,10 +9459,10 @@ describe('checkout consent ordering', () => {
     };
     const deliver = async (signatureHeader: string | undefined, configure: (base: AppDeps) => void = () => undefined) => {
       const base = deps({ tenants: [acme] });
-      base.payment = createStripePaymentProvider({
+      base.payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
         resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
         clientFactory: () => { throw new Error('Unexpected Stripe API client'); },
-      });
+      }));
       base.tenantAccess = {
         ...base.tenantAccess,
         listStaffForTenant: async () => [{ userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: 'en' }],

@@ -4786,7 +4786,7 @@ export const SalesMemberEmail = styled('span')(({ theme }) => ({
 }));
 export const OrderDetailValue = styled(Typography)<AsElement>(({ theme }) => ({ minWidth: 0, [theme.breakpoints.up('sm')]: { textAlign: 'right' } }));
 export const SalesFitCell = styled(TableCell)({ width: '1%' });
-export const SalesCouponCode = styled('span')({ display: 'block', maxWidth: '10rem', overflowWrap: 'anywhere' });
+export const SalesCouponCode = styled('span')({ display: 'block', maxWidth: '10rem', overflowWrap: 'break-word' });
 export const SalesProductCell = styled(TableCell)(({ theme }) => ({ width: '100%', minWidth: '10rem', [theme.breakpoints.up('xl')]: { minWidth: '14rem' } }));
 export const SalesDateLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'inline-flex',

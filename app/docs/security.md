@@ -1400,38 +1400,3 @@ names sent, Meta's trace id only when it is at most 100 letters, digits, `_` or
 or `invalid_tenant`); dispatch failures log a fixed message without request or
 response data. Consent, retention and
 retry rules are described in [Meta Conversions API](integrations/meta-capi.md).
-
-## Staging test-mode webhook bypass
-
-A staging deployment behind deployment protection receives the payment
-provider's test-mode events only when the registered endpoint URL carries the
-project's automation bypass secret as a query parameter
-([Protection Bypass for Automation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation)).
-The payment configuration appends it (`apps/server/src/stripe-test-webhook-query.ts`,
-`core/server/usecases/configure-stripe.ts`) only when all of these hold:
-
-- `STRIPE_TEST_WEBHOOK_PROTECTION_BYPASS=true`, `APP_ENV=staging` and a
-  `VERCEL_ENV` other than `production`;
-- `VERCEL_AUTOMATION_BYPASS_SECRET` is present;
-- the SHA-256 digest of the supplied restricted key equals
-  `STRIPE_TEST_WEBHOOK_BYPASS_KEY_SHA256`, so the endpoint can only be created
-  in the one provider sandbox whose key the owner pinned;
-- the workspace is `tenant-acme` and the slot is the test slot.
-
-Otherwise the plain URL is registered. The URL returned to staff omits the
-query, and a rejected registration that carried it reports a fixed message
-instead of the provider's text. Staging is a preview-class deployment, so the
-switch and the digest must be scoped to the `staging` branch in the hosting
-settings; a pull request preview must not inherit them.
-
-Once registered, the value is stored in the pinned sandbox's webhook endpoint
-list, readable by every user of that sandbox and every key with Webhook
-Endpoints read access there, including the restricted key the purchase run
-uses. Because the query arrives on every webhook request, it may also appear in
-the sandbox's delivery and request logs, the hosting platform's request logs and
-any log drain attached to them, depending on how each records query strings. Whoever reads it can pass the deployment protection of every
-deployment of the project until the secret is rotated in the hosting project
-settings, which also requires updating the repository copy the staging smoke
-uses. Turning the switch off and re-saving the test key registers the plain
-URL again, but does not take back a value already read; only rotation does. See
-[Purchase end-to-end on a deployed host](observability.md#purchase-end-to-end-on-a-deployed-host).

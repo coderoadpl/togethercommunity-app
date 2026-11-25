@@ -69,7 +69,6 @@ export const shopIntegrationRoutes = (deps: AppDeps): readonly ShopMachineRoute[
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
-        testWebhookQuery: deps.stripeTestWebhookQuery,
       }));
     },
   },

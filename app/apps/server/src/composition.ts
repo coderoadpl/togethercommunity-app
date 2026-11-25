@@ -437,7 +437,6 @@ import { type Env, isLocalDevelopmentEnvironment, isLocalHostname } from './env.
 import { selectPublicRateLimitPolicies, wiresRealPickupPointDirectory, type PublicRateLimitPolicies } from './public-rate-limit.js';
 import { lookupBudgetSpentOnError } from './parcel-locker-budget.js';
 import { createRealtimeTransport } from './realtime-transport.js';
-import { stripeTestWebhookQuery } from './stripe-test-webhook-query.js';
 import { APP_VERSION } from './version.js';
 
 interface DevEndpoints {
@@ -499,7 +498,6 @@ interface SweepTick {
 }
 
 export interface AppDeps {
-  stripeTestWebhookQuery?: ((restrictedKey: string) => string | null) | null;
   metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
@@ -1818,7 +1816,6 @@ export const createDeps = (
     platformHost,
     singleTenantMode,
     appBaseUrl: env.APP_BASE_URL,
-    stripeTestWebhookQuery: stripeTestWebhookQuery(env),
     deploymentAuthOrigins,
     ...(isLocalDevelopmentEnvironment(env) && new URL(env.APP_BASE_URL).origin === 'http://localhost:48730'
       ? { developmentWebOrigin: 'http://localhost:48731' } : {}),

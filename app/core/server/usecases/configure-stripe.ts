@@ -2,7 +2,6 @@ import {
   configureStripeInputSchema,
   err,
   integrationUnavailable,
-  isSmokeTenant,
   ok,
   stripeModeFromKey,
   validation,
@@ -20,7 +19,6 @@ import { buildTenantSecret, stripeWebhookUrl, type TenantSecretDeps } from './te
 
 export interface ConfigureStripeDeps extends TenantSecretDeps, TenantUrlDeps {
   payment: PaymentProvider;
-  testWebhookQuery?: ((restrictedKey: string) => string | null) | null | undefined;
 }
 
 export interface ConfigureStripeResult {
@@ -50,17 +48,12 @@ export const configureStripe = async (
   const deleteWebhookEndpoint = deps.payment.deleteWebhookEndpoint;
   const webhookUrl =
     stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps) + (mode === 'test' ? '?mode=test' : '');
-  const testWebhookQuery = mode === 'test' && isSmokeTenant(tenant.value)
-    ? deps.testWebhookQuery?.(parsed.data.restrictedKey) ?? null
-    : null;
   const configured = await deps.payment.configureWebhook({
     tenantId: tenant.value,
     restrictedKey: parsed.data.restrictedKey,
-    webhookUrl: testWebhookQuery === null ? webhookUrl : `${webhookUrl}&${testWebhookQuery}`,
+    webhookUrl,
   });
-  if (!configured.ok) {
-    return testWebhookQuery === null ? configured : err(validation('Stripe rejected the test webhook registration'));
-  }
+  if (!configured.ok) return configured;
   const cleanup = async (): Promise<void> => {
     await deleteWebhookEndpoint({
       restrictedKey: parsed.data.restrictedKey,

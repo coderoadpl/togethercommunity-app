@@ -118,6 +118,8 @@ const CLOCK_SKEW_MS = 30_000;
 
 const BYPASS_HEADER = 'x-vercel-protection-bypass';
 
+const RUN_ORDERS = 3;
+
 const TEST_COUPON_REFUSAL = 'Test checkout requires a paid price without a coupon';
 
 const TEST_SESSION_COOKIE = 'together_stripe_test';
@@ -300,8 +302,8 @@ export const runPurchaseE2e = async (
 
   const underCap = await run.step('test-order-cap', async () => {
     const { total } = await listTestOrders();
-    if (total >= options.testOrderCap) {
-      throw new Error(`the workspace holds ${String(total)} test orders, the cap is ${String(options.testOrderCap)}; reseed the fixture workspace before the next run`);
+    if (total + RUN_ORDERS > options.testOrderCap) {
+      throw new Error(`the workspace holds ${String(total)} test orders and this run adds ${String(RUN_ORDERS)}, above the cap of ${String(options.testOrderCap)}; reseed the fixture workspace before the next run`);
     }
     return true;
   });

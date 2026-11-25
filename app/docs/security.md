@@ -1182,13 +1182,13 @@ switch and the digest must be scoped to the `staging` branch in the hosting
 settings; a pull request preview must not inherit them.
 
 Once registered, the value is stored in the pinned sandbox's webhook endpoint
-list and its event delivery and request logs, readable by every user of that
-sandbox and every key with Webhook Endpoints read access there, including the
-restricted key the purchase run uses; and, because the query arrives on every
-webhook request, in the hosting platform's request logs and any log drain
-attached to them. Whoever reads it can pass the deployment protection of every
+list, readable by every user of that sandbox and every key with Webhook
+Endpoints read access there, including the restricted key the purchase run
+uses. Because the query arrives on every webhook request, it may also appear in
+the sandbox's delivery and request logs, the hosting platform's request logs and
+any log drain attached to them, depending on how each records query strings. Whoever reads it can pass the deployment protection of every
 deployment of the project until the secret is rotated in the hosting project
 settings, which also requires updating the repository copy the staging smoke
 uses. Turning the switch off and re-saving the test key registers the plain
-URL again. See
+URL again, but does not take back a value already read; only rotation does. See
 [Purchase end-to-end on a deployed host](observability.md#purchase-end-to-end-on-a-deployed-host).

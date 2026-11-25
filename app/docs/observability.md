@@ -288,8 +288,10 @@ so its password is also the repository secret `SMOKE_CREATOR_PASSWORD`, equal to
 the deployment's `SMOKE_CREATOR_PASSWORD`. That account owns the production
 fixture workspace `tenant-acme`: whoever reads the secret can change that
 workspace's settings and payment configuration, including saving a live key in
-its live slot, and create its keys, until the next deploy reseeds the workspace;
-it reaches no other workspace. An admin role cannot replace it, because the run
+its live slot, and create its keys; it reaches no other workspace. The next
+deploy's reseed undoes those changes but sets the same password again, so taking
+the access back means rotating the password in both places and ending the
+account's open sessions. An admin role cannot replace it, because the run
 configures the payment slot and the delivery settings, which only an owner may
 write. Setting the repository secret is the owner's decision to accept this.
 
@@ -499,7 +501,7 @@ provider calls.
 
 1. `target-identity` — `/api/health` reports the environment the run targets.
 2. `staff-sign-in` — the fixture owner signs in and resolves `tenant-acme` as owner or admin.
-3. `test-order-cap` — fewer test orders than `PURCHASE_E2E_TEST_ORDER_CAP` (default 300) exist; otherwise nothing is written.
+3. `test-order-cap` — the run's three orders still fit under `PURCHASE_E2E_TEST_ORDER_CAP` (default 300); otherwise nothing is written.
 4. `test-slot-configure` — saves the restricted test key in the test slot, which registers a fresh `?mode=test` webhook endpoint, and confirms the live slot is empty. The prod-smoke reseed wipes the workspace's secrets, so every run configures it again.
 5. `fixtures` — ensures the `purchase-e2e-locker` delivery rate (12.99 PLN, parcel locker), the `purchase-e2e-parcel` physical product (25.00 PLN, one active one-time price, stock tracking), a 23% VAT rate on `Acme Course`, the `purchase-e2e-bundle` sales link (parcel and `Acme Course`) and the terms and privacy URLs the sales-link checkout needs.
 6. `coupon-refused-in-test-mode` — a coupon in a test checkout is refused with the test-mode refusal (`Test checkout requires a paid price without a coupon`), not with any other validation error.
@@ -579,9 +581,11 @@ need their own provider sandbox: a test-slot configuration deletes every
 endpoint of the workspace and slot in its sandbox, and both hosts use
 `tenant-acme`.
 
-The script reads only the names of the environment it targets and refuses to
+The script uses only the values of the environment it targets and refuses to
 start when one of them is missing; it never fills a production value from a
-staging one or the reverse, and it refuses one sandbox key set for both:
+staging one or the reverse. It reads the other environment's key name only to
+refuse one key set for both, which it can detect only when both are visible to
+the same process:
 
 | Environment | Variables the script reads |
 | --- | --- |

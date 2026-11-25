@@ -2806,6 +2806,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
         secretCrypto: deps.secretCrypto,
         ids: deps.ids,
         clock: deps.clock,
+        logger: deps.logger,
       },
     ));
   });

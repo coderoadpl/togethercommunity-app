@@ -41,7 +41,7 @@ import { ListSection, PanelPage, StatusView } from '../../../components/layout/i
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatDateTime, formatPrice, formatTime } from '../../../lib/format.js';
-import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesGridMember, SalesOrderCard, SalesOrderCardList, STUDIO_GRID_CONTROL_CLASS, StudioGridCellStack, StudioGridChipRow, StudioGridEllipsis, StudioGridNoWrap, VisuallyHidden } from '../../../theme.js';
+import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesGridMember, SalesOrderCard, SalesOrderCardList, STUDIO_GRID_CONTROL_CLASS, STUDIO_GRID_WRAP_CHIPS_CLASS, StudioGridCellStack, StudioGridChipRow, StudioGridEllipsis, StudioGridNoWrap, VisuallyHidden } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const ORDER_COLUMNS = ['date', 'member', 'product', 'kind', 'amount', 'coupon', 'source', 'status', 'fulfilment', 'invoice', 'billing'] as const;
@@ -316,23 +316,23 @@ export const SalesPanel = () => {
     ({ field, headerName: columnLabels[field], sortable: false, ...definition });
   const columns: StudioGridColumn<OrderListItem>[] = [
     column('date', { width: 104, sortable: true, renderCell: ({ row }) => orderLink(row) }),
-    column('member', { flex: 1.5, minWidth: 96, maxWidth: 288, renderCell: ({ row }) => (
+    column('member', { flex: 1.75, minWidth: 96, maxWidth: 288, renderCell: ({ row }) => (
       <SalesGridMember title={orderMemberTitle(row, t.deletedContent.member)}><OrderMemberIdentity order={row} /></SalesGridMember>
     ) }),
-    column('product', { flex: 4, minWidth: 134, filterKeys: ['productId'], renderCell: ({ row }) => (
+    column('product', { flex: 1, minWidth: 134, filterKeys: ['productId'], renderCell: ({ row }) => (
       <Box sx={{ minWidth: 0, width: '100%' }}>
         <OrderProductSummary order={row} />
         {!sourceVisible && orderSource(row) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(row)}</Typography> : null}
       </Box>
     ) }),
     column('kind', { width: 108, filterKeys: ['kind'], renderCell: ({ row }) => <StudioGridNoWrap>{row.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</StudioGridNoWrap> }),
-    column('amount', { width: 104, sortable: true, filterKeys: ['mode'], renderCell: ({ row }) => <StudioGridNoWrap>{formatPrice(row.amountCents, row.currency, language)}</StudioGridNoWrap> }),
+    column('amount', { width: 108, sortable: true, filterKeys: ['mode'], renderCell: ({ row }) => <StudioGridNoWrap>{formatPrice(row.amountCents, row.currency, language)}</StudioGridNoWrap> }),
     column('coupon', { flex: 0.6, minWidth: 104, maxWidth: 180, filterKeys: ['couponId'], renderCell: ({ row }) => <StudioGridEllipsis title={row.couponCode ?? undefined} data-testid="sales-row-coupon">{row.couponCode ?? '—'}</StudioGridEllipsis> }),
     column('source', { flex: 0.6, minWidth: 112, maxWidth: 200, filterKeys: ['source'], renderCell: ({ row }) => <StudioGridEllipsis title={orderSource(row) || undefined}>{orderSource(row) || '—'}</StudioGridEllipsis> }),
-    column('status', { width: 160, filterKeys: ['status'], renderCell: ({ row }) => <StudioGridChipRow>{statusChips(row)}</StudioGridChipRow> }),
-    column('fulfilment', { width: 126, filterKeys: ['fulfilmentStatus'], renderCell: ({ row }) => fulfilmentChip(row) ?? '—' }),
-    column('invoice', { flex: 1.5, minWidth: 120, maxWidth: 220, filterKeys: ['invoice'], renderCell: ({ row }) => invoiceCell(row) }),
-    column('billing', { flex: 1.2, minWidth: 92, maxWidth: 150, filterKeys: ['billing'], renderCell: ({ row }) => <OrderBillingState order={row} /> }),
+    column('status', { width: 108, cellClassName: STUDIO_GRID_WRAP_CHIPS_CLASS, filterKeys: ['status'], renderCell: ({ row }) => <StudioGridChipRow>{statusChips(row)}</StudioGridChipRow> }),
+    column('fulfilment', { width: 128, filterKeys: ['fulfilmentStatus'], renderCell: ({ row }) => fulfilmentChip(row) ?? '—' }),
+    column('invoice', { width: 140, filterKeys: ['invoice'], renderCell: ({ row }) => invoiceCell(row) }),
+    column('billing', { width: 108, filterKeys: ['billing'], renderCell: ({ row }) => <OrderBillingState order={row} /> }),
   ];
   const leadingColumns: GridColDef<OrderListItem>[] = canWriteInvoice ? [{
     field: '__ksef',

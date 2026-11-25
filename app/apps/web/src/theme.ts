@@ -4767,7 +4767,15 @@ const tableHeadTypography = (theme: Theme): CSSObject => {
   };
 };
 
+const tableRowDividerColor = (theme: Theme): string => {
+  const root = theme.components?.MuiTableCell?.styleOverrides?.root;
+  const border = isStyleObject(root) ? root.borderBottom : undefined;
+  const color = typeof border === 'string' ? /^\S+\s+\S+\s+(.+)$/.exec(border)?.[1] : undefined;
+  return color ?? theme.palette.divider;
+};
+
 export const STUDIO_GRID_CONTROL_CLASS = 'StudioDataGrid-control';
+export const STUDIO_GRID_WRAP_CHIPS_CLASS = 'StudioDataGrid-wrapChips';
 
 export const StudioDataGridFrame = styled('div')(({ theme }) => ({
   minWidth: 0,
@@ -4776,12 +4784,14 @@ export const StudioDataGridFrame = styled('div')(({ theme }) => ({
     borderColor: theme.palette.divider,
     borderRadius: 12,
     '--DataGrid-containerBackground': theme.palette.background.paper,
+    '--DataGrid-rowBorderColor': tableRowDividerColor(theme),
     '& .MuiDataGrid-columnHeaderTitle': {
       ...tableHeadTypography(theme),
       whiteSpace: 'normal',
       lineHeight: 1.3,
     },
-    '& .MuiDataGrid-columnHeader, & .MuiDataGrid-cell': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+    '& .MuiDataGrid-columnHeaders': { overflow: 'hidden' },
+    '& .MuiDataGrid-columnHeader, & .MuiDataGrid-cell:not(.MuiDataGrid-cellEmpty)': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
     '& .MuiDataGrid-cell': {
       display: 'flex',
       alignItems: 'center',
@@ -4795,6 +4805,7 @@ export const StudioDataGridFrame = styled('div')(({ theme }) => ({
     [`& .${STUDIO_GRID_CONTROL_CLASS}`]: { paddingLeft: 0, paddingRight: 0, justifyContent: 'center' },
     '& .MuiDataGrid-cell .MuiChip-root': { height: 'auto', minHeight: 24, maxWidth: '100%' },
     '& .MuiDataGrid-cell .MuiChip-label': { whiteSpace: 'nowrap', paddingTop: 2, paddingBottom: 2 },
+    [`& .${STUDIO_GRID_WRAP_CHIPS_CLASS} .MuiChip-label`]: { whiteSpace: 'normal' },
     '& .MuiDataGrid-cell:focus, & .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus, & .MuiDataGrid-columnHeader:focus-within': {
       outline: `2px solid ${theme.palette.primary.main}`,
       outlineOffset: -2,
@@ -4813,13 +4824,7 @@ export const StudioGridCellStack = styled('div')({
   width: '100%',
   '& .MuiButton-text': { whiteSpace: 'nowrap', minWidth: 0, paddingLeft: '0.3125rem', paddingRight: '0.3125rem', marginLeft: '-0.3125rem' },
 });
-export const StudioGridChipRow = styled('div')({
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: '0.35rem',
-  minWidth: 0,
-  '& > .MuiChip-root:not(:first-of-type) .MuiChip-label': { whiteSpace: 'normal' },
-});
+export const StudioGridChipRow = styled('div')({ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', minWidth: 0 });
 export const StudioGridHint = styled('span')(({ theme }) => ({
   ...theme.typography.body2,
   borderRadius: 4,

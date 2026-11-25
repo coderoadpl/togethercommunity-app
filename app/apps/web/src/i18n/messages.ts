@@ -371,6 +371,8 @@ export interface Messages {
     previousPage: string;
   };
   dataGrid: {
+    loading: string;
+    loadFailed: string;
     columns: string;
     columnsDialogTitle: string;
     columnsDialogHint: string;

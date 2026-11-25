@@ -361,6 +361,8 @@ export const en: Messages = {
     previousPage: 'Previous page',
   },
   dataGrid: {
+    loading: 'Loading table…',
+    loadFailed: 'The table could not be loaded.',
     columns: 'Columns',
     columnsDialogTitle: 'Columns',
     columnsDialogHint: 'Choose the columns to show and their order. To change a column width, drag the edge of its header in the table.',

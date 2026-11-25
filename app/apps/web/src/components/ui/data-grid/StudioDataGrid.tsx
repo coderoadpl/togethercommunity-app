@@ -17,14 +17,12 @@ import {
 import { enUS, plPL } from '@mui/x-data-grid/locales';
 
 import { useLanguage, useTranslations } from '../../../i18n/index.js';
-import { StudioDataGridFrame } from '../../../theme.js';
-import { setGridColumnVisibility, setGridColumnWidth, type GridLayout } from './grid-layout.js';
+import { STUDIO_GRID_HEADER_HEIGHT, StudioDataGridFrame } from '../../../theme.js';
+import { GRID_PAGE_SIZE_OPTIONS, setGridColumnVisibility, setGridColumnWidth, type GridLayout } from './grid-layout.js';
 
 declare module '@mui/x-data-grid' {
   interface RowPropsOverrides { 'data-testid'?: string }
 }
-
-export const GRID_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export type StudioGridColumn<R extends GridValidRowModel> = GridColDef<R> & { filterKeys?: readonly string[] };
 
@@ -72,7 +70,7 @@ const StudioColumnMenu = (props: GridColumnMenuProps) => (
 
 const ROW_HEIGHT = () => 'auto' as const;
 
-interface StudioDataGridProps<R extends GridValidRowModel> {
+export interface StudioDataGridProps<R extends GridValidRowModel> {
   label: string;
   rows: readonly R[];
   getRowId: (row: R) => string;
@@ -142,6 +140,7 @@ export const StudioDataGrid = <R extends GridValidRowModel>({
         paginationModel={paginationModel}
         onPaginationModelChange={onPaginationModelChange}
         pageSizeOptions={GRID_PAGE_SIZE_OPTIONS}
+        columnHeaderHeight={STUDIO_GRID_HEADER_HEIGHT}
         loading={loading}
         disableColumnFilter
         disableRowSelectionOnClick

@@ -7,7 +7,7 @@ import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
 import { ChevronIcon } from './refund-icons.js';
 import { hasOrderFilters, ORDER_FILTER_KEYS, ORDER_FILTER_VALIDATORS, orderListFilters, validateOrdersSearch, type OrderFilterKey, type OrderFilters, type OrderSort } from './order-filters.js';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import {
   Alert,
   Box,
@@ -18,6 +18,7 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Skeleton,
   Stack,
   TablePagination,
   Typography,
@@ -34,14 +35,16 @@ import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { GridColumnsDialog } from '../../../components/ui/data-grid/GridColumnsDialog.js';
 import { GridFilterBar, type GridFilterChip } from '../../../components/ui/data-grid/GridFilterBar.js';
-import { GRID_PAGE_SIZE_OPTIONS, StudioDataGrid, type StudioGridColumn } from '../../../components/ui/data-grid/StudioDataGrid.js';
-import { validGridFilters, type GridLayoutSchema } from '../../../components/ui/data-grid/grid-layout.js';
+import type { StudioDataGridProps, StudioGridColumn } from '../../../components/ui/data-grid/StudioDataGrid.js';
+import { loadStudioDataGrid } from '../../../components/ui/data-grid/load-studio-data-grid.js';
+import { GRID_PAGE_SIZE_OPTIONS, validGridFilters, type GridLayoutSchema } from '../../../components/ui/data-grid/grid-layout.js';
 import { useSavedGridLayout } from '../data-grid/use-saved-grid-layout.js';
 import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ErrorBoundary } from '../../../components/ui/ErrorBoundary.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatDateTime, formatPrice, formatTime } from '../../../lib/format.js';
-import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesGridMember, SalesOrderCard, SalesOrderCardList, STUDIO_GRID_CONTROL_CLASS, STUDIO_GRID_WRAP_CHIPS_CLASS, StudioGridCellStack, StudioGridChipRow, StudioGridEllipsis, StudioGridNoWrap, VisuallyHidden } from '../../../theme.js';
+import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesGridMember, SalesOrderCard, SalesOrderCardList, STUDIO_GRID_CONTROL_CLASS, STUDIO_GRID_WRAP_CHIPS_CLASS, StudioGridCellStack, StudioGridChipRow, StudioGridEllipsis, StudioGridNoWrap, StudioGridSkeleton, StudioGridSkeletonFooter, StudioGridSkeletonHeader, StudioGridSkeletonRow, VisuallyHidden } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const ORDER_COLUMNS = ['date', 'member', 'product', 'kind', 'amount', 'coupon', 'source', 'status', 'fulfilment', 'invoice', 'billing'] as const;
@@ -68,6 +71,48 @@ const saveFile = (file: OrderExportFile) => {
   anchor.download = file.filename;
   anchor.click();
   URL.revokeObjectURL(url);
+};
+
+const createLazyOrdersGrid = () => lazy(async () => {
+  const { StudioDataGrid } = await loadStudioDataGrid();
+  return { default: StudioDataGrid<OrderListItem> };
+});
+
+const OrdersGridSkeleton = ({ rowCount }: { rowCount: number }) => {
+  const t = useTranslations();
+  const cells = [12, 34, 18, 12].map((width, index) => (
+    <Skeleton key={index} width={`${width}%`} animation={false} />
+  ));
+  return (
+    <StudioGridSkeleton role="status">
+      <VisuallyHidden>{t.dataGrid.loading}</VisuallyHidden>
+      <StudioGridSkeletonHeader aria-hidden>{cells}</StudioGridSkeletonHeader>
+      {Array.from({ length: Math.min(rowCount, 3) }, (_, index) => (
+        <StudioGridSkeletonRow key={index} aria-hidden>{cells}</StudioGridSkeletonRow>
+      ))}
+      <StudioGridSkeletonFooter aria-hidden><Skeleton width="20%" animation={false} /></StudioGridSkeletonFooter>
+    </StudioGridSkeleton>
+  );
+};
+
+const OrdersGridLoadError = ({ onRetry }: { onRetry: () => void }) => {
+  const t = useTranslations();
+  return <StatusView state={{ kind: 'error', message: t.dataGrid.loadFailed, retry: { label: t.common.retry, onRetry } }} />;
+};
+
+const renderGridLoadError = (retry: () => void) => (_error: unknown, reset: () => void) => (
+  <OrdersGridLoadError onRetry={() => { retry(); reset(); }} />
+);
+
+const LazyOrdersGrid = (props: StudioDataGridProps<OrderListItem>) => {
+  const [OrdersGrid, setOrdersGrid] = useState(createLazyOrdersGrid);
+  return (
+    <ErrorBoundary fallback={renderGridLoadError(() => setOrdersGrid(createLazyOrdersGrid))}>
+      <Suspense fallback={<OrdersGridSkeleton rowCount={props.rows.length} />}>
+        <OrdersGrid {...props} />
+      </Suspense>
+    </ErrorBoundary>
+  );
 };
 
 export const SalesPanel = () => {
@@ -501,7 +546,7 @@ export const SalesPanel = () => {
             ))}
           </SalesOrderCardList>
         ) : (
-          <StudioDataGrid
+          <LazyOrdersGrid
             data-testid="sales-grid"
             rowTestId="sales-row"
             label={t.sections.sales}

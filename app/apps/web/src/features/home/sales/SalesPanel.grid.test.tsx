@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { listLayoutSchema, type ListLayout, type OrderListItem } from '#core/domain/index.js';
 import { z } from 'zod';
 
+import { loadStudioDataGrid } from '../../../components/ui/data-grid/load-studio-data-grid.js';
 import { en } from '../../../i18n/en.js';
 import { LanguageProvider } from '../../../i18n/index.js';
 import { pl } from '../../../i18n/pl.js';
@@ -14,6 +15,13 @@ import { renderWithProviders } from '../../../test/render.js';
 import { server } from '../../../test/server.js';
 import { PanelContextProvider, type PanelContextValue } from '../panel-context.js';
 import { SalesPanel } from './SalesPanel.js';
+
+vi.mock('../../../components/ui/data-grid/load-studio-data-grid.js', async (importOriginal) => {
+  const actual = await importOriginal<{ loadStudioDataGrid: typeof loadStudioDataGrid }>();
+  return { loadStudioDataGrid: vi.fn(actual.loadStudioDataGrid) };
+});
+
+const gridLoader = vi.mocked(loadStudioDataGrid);
 
 const billing = (nip: string | null) => ({ nip, companyName: 'Sample buyer', address: 'Main Street 1', postalCode: '00-001', city: 'Warsaw', country: 'PL' });
 
@@ -96,6 +104,7 @@ const render = async ({ path = '/panel/sales', language = 'en', context = ownerC
 const headers = () => within(screen.getByTestId('sales-grid')).getAllByRole('columnheader', { hidden: true }).map((header) => header.textContent);
 
 beforeEach(() => {
+  gridLoader.mockReset();
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false, media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined,
     addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
@@ -118,6 +127,45 @@ afterEach(() => {
 });
 
 describe('orders grid', () => {
+  it('shows a table skeleton while the grid module loads', async () => {
+    let finishLoading: () => void = () => undefined;
+    const pending = new Promise<void>((resolve) => { finishLoading = resolve; });
+    gridLoader.mockImplementationOnce(async () => {
+      await pending;
+      return import('../../../components/ui/data-grid/StudioDataGrid.js');
+    });
+    serve(null);
+    await render();
+    expect(await screen.findByText(en.dataGrid.loading)).toBeInTheDocument();
+    expect(screen.queryByTestId('sales-grid')).not.toBeInTheDocument();
+    finishLoading();
+    expect(await screen.findByTestId('sales-grid')).toBeInTheDocument();
+    expect(screen.queryByText(en.dataGrid.loading)).not.toBeInTheDocument();
+  });
+
+  it('shows a localized error and loads the grid again on retry', async () => {
+    const user = userEvent.setup();
+    gridLoader.mockRejectedValueOnce(new Error('Grid chunk unavailable'));
+    serve(null);
+    await render({ language: 'pl' });
+    expect(await screen.findByText(pl.dataGrid.loadFailed)).toBeInTheDocument();
+    expect(gridLoader).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: pl.common.retry }));
+    expect(await screen.findByTestId('sales-grid')).toBeInTheDocument();
+    expect(gridLoader).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders phone cards without asking for the grid module', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query.includes('max-width'), media: query, onchange: null, addListener: () => undefined, removeListener: () => undefined,
+      addEventListener: () => undefined, removeEventListener: () => undefined, dispatchEvent: () => false,
+    }));
+    serve(null);
+    await render();
+    expect(await screen.findByTestId('sales-cards')).toBeInTheDocument();
+    expect(gridLoader).not.toHaveBeenCalled();
+  });
+
   it('shows the invoice state, never empty, and the invoice data the buyer asked for', async () => {
     serve(null, orders.map((row) => (row.id === 'issued' ? { ...row, invoice: issuedInvoice(row.id) } : row)));
     await render();

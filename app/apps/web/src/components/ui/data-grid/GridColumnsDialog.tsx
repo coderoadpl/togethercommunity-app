@@ -1,6 +1,5 @@
 import { useId } from 'react';
-import { Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, Typography } from '@mui/material';
-import { GridArrowDownwardIcon, GridArrowUpwardIcon } from '@mui/x-data-grid';
+import { Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, IconButton, SvgIcon, Typography } from '@mui/material';
 
 import { useTranslations } from '../../../i18n/index.js';
 import { StudioGridColumnList, StudioGridColumnRow } from '../../../theme.js';
@@ -53,11 +52,11 @@ export const GridColumnsDialog = ({ open, onClose, labels, layout, onChange, onR
                 />
                 <IconButton id={buttonId(column.field, 'up')} size="small" aria-label={t.dataGrid.moveUp({ column: label })} disabled={index === 0}
                   onClick={() => move(column.field, 'up')}>
-                  <GridArrowUpwardIcon fontSize="small" />
+                  <SvgIcon fontSize="small"><path d="m4 12 1.41 1.41L11 7.83V20h2V7.83l5.59 5.58L20 12l-8-8z" /></SvgIcon>
                 </IconButton>
                 <IconButton id={buttonId(column.field, 'down')} size="small" aria-label={t.dataGrid.moveDown({ column: label })} disabled={index === columns.length - 1}
                   onClick={() => move(column.field, 'down')}>
-                  <GridArrowDownwardIcon fontSize="small" />
+                  <SvgIcon fontSize="small"><path d="m20 12-1.41-1.41L13 16.17V4h-2v12.17l-5.59-5.58L4 12l8 8z" /></SvgIcon>
                 </IconButton>
               </StudioGridColumnRow>
             );

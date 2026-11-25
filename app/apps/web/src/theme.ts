@@ -4777,12 +4777,35 @@ const tableRowDividerColor = (theme: Theme): string => {
 export const STUDIO_GRID_CONTROL_CLASS = 'StudioDataGrid-control';
 export const STUDIO_GRID_WRAP_CHIPS_CLASS = 'StudioDataGrid-wrapChips';
 
+export const STUDIO_GRID_HEADER_HEIGHT = 56;
+
+const studioGridSurface = (theme: Theme) => ({
+  backgroundColor: theme.palette.background.paper,
+  borderColor: theme.palette.divider,
+  borderRadius: 12,
+});
+
+export const StudioGridSkeleton = styled('div')(({ theme }) => ({
+  ...studioGridSurface(theme),
+  borderStyle: 'solid',
+  borderWidth: 1,
+  minWidth: 0,
+}));
+export const StudioGridSkeletonRow = styled('div')(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(2),
+  paddingInline: theme.spacing(1),
+  minHeight: 52,
+  borderBottom: `1px solid ${tableRowDividerColor(theme)}`,
+}));
+export const StudioGridSkeletonHeader = styled(StudioGridSkeletonRow)({ minHeight: STUDIO_GRID_HEADER_HEIGHT });
+export const StudioGridSkeletonFooter = styled(StudioGridSkeletonRow)({ justifyContent: 'flex-end', borderBottom: 0 });
+
 export const StudioDataGridFrame = styled('div')(({ theme }) => ({
   minWidth: 0,
   '& .MuiDataGrid-root': {
-    backgroundColor: theme.palette.background.paper,
-    borderColor: theme.palette.divider,
-    borderRadius: 12,
+    ...studioGridSurface(theme),
     '--DataGrid-containerBackground': theme.palette.background.paper,
     '--DataGrid-rowBorderColor': tableRowDividerColor(theme),
     '& .MuiDataGrid-columnHeaderTitle': {

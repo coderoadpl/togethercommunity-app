@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Button, Chip, Popover, Stack, Typography } from '@mui/material';
-import { GridFilterListIcon, GridViewColumnIcon } from '@mui/x-data-grid';
+import { Button, Chip, Popover, Stack, SvgIcon, Typography } from '@mui/material';
 
 import { useTranslations } from '../../../i18n/index.js';
 import { StudioGridChipRow, StudioGridCount } from '../../../theme.js';
@@ -28,12 +27,12 @@ export const GridFilterBar = ({ count, chips, onClearAll, quickActions, renderAl
       <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem' }}>
         <StudioGridCount variant="body2" role="status" aria-live="polite" data-testid="studio-grid-count">{count ?? ''}</StudioGridCount>
         {quickActions}
-        <Button size="small" variant="outlined" startIcon={<GridFilterListIcon />} aria-haspopup="dialog" aria-expanded={anchor !== null}
+        <Button size="small" variant="outlined" startIcon={<SvgIcon><path d="M3 6h18v2H3zm3 5h12v2H6zm4 5h4v2h-4z" /></SvgIcon>} aria-haspopup="dialog" aria-expanded={anchor !== null}
           onClick={(event) => setAnchor(event.currentTarget)}>
           {t.dataGrid.addFilter}
         </Button>
         {onOpenColumns === undefined ? null : (
-          <Button size="small" variant="outlined" startIcon={<GridViewColumnIcon />} aria-haspopup="dialog" onClick={onOpenColumns}>
+          <Button size="small" variant="outlined" startIcon={<SvgIcon><path d="M3 5h5.33v14H3zm6.33 0h5.34v14H9.33zm6.34 0H21v14h-5.33z" /></SvgIcon>} aria-haspopup="dialog" onClick={onOpenColumns}>
             {t.dataGrid.columns}
           </Button>
         )}

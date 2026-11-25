@@ -367,6 +367,8 @@ export const pl: Messages = {
     previousPage: 'Poprzednia strona',
   },
   dataGrid: {
+    loading: 'Wczytywanie tabeli…',
+    loadFailed: 'Nie udało się wczytać tabeli.',
     columns: 'Kolumny',
     columnsDialogTitle: 'Kolumny',
     columnsDialogHint: 'Wybierz kolumny do pokazania i ich kolejność. Szerokość kolumny zmienisz, przeciągając krawędź jej nagłówka w tabeli.',

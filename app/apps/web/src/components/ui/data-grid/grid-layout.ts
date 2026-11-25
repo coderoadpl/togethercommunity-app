@@ -1,3 +1,5 @@
+export const GRID_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+
 interface GridLayoutColumn { field: string; visible: boolean; width?: number | undefined }
 
 export interface GridLayout {

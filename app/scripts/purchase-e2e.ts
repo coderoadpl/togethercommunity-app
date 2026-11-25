@@ -955,7 +955,7 @@ const productionOptionsFromEnv = (env: Environment, platformDomain: string): { o
 export const purchaseE2eOptionsFromEnv = (env: Environment): { options: PurchaseE2eOptions } | { problems: string[] } => {
   const platformDomain = provided(env, 'PURCHASE_E2E_PLATFORM_DOMAIN') ?? DEFAULT_PLATFORM_DOMAIN;
   const environment = provided(env, 'PURCHASE_E2E_ENVIRONMENT');
-  if (environment === 'production') return productionOptionsFromEnv(env, platformDomain);
+  if (environment === 'production') return productionOptionsFromEnv(env, DEFAULT_PLATFORM_DOMAIN);
   const problems: string[] = [];
   if (environment !== 'staging') problems.push('PURCHASE_E2E_ENVIRONMENT must be staging or production');
   const baseUrl = provided(env, 'PURCHASE_E2E_BASE_URL');

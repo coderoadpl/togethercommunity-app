@@ -210,6 +210,11 @@ describe('purchaseE2eOptionsFromEnv', () => {
       .toEqual({ problems: [HOST_PROBLEM] });
   });
 
+  it('keeps production on the platform domain whatever the domain override says', () => {
+    expect(purchaseE2eOptionsFromEnv({ ...productionEnv, PURCHASE_E2E_PLATFORM_DOMAIN: 'example.test', PURCHASE_E2E_BASE_URL: 'https://acme.example.test' }))
+      .toEqual({ problems: ['PURCHASE_E2E_BASE_URL: the base URL must be the https origin of the production acme fixture workspace'] });
+  });
+
   it('refuses staging without its keys or the bypass', () => {
     expect(purchaseE2eOptionsFromEnv({
       PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',

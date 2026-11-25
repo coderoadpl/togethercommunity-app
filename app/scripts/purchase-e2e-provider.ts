@@ -9,7 +9,7 @@ type Fetch = typeof fetch;
 
 export const PROVIDER_API_ORIGIN = 'https://api.stripe.com';
 
-/** The account default version that broke shipped orders on 2026-11-22. */
+/** An account default version older than the pinned webhook version. */
 export const LEGACY_ACCOUNT_API_VERSION = '2020-03-02';
 
 const TEST_CARD_TOKEN = 'tok_visa';
@@ -325,7 +325,7 @@ export interface ReplayExpectation {
   shippingCountry: string | null;
 }
 
-/** A delivery the webhook parse cannot read is what refused every shipped order on 2026-11-22. */
+/** A delivery the webhook parse cannot read must fail the run before a buyer sees it. */
 export const replayCheckoutSession = async (
   session: unknown,
   apiVersion: string,

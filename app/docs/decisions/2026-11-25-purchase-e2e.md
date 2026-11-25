@@ -6,7 +6,7 @@ on it stay drafts.
 
 ## Decision 1: provider webhooks on the protected staging host
 
-The owner would confirm (his wording is kept in the private notes):
+The owner would confirm (the owner's wording is kept in the private notes):
 
 > Yes: staging receives the provider's webhooks through forwarding from CI. The
 > deployment-protection bypass value does not reach the provider.

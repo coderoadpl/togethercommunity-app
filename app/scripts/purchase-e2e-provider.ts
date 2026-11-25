@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 
 import { z } from 'zod';
 
@@ -225,10 +225,48 @@ export const listPaymentRefunds = async (request: Fetch, key: string, paymentInt
 
 const REPLAY_SECRET = 'whsec_purchase_e2e_replay';
 
-const signedPayload = (payloadRaw: string, timestamp: number): string => {
-  const signature = createHmac('sha256', REPLAY_SECRET).update(`${String(timestamp)}.${payloadRaw}`).digest('hex');
+export const webhookSignatureHeader = (payloadRaw: string, secret: string, timestamp: number): string => {
+  const signature = createHmac('sha256', secret).update(`${String(timestamp)}.${payloadRaw}`).digest('hex');
   return `t=${String(timestamp)},v1=${signature}`;
 };
+
+export const generateForwardingSecret = (): string => `whsec_${randomBytes(32).toString('base64url')}`;
+
+export const FORWARDED_EVENT_TYPES = ['checkout.session.completed', 'charge.refunded'] as const;
+
+const providerEventSchema = z.object({
+  id: z.string().regex(/^evt_/),
+  type: z.string(),
+  livemode: z.literal(false),
+  data: z.object({
+    object: z.object({
+      id: z.string(),
+      payment_intent: z.union([z.string(), z.object({ id: z.string() })]).nullable().optional(),
+    }).passthrough(),
+  }),
+}).passthrough();
+
+export type ProviderEvent = z.output<typeof providerEventSchema>;
+
+const providerEventListSchema = z.object({ data: z.array(z.unknown()), has_more: z.boolean() });
+
+/**
+ * The webhook body the provider sends is the Event object, frozen at creation,
+ * so the event read back here is byte-for-byte what an endpoint on the account
+ * default version would receive, minus the provider's own signature.
+ */
+export const listRecentEvents = async (
+  request: Fetch,
+  key: string,
+  createdSinceSeconds: number,
+): Promise<Array<{ event: ProviderEvent; raw: unknown }>> => {
+  const params: Record<string, string> = { limit: '100', 'created[gte]': String(createdSinceSeconds) };
+  FORWARDED_EVENT_TYPES.forEach((type, index) => { params[`types[${String(index)}]`] = type; });
+  const list = providerEventListSchema.parse(await providerCall(request, { key, method: 'GET', path: '/v1/events', params }));
+  return list.data.map((raw) => ({ event: providerEventSchema.parse(raw), raw }));
+};
+
+export const eventPaymentIntent = (event: ProviderEvent): string | null => idOf(event.data.object.payment_intent);
 
 export interface ReplayExpectation {
   tenantId: string;
@@ -262,7 +300,7 @@ export const replayCheckoutSession = async (
     tenantId: expectation.tenantId,
     mode: 'test',
     payloadRaw,
-    signatureHeader: signedPayload(payloadRaw, timestamp),
+    signatureHeader: webhookSignatureHeader(payloadRaw, REPLAY_SECRET, timestamp),
     webhookSecret: REPLAY_SECRET,
   });
   if (!verified.ok) return [`${apiVersion}: the adapter refused the session: ${verified.error.message}`];

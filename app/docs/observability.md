@@ -281,19 +281,8 @@ Settings → Secrets and variables → Actions → repository secrets:
 | `SMOKE_MEMBER_PASSWORD` | prod-smoke | Password the smoke member is seeded with **and** signed in with. Must equal the deployment's `SMOKE_MEMBER_PASSWORD` environment variable. Set exactly one of the pair and the smoke fails. |
 | `OPERATOR_SECRET_PRODUCTION` | prod-smoke | Operator secret for `POST /api/internal/reseed-acme`; must equal the production deployment's `OPERATOR_SECRET`. Falls back to the deprecated `PROD_OPERATOR_SECRET` repository secret. Absent → the reseed step prints a notice and is skipped. Sent only to the tenant host, so a dispatch against another host skips the reseed instead of leaking the secret to it. |
 
-The creator account never signs in from prod-smoke. The purchase end-to-end run
-does sign in with it on production (see
-[Purchase end-to-end on a deployed host](#purchase-end-to-end-on-a-deployed-host)),
-so its password is also the repository secret `SMOKE_CREATOR_PASSWORD`, equal to
-the deployment's `SMOKE_CREATOR_PASSWORD`. That account owns the production
-fixture workspace `tenant-acme`: whoever reads the secret can change that
-workspace's settings and payment configuration, including saving a live key in
-its live slot, and create its keys; it reaches no other workspace. The next
-deploy's reseed undoes those changes but sets the same password again, so taking
-the access back means rotating the password in both places and ending the
-account's open sessions. An admin role cannot replace it, because the run
-configures the payment slot and the delivery settings, which only an owner may
-write. Setting the repository secret is the owner's decision to accept this.
+The creator account never signs in from the workflow, so its password lives on
+the deployment only, as `SMOKE_CREATOR_PASSWORD`.
 
 The first three already exist for `prod-health.yml`; the smoke reuses them.
 
@@ -467,14 +456,16 @@ the copy here.
 ## Purchase end-to-end on a deployed host
 
 `pnpm run e2e:purchase:remote` (`app/scripts/purchase-e2e.ts`) buys, pays and
-refunds on a deployed host against the payment provider's **test mode**. The
-smokes above and every local e2e leg use the fake provider; this run is the one
-that receives the provider's real webhook payloads. It runs only on the `acme`
+refunds on the deployed **staging** host against the payment provider's **test
+mode**. The smokes above and every local e2e leg use the fake provider; this run
+is the one that processes the provider's real event payloads. It refuses
+`PURCHASE_E2E_ENVIRONMENT=production`: a production run needs a recorded owner
+decision on the credential it may use. It runs only on the `acme`
 fixture workspace: the target must be the `https://acme.` origin on the platform
 domain (`PURCHASE_E2E_PLATFORM_DOMAIN`, default `togethercommunity.app`), every
-request refuses redirects, `/api/health` must report the targeted environment and
-database (production: `PRODUCTION_DATABASE_FINGERPRINT`; staging: never that one,
-and `STAGING_DATABASE_FINGERPRINT` when pinned), `/api/me` must resolve
+request refuses redirects, `/api/health` must report `staging` on a database
+other than `PRODUCTION_DATABASE_FINGERPRINT` (and equal to
+`PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT` when set), `/api/me` must resolve
 `tenant-acme` for the signed-in staff account, and every key must be a test-mode
 key (`rk_test_`, `pk_test_`). The run never calls a live-mode provider API, stops
 on any provider object that reports `livemode: true`, and stops before any
@@ -497,12 +488,39 @@ traffic to stay low because test mode is rate-limited more strictly than live
 mode ([Testing](https://docs.stripe.com/testing)); a run makes a few dozen
 provider calls.
 
+### How provider events reach the protected staging host
+
+Staging sits behind deployment protection, so the provider cannot deliver to its
+webhook. The run forwards the events itself, the way the provider's CLI
+(`stripe listen --forward-to`) does, and the deployment bypass value goes only to
+the staging host, as in the staging smoke:
+
+1. After configuring the test slot it generates a signing secret and stores it
+   as the workspace's `stripe.testWebhookSecret` through the owner's tenant
+   secret API.
+2. It reads `checkout.session.completed` and `charge.refunded` events of its own
+   sessions and payments from the provider's Events API with the test key.
+3. It signs each event's JSON with that secret (`t=<timestamp>,v1=<HMAC-SHA256>`
+   over `<timestamp>.<body>`) and posts it to
+   `/api/webhooks/stripe/tenant-acme?mode=test` with the bypass header.
+
+The provider sends the Event object as the webhook body and fixes its shape when
+the event is created, in the account's default API version; the Events API
+returns the same object for 30 days
+([Receive Stripe events](https://docs.stripe.com/webhooks),
+[Events](https://docs.stripe.com/api/events)). The server therefore verifies,
+parses and fulfils exactly what an endpoint on the account default version would
+receive. Not covered: the provider's own delivery over the network and its own
+signature. The endpoint the test-slot configuration registers still exists in
+the sandbox; its deliveries to the protected host fail, and the provider stops
+retrying them after a few hours.
+
 ### Checks
 
 1. `target-identity` — `/api/health` reports the environment the run targets.
 2. `staff-sign-in` — the fixture owner signs in and resolves `tenant-acme` as owner or admin.
 3. `test-order-cap` — the run's three orders still fit under `PURCHASE_E2E_TEST_ORDER_CAP` (default 300); otherwise nothing is written.
-4. `test-slot-configure` — saves the restricted test key in the test slot, which registers a fresh `?mode=test` webhook endpoint, and confirms the live slot is empty. The prod-smoke reseed wipes the workspace's secrets, so every run configures it again.
+4. `test-slot-configure` — saves the restricted test key in the test slot (which registers a fresh `?mode=test` webhook endpoint), confirms the live slot is empty, and stores the run's forwarding signing secret.
 5. `fixtures` — ensures the `purchase-e2e-locker` delivery rate (12.99 PLN, parcel locker), the `purchase-e2e-parcel` physical product (25.00 PLN, one active one-time price, stock tracking), a 23% VAT rate on `Acme Course`, the `purchase-e2e-bundle` sales link (parcel and `Acme Course`) and the terms and privacy URLs the sales-link checkout needs.
 6. `coupon-refused-in-test-mode` — a coupon in a test checkout is refused with the test-mode refusal (`Test checkout requires a paid price without a coupon`), not with any other validation error.
 7. `digital-purchase` — `Acme Course` without delivery.
@@ -517,22 +535,20 @@ provider calls.
 Each checkout collects the terms on the page (`termsOnPage`), so a provider
 account without a terms URL behaves like one with it. Before paying, the session
 total must equal the fixture prices (99.00, 37.99 and 136.99 PLN). Each purchase
-then waits up to two minutes for its order to leave `pending`, which only the
-accepted webhook does, and asserts the mode, the amount, the product lines, the
+then forwards its events and waits up to two minutes for its order to leave
+`pending`, which only an accepted webhook does, and asserts the mode, the amount, the product lines, the
 single `shipping:purchase-e2e-locker` line, the locker code, the delivery country
 and the sales link. Refunds wait up to ten minutes, for the refund dispatcher's
-minute tick and for `charge.refunded` to update the order, and the provider
+minute tick and for the forwarded `charge.refunded` to update the order, and the provider
 refund must be `succeeded`. The replay runs whenever the parcel-locker payment
 was confirmed, even when its order never left `pending`.
 
 The release that refused every shipped order on 2026-11-22 fails check 12: run
 against the adapter and domain parse of that release, the replay of the recorded
 `2020-03-02` sessions reports `shipping cost null` and `delivery country null`.
-On that release endpoints followed the account default version, so checks 8 and
-9 would fail there too, their orders never leaving `pending`, and check 12 still
-runs because their payments were confirmed. Endpoints are now
-pinned to the library version, so the replay is what keeps covering the
-account-default shape.
+Forwarded events carry the account default version, so on an account whose
+default is that old version checks 8 and 9 fail there too, their orders never
+leaving `pending`; check 12 still runs because their payments were confirmed.
 
 ### What test mode does not cover
 
@@ -546,59 +562,44 @@ member access. A live-mode purchase is never automated.
 
 ### What it writes
 
-On both hosts, in `tenant-acme` only, per run: three test-mode orders and their
+On staging, in `tenant-acme` only, per run: three test-mode orders and their
 checkout snapshots (the refused coupon attempt stores nothing), a test-mode
 `Acme Course` grant for the fixture owner (created or renewed), a member row for
 the fixture owner (once), one consent capture of the sales-link checkout, two
 staff refunds with their provider refunds, the fixture rate, product, price,
 stock row, course VAT rate and sales link (once), and a new test-slot webhook
-endpoint replacing the previous one. Every
+endpoint replacing the previous one, and the forwarding signing secret. Every
 order carries `mode=test` and the client reference `purchase-e2e:<run id>`; test
 rows stay out of revenue, exports and reconciliation. Test-mode purchases send
-no Together e-mail to members, and any transactional e-mail of the fixture
-workspace goes to the sink on production (see [The smoke tenant](#the-smoke-tenant)).
-On production the prod-smoke reseed
-wipes all of it on the next deploy; on staging the rows stay until the next
-database branch reset, and the order cap stops the run before it writes when
-the workspace holds 300 test orders.
+no Together e-mail to members. The rows stay until the next database branch
+reset, and the order cap stops the run before it writes when the run's orders
+would pass it.
 
 ### Where it runs
 
-`purchase-e2e.yml` runs after every successful `staging-smoke` of a push to
-`staging` (staging, on the smoked commit) and every successful `prod-smoke` of a
-production deployment (production, on `main`; after the reseed), daily on
-staging, and on dispatch. Runs against one environment never overlap. A run
-whose purchase step produced no result counts as failing (`unreachable`), so a
-broken install never records a green state.
-It starts observe-only on each environment and pages only through
-`.github/actions/alert-gate`, like every other monitor. Staging sits behind
-deployment protection, so the provider can reach its webhook only when the
-staging deployment opts in; see
-[Staging test-mode webhook bypass](security.md#staging-test-mode-webhook-bypass)
-for the conditions, the pinned key and where the value is stored afterwards.
-Staging and production each
-need their own provider sandbox: a test-slot configuration deletes every
-endpoint of the workspace and slot in its sandbox, and both hosts use
-`tenant-acme`.
+A workflow that runs the script after the staging smoke, observe-only until its
+first green run and paging only through `.github/actions/alert-gate`, is planned
+and not delivered: no workflow in this repository runs the script today. Until
+then it is run by hand or by dispatch from a branch that adds the workflow.
 
-The script uses only the values of the environment it targets and refuses to
-start when one of them is missing; it never fills a production value from a
-staging one or the reverse. It reads the other environment's key name only to
-refuse one key set for both, which it can detect only when both are visible to
-the same process:
+The script reads only these variables and refuses to start when one is missing:
 
-| Environment | Variables the script reads |
+| Variable | Value |
 | --- | --- |
-| staging | `STRIPE_TEST_RESTRICTED_KEY_STAGING`, `STRIPE_TEST_PUBLISHABLE_KEY_STAGING`, `VERCEL_AUTOMATION_BYPASS_SECRET`, optional `PURCHASE_E2E_STAFF_PASSWORD_STAGING` (default: the seeded demo password) and optional `PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT` |
-| production | `STRIPE_TEST_RESTRICTED_KEY_PRODUCTION`, `STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION`, `PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION`; the bypass secret is never sent |
-| both | `PURCHASE_E2E_BASE_URL`, `PURCHASE_E2E_ENVIRONMENT`, `PRODUCTION_DATABASE_FINGERPRINT` |
+| `PURCHASE_E2E_BASE_URL` | the `https://acme.` staging origin |
+| `PURCHASE_E2E_ENVIRONMENT` | `staging` |
+| `STRIPE_TEST_RESTRICTED_KEY_STAGING` | a restricted key of the staging provider sandbox |
+| `STRIPE_TEST_PUBLISHABLE_KEY_STAGING` | that sandbox's publishable test key |
+| `VERCEL_AUTOMATION_BYPASS_SECRET` | the existing staging smoke secret, sent only to the staging origin |
+| `PRODUCTION_DATABASE_FINGERPRINT` | the production fingerprint the staging database must differ from |
 
-The workflow maps the repository secrets of the same names, and the production
-smoke creator password, onto these variables for the environment it runs, and
-skips an environment whose secrets are absent with a notice. The restricted key
+Optional: `PURCHASE_E2E_STAFF_PASSWORD_STAGING` (default: the seeded demo
+password), `PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT`,
+`PURCHASE_E2E_LOCKER_CODE`, `PURCHASE_E2E_TEST_ORDER_CAP`. The restricted key
 needs the permissions the test-mode card lists for the live integration,
-including Charges and Refunds (write); the run also reads Checkout Sessions and
-Refunds with it.
+including Charges and Refunds (write), and read access to Events. Use a provider
+sandbox of its own for staging: a test-slot configuration deletes every endpoint
+of the workspace and slot in its sandbox.
 
 ## The smoke tenant
 

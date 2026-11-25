@@ -6,8 +6,9 @@ import oldApiAddressPaid from '#adapters/payment/fixtures/checkout-completed-202
 import oldApiLockerFree from '#adapters/payment/fixtures/checkout-completed-2020-03-02-locker-free.json' with { type: 'json' };
 import cloverAddressPaid from '#adapters/payment/fixtures/checkout-completed-2025-09-30-address-paid.json' with { type: 'json' };
 import cloverLockerFree from '#adapters/payment/fixtures/checkout-completed-2025-09-30-locker-free.json' with { type: 'json' };
+import { createStripePaymentProvider } from '#adapters/payment/stripe.js';
 import { healthOutputSchema } from '#core/contract/index.js';
-import { DEMO_SEED_PASSWORD, SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
+import { DEMO_SEED_PASSWORD, err, internal, SMOKE_TENANT_CREATOR_EMAIL } from '#core/domain/index.js';
 
 import {
   assertTargetIdentity,
@@ -21,8 +22,12 @@ import {
 import {
   checkoutSessionIdFromUrl,
   confirmParams,
+  eventPaymentIntent,
+  generateForwardingSecret,
+  listRecentEvents,
   replayCheckoutSession,
   TEST_BUYER_ADDRESS,
+  webhookSignatureHeader,
   type ProviderCheckoutSession,
 } from './purchase-e2e-provider.js';
 
@@ -38,19 +43,6 @@ const stagingEnv = {
   PURCHASE_E2E_ENVIRONMENT: 'staging',
 };
 
-const stagingOnly = {
-  PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
-  PURCHASE_E2E_ENVIRONMENT: 'staging',
-};
-
-const productionEnv = {
-  STRIPE_TEST_RESTRICTED_KEY_PRODUCTION: 'rk_test_production',
-  STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION: 'pk_test_production',
-  PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION: 'fixture-owner-password',
-  PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
-  PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
-  PURCHASE_E2E_ENVIRONMENT: 'production',
-};
 
 const health = (environment: string, production: boolean, databaseFingerprint = production ? PRODUCTION_FINGERPRINT : STAGING_FINGERPRINT) => ({
   status: 'ok',
@@ -124,8 +116,8 @@ const session = (overrides: Partial<ProviderCheckoutSession> = {}): ProviderChec
 });
 
 describe('purchaseE2eOptionsFromEnv', () => {
-  it('reads only the staging values and defaults the seeded staff account, the locker and the cap', () => {
-    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, ...productionEnv, ...stagingOnly, PURCHASE_E2E_RUN_ID: 'run-7' })).toMatchObject({
+  it('reads the staging values and defaults the seeded staff account, the locker and the cap', () => {
+    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, PURCHASE_E2E_RUN_ID: 'run-7' })).toMatchObject({
       options: {
         environment: 'staging',
         keys: { restricted: 'rk_test_staging', publishable: 'pk_test_staging' },
@@ -139,52 +131,28 @@ describe('purchaseE2eOptionsFromEnv', () => {
     });
   });
 
-  it('reads only the production values, never sends the bypass and pins the production database', () => {
-    expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, ...productionEnv })).toMatchObject({
-      options: {
-        environment: 'production',
-        keys: { restricted: 'rk_test_production', publishable: 'pk_test_production' },
-        staff: { password: 'fixture-owner-password' },
-        bypassSecret: null,
-        databaseFingerprint: { expected: PRODUCTION_FINGERPRINT, production: PRODUCTION_FINGERPRINT },
-      },
-    });
-  });
-
-  it('refuses production without its own values even when the staging ones are set', () => {
+  it('refuses production until an owner decision names its credential', () => {
     expect(purchaseE2eOptionsFromEnv({
       ...stagingEnv,
       PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'production',
     })).toEqual({
-      problems: [
-        'STRIPE_TEST_RESTRICTED_KEY_PRODUCTION is not configured',
-        'STRIPE_TEST_PUBLISHABLE_KEY_PRODUCTION is not configured',
-        'PURCHASE_E2E_STAFF_PASSWORD_PRODUCTION is not configured',
-      ],
+      problems: ['PURCHASE_E2E_ENVIRONMENT=production is refused until a recorded owner decision names the credential a production run may use'],
     });
   });
 
-  it('refuses staging without its own keys or the bypass even when the production ones are set', () => {
+  it('refuses staging without its keys or the bypass', () => {
     expect(purchaseE2eOptionsFromEnv({
-      ...productionEnv,
       PURCHASE_E2E_BASE_URL: 'https://acme.staging.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'staging',
+      PRODUCTION_DATABASE_FINGERPRINT: PRODUCTION_FINGERPRINT,
+      STRIPE_TEST_RESTRICTED_KEY: 'rk_test_unsuffixed',
     })).toEqual({
       problems: [
         'STRIPE_TEST_RESTRICTED_KEY_STAGING is not configured',
         'STRIPE_TEST_PUBLISHABLE_KEY_STAGING is not configured',
         'VERCEL_AUTOMATION_BYPASS_SECRET is not configured',
       ],
-    });
-  });
-
-  it('refuses one sandbox key shared by both environments', () => {
-    expect(purchaseE2eOptionsFromEnv({
-      ...productionEnv,
-      STRIPE_TEST_RESTRICTED_KEY_STAGING: 'rk_test_production',
-    })).toEqual({
-      problems: ['STRIPE_TEST_RESTRICTED_KEY_PRODUCTION equals STRIPE_TEST_RESTRICTED_KEY_STAGING; each environment needs its own sandbox'],
     });
   });
 
@@ -212,10 +180,68 @@ describe('purchaseE2eOptionsFromEnv', () => {
     expect(purchaseE2eOptionsFromEnv({ PURCHASE_E2E_ENVIRONMENT: '' })).toEqual({
       problems: [
         'PURCHASE_E2E_BASE_URL is not configured',
-        'PURCHASE_E2E_ENVIRONMENT must be staging or production',
+        'PURCHASE_E2E_ENVIRONMENT must be staging',
+        'STRIPE_TEST_RESTRICTED_KEY_STAGING is not configured',
+        'STRIPE_TEST_PUBLISHABLE_KEY_STAGING is not configured',
+        'VERCEL_AUTOMATION_BYPASS_SECRET is not configured',
         'PRODUCTION_DATABASE_FINGERPRINT is not configured',
       ],
     });
+  });
+});
+
+describe('forwarded webhook signature', () => {
+  it('is accepted by the adapter the webhook route uses, with the secret the run stored', async () => {
+    const secret = generateForwardingSecret();
+    const payloadRaw = JSON.stringify({ ...oldApiLockerFree, livemode: false });
+    const verified = await createStripePaymentProvider({ resolver: { resolve: async () => err(internal('unused')) } }).verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'test',
+      payloadRaw,
+      signatureHeader: webhookSignatureHeader(payloadRaw, secret, Math.floor(Date.now() / 1000)),
+      webhookSecret: secret,
+    });
+    expect(verified).toMatchObject({ ok: true, value: { type: 'checkout.session.completed', livemode: false } });
+  });
+
+  it('is refused with any other secret', async () => {
+    const payloadRaw = JSON.stringify({ ...oldApiLockerFree, livemode: false });
+    const verified = await createStripePaymentProvider({ resolver: { resolve: async () => err(internal('unused')) } }).verifyWebhookEvent({
+      tenantId: 'tenant-a',
+      mode: 'test',
+      payloadRaw,
+      signatureHeader: webhookSignatureHeader(payloadRaw, generateForwardingSecret(), Math.floor(Date.now() / 1000)),
+      webhookSecret: generateForwardingSecret(),
+    });
+    expect(verified.ok).toBe(false);
+  });
+});
+
+describe('listRecentEvents', () => {
+  const event = (overrides: Record<string, unknown> = {}) => ({
+    id: 'evt_1', object: 'event', type: 'checkout.session.completed', livemode: false, created: 1,
+    data: { object: { id: 'cs_test_1', payment_intent: 'pi_1' } }, ...overrides,
+  });
+
+  it('asks only for the forwarded types since the run started and keeps the raw event', async () => {
+    const urls: URL[] = [];
+    const listed = await listRecentEvents(async (input) => {
+      urls.push(new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url));
+      return new Response(JSON.stringify({ object: 'list', data: [event()], has_more: false }), { status: 200 });
+    }, 'rk_test_example', 1_795_000_000);
+    expect(urls[0]?.searchParams.get('types[0]')).toBe('checkout.session.completed');
+    expect(urls[0]?.searchParams.get('types[1]')).toBe('charge.refunded');
+    expect(urls[0]?.searchParams.get('created[gte]')).toBe('1795000000');
+    expect(listed[0]?.raw).toEqual(event());
+    expect(listed[0] === undefined ? null : eventPaymentIntent(listed[0].event)).toBe('pi_1');
+  });
+
+  it('stops on a live-mode event', async () => {
+    await expect(listRecentEvents(
+      async () => new Response(JSON.stringify({ object: 'list', data: [event({ livemode: true })], has_more: false }), { status: 200 }),
+      'rk_test_example',
+      1,
+    )).rejects.toThrow();
   });
 });
 

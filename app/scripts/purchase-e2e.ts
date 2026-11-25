@@ -25,13 +25,18 @@ import {
 import {
   checkoutSessionIdFromUrl,
   completeTestCheckout,
+  eventPaymentIntent,
+  generateForwardingSecret,
   LEGACY_ACCOUNT_API_VERSION,
+  listRecentEvents,
   listPaymentRefunds,
   paymentIntentOf,
   replayCheckoutSession,
   retrieveCheckoutSession,
   TEST_BUYER_ADDRESS,
   testModeKeyProblem,
+  webhookSignatureHeader,
+  type ProviderEvent,
 } from './purchase-e2e-provider.js';
 
 type Fetch = typeof fetch;
@@ -312,6 +317,33 @@ export const runPurchaseE2e = async (
     return run.result();
   }
 
+  const forwardingSecret = generateForwardingSecret();
+  const forwardedEventIds = new Set<string>();
+  const eventsSinceSeconds = Math.floor(startedAt / 1000) - Math.ceil(CLOCK_SKEW_MS / 1000);
+  const webhookUrl = new URL(API_PATHS.stripeWebhook.replace(':tenantId', encodeURIComponent(SMOKE_TENANT_ID)), origin);
+  webhookUrl.searchParams.set('mode', 'test');
+
+  const forwardEvents = async (wanted: (event: ProviderEvent) => boolean): Promise<void> => {
+    for (const { event, raw } of await listRecentEvents(request, options.keys.restricted, eventsSinceSeconds)) {
+      if (forwardedEventIds.has(event.id) || !wanted(event)) continue;
+      const payloadRaw = JSON.stringify(raw);
+      const response = await request(webhookUrl, {
+        method: 'POST',
+        headers: {
+          ...bypass,
+          'content-type': 'application/json',
+          'stripe-signature': webhookSignatureHeader(payloadRaw, forwardingSecret, Math.floor(timing.now() / 1000)),
+        },
+        body: payloadRaw,
+      });
+      const accepted = z.object({ ok: z.literal(true), data: z.object({ received: z.literal(true) }) }).safeParse(await response.json());
+      if (response.status !== 200 || !accepted.success) {
+        throw new Error(`the webhook refused forwarded ${event.type} ${event.id} with HTTP ${String(response.status)}`);
+      }
+      forwardedEventIds.add(event.id);
+    }
+  };
+
   const configured = await run.step('test-slot-configure', async () => {
     const result = valueOf(await api.configureStripe({ mode: 'test', restrictedKey: options.keys.restricted }), 'test slot configuration');
     if (result.mode !== 'test') throw new Error(`the configuration landed in the ${result.mode} slot`);
@@ -319,6 +351,7 @@ export const runPurchaseE2e = async (
     if (secrets.stripeMode !== null || secrets.secrets.some((secret) => secret.key === 'stripe.restrictedKey')) {
       throw new Error('the live payment slot holds a key, so a checkout the server did not take as a test would reach it; the run stops before any checkout');
     }
+    valueOf(await api.setTenantSecret({ key: 'stripe.testWebhookSecret', value: forwardingSecret }), 'forwarding signing secret');
     return true;
   });
   if (configured === null) {
@@ -363,6 +396,7 @@ export const runPurchaseE2e = async (
     const deadline = timing.now() + timing.webhookTimeoutMs;
     let latest = 'no order';
     while (true) {
+      await forwardEvents((event) => event.type === 'checkout.session.completed' && event.data.object.id === sessionId);
       const order = (await listTestOrders()).orders.find((candidate) => candidate.providerObjectIds['checkoutSession'] === sessionId);
       latest = order === undefined ? 'no order' : `order ${order.id} ${order.status}`;
       if (order !== undefined && order.status !== 'pending') return order;
@@ -466,6 +500,7 @@ export const runPurchaseE2e = async (
     const refundAmount = amountCents ?? preview.remainderCents;
     const deadline = timing.now() + timing.refundTimeoutMs;
     while (true) {
+      await forwardEvents((event) => event.type === 'charge.refunded' && eventPaymentIntent(event) === purchased.paymentIntentId);
       const detail = valueOf(await api.getOrder(purchased.orderId), 'order read');
       const staffRefund = detail.staffRefunds.find((candidate) => candidate.id === created.refund.id);
       const status = staffRefund?.status ?? 'unknown';
@@ -581,47 +616,7 @@ const fixtureOrigin = (baseUrl: string, platformDomain: string): boolean => {
 };
 const DEFAULT_TEST_ORDER_CAP = 300;
 
-const ENVIRONMENT_SUFFIX: Record<PurchaseE2eEnvironment, string> = { staging: 'STAGING', production: 'PRODUCTION' };
-
-const OTHER_ENVIRONMENT: Record<PurchaseE2eEnvironment, PurchaseE2eEnvironment> = { staging: 'production', production: 'staging' };
-
-interface EnvironmentValues {
-  keys: { restricted: string; publishable: string };
-  password: string;
-  bypassSecret: string | null;
-}
-
-/**
- * Each environment reads only its own suffixed names, so an empty production
- * secret can never be filled with the staging sandbox's key or the reverse.
- */
-export const environmentValues = (
-  env: Environment,
-  target: PurchaseE2eEnvironment,
-): { values: EnvironmentValues | null; problems: string[] } => {
-  const suffix = ENVIRONMENT_SUFFIX[target];
-  const otherSuffix = ENVIRONMENT_SUFFIX[OTHER_ENVIRONMENT[target]];
-  const problems: string[] = [];
-  const keyOf = (kind: 'RESTRICTED' | 'PUBLISHABLE', problemKind: 'restricted' | 'publishable'): string | null => {
-    const name = `STRIPE_TEST_${kind}_KEY_${suffix}`;
-    const value = provided(env, name);
-    const problem = testModeKeyProblem(name, problemKind, value);
-    if (problem !== null) problems.push(problem);
-    else if (value !== null && value === provided(env, `STRIPE_TEST_${kind}_KEY_${otherSuffix}`)) {
-      problems.push(`${name} equals STRIPE_TEST_${kind}_KEY_${otherSuffix}; each environment needs its own sandbox`);
-    }
-    return problem === null ? value : null;
-  };
-  const restricted = keyOf('RESTRICTED', 'restricted');
-  const publishable = keyOf('PUBLISHABLE', 'publishable');
-  const passwordName = `PURCHASE_E2E_STAFF_PASSWORD_${suffix}`;
-  const password = provided(env, passwordName) ?? (target === 'staging' ? DEMO_SEED_PASSWORD : null);
-  if (password === null) problems.push(`${passwordName} is not configured`);
-  const bypassSecret = target === 'staging' ? provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET') : null;
-  if (target === 'staging' && bypassSecret === null) problems.push('VERCEL_AUTOMATION_BYPASS_SECRET is not configured');
-  if (problems.length > 0 || restricted === null || publishable === null || password === null) return { values: null, problems };
-  return { values: { keys: { restricted, publishable }, password, bypassSecret }, problems };
-};
+const PRODUCTION_REFUSAL = 'PURCHASE_E2E_ENVIRONMENT=production is refused until a recorded owner decision names the credential a production run may use';
 
 export const purchaseE2eOptionsFromEnv = (env: Environment): { options: PurchaseE2eOptions } | { problems: string[] } => {
   const problems: string[] = [];
@@ -631,32 +626,42 @@ export const purchaseE2eOptionsFromEnv = (env: Environment): { options: Purchase
     problems.push(`PURCHASE_E2E_BASE_URL must be the https origin of the ${SMOKE_TENANT_SLUG} fixture workspace on the platform domain`);
   }
   const environment = provided(env, 'PURCHASE_E2E_ENVIRONMENT');
-  if (environment !== 'staging' && environment !== 'production') problems.push('PURCHASE_E2E_ENVIRONMENT must be staging or production');
-  const target = environment === 'staging' || environment === 'production' ? environment : null;
-  const own = target === null ? null : environmentValues(env, target);
-  if (own !== null) problems.push(...own.problems);
+  if (environment === 'production') problems.push(PRODUCTION_REFUSAL);
+  else if (environment !== 'staging') problems.push('PURCHASE_E2E_ENVIRONMENT must be staging');
+  const keyOf = (name: string, kind: 'restricted' | 'publishable'): string | null => {
+    const value = provided(env, name);
+    const problem = testModeKeyProblem(name, kind, value);
+    if (problem !== null) problems.push(problem);
+    return problem === null ? value : null;
+  };
+  const restricted = keyOf('STRIPE_TEST_RESTRICTED_KEY_STAGING', 'restricted');
+  const publishable = keyOf('STRIPE_TEST_PUBLISHABLE_KEY_STAGING', 'publishable');
+  const bypassSecret = provided(env, 'VERCEL_AUTOMATION_BYPASS_SECRET');
+  if (bypassSecret === null) problems.push('VERCEL_AUTOMATION_BYPASS_SECRET is not configured');
   const productionFingerprint = provided(env, 'PRODUCTION_DATABASE_FINGERPRINT');
   if (productionFingerprint === null) problems.push('PRODUCTION_DATABASE_FINGERPRINT is not configured');
-  const expectedFingerprint = environment === 'production'
-    ? productionFingerprint
-    : provided(env, 'PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT');
   const cap = Number(provided(env, 'PURCHASE_E2E_TEST_ORDER_CAP') ?? DEFAULT_TEST_ORDER_CAP);
   if (!Number.isInteger(cap) || cap <= 0) problems.push('PURCHASE_E2E_TEST_ORDER_CAP must be a positive integer');
-  const values = own?.values ?? null;
-  if (problems.length > 0 || baseUrl === null || target === null || values === null) {
+  if (problems.length > 0 || baseUrl === null || restricted === null || publishable === null || bypassSecret === null) {
     return { problems };
   }
   return {
     options: {
       baseUrl,
-      environment: target,
-      bypassSecret: values.bypassSecret,
-      staff: { email: provided(env, 'PURCHASE_E2E_STAFF_EMAIL') ?? SMOKE_TENANT_CREATOR_EMAIL, password: values.password },
-      keys: values.keys,
+      environment: 'staging',
+      bypassSecret,
+      staff: {
+        email: provided(env, 'PURCHASE_E2E_STAFF_EMAIL') ?? SMOKE_TENANT_CREATOR_EMAIL,
+        password: provided(env, 'PURCHASE_E2E_STAFF_PASSWORD_STAGING') ?? DEMO_SEED_PASSWORD,
+      },
+      keys: { restricted, publishable },
       lockerCode: provided(env, 'PURCHASE_E2E_LOCKER_CODE') ?? DEFAULT_LOCKER_CODE,
       runId: provided(env, 'PURCHASE_E2E_RUN_ID') ?? String(Date.now()),
       testOrderCap: cap,
-      databaseFingerprint: { expected: expectedFingerprint, production: productionFingerprint },
+      databaseFingerprint: {
+        expected: provided(env, 'PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT'),
+        production: productionFingerprint,
+      },
     },
   };
 };

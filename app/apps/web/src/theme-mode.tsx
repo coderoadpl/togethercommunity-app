@@ -61,6 +61,9 @@ export const persistedJsonPreference = <T,>(
       if (serialized !== undefined) localStorage.setItem(key, serialized);
     } catch {}
   },
+  clear: (): void => {
+    try { localStorage.removeItem(key); } catch {}
+  },
 });
 
 export const sessionFlag = (key: string) => ({

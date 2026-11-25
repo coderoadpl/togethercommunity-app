@@ -155,28 +155,32 @@ describe('SalesPanel', () => {
     expect(screen.getByRole('link', { name: en.sales.openMemberAccount({ member: 'Ada (member@example.com)' }) }))
       .toHaveAttribute('href', '/panel/members/m1');
 
-    await user.click(screen.getByLabelText(en.sales.status));
+    await user.click(screen.getByRole('button', { name: en.dataGrid.addFilter }));
+    const filters = await screen.findByRole('dialog', { name: en.dataGrid.addFilter });
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.status }));
     await user.click(await screen.findByRole('option', { name: en.sales.paid }));
     await waitFor(() => expect(listQueries.some((query) => query.includes('status=paid'))).toBe(true));
 
-    await user.click(screen.getByLabelText(en.sales.coupon));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.coupon }));
     await user.click(await screen.findByRole('option', { name: 'PARTNER20' }));
     await waitFor(() =>
       expect(listQueries.some((query) => query.includes('couponId=coupon-1'))).toBe(true),
     );
 
-    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.source }));
     expect(await screen.findByRole('option', { name: 'newsletter' })).toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: en.sales.noSource }));
     await waitFor(() => expect(listQueries.at(-1)).toContain('source=none'));
     expect(listQueries.at(-1)).not.toContain('sourceMatch=');
-    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.source }));
     await user.click(await screen.findByRole('option', { name: 'meta' }));
     await waitFor(() => expect(listQueries.at(-1)).toContain('source=meta'));
 
-    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.source }));
     await user.click(await screen.findByRole('option', { name: 'none' }));
     await waitFor(() => expect(listQueries.at(-1)).toContain('source=none&sourceMatch=exact'));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: en.dataGrid.addFilter })).toBeNull());
 
     await user.click(screen.getByTestId('sales-export-csv'));
     await waitFor(() => expect(exportQueries).toHaveLength(1));
@@ -233,7 +237,8 @@ describe('SalesPanel', () => {
     expect(await screen.findByTestId('sales-row')).toHaveTextContent('Workshop');
     expect(screen.getByTestId('sales-export-csv')).toBeEnabled();
 
-    await user.click(screen.getByLabelText(en.sales.mode));
+    await user.click(screen.getByRole('button', { name: en.dataGrid.addFilter }));
+    await user.click(within(await screen.findByRole('dialog', { name: en.dataGrid.addFilter })).getByRole('combobox', { name: en.sales.mode }));
     await user.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
 
     await waitFor(() => expect(listQueries.some((query) => query.includes('mode=test'))).toBe(true));

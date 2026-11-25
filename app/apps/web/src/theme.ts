@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Chip, Dialog, DialogActions, DialogTitle, Drawer, IconButton, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, Table, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Chip, Dialog, DialogActions, DialogTitle, Drawer, IconButton, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -4752,6 +4752,68 @@ export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => p
 }));
 export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
 
+export const StudioDataGridFrame = styled('div')(({ theme }) => ({
+  minWidth: 0,
+  '& .MuiDataGrid-root': {
+    backgroundColor: theme.palette.background.paper,
+    borderColor: theme.palette.divider,
+    borderRadius: 12,
+    '--DataGrid-containerBackground': theme.palette.background.paper,
+  },
+  '& .MuiDataGrid-columnHeaderTitle': {
+    color: theme.palette.text.secondary,
+    fontWeight: 600,
+    fontSize: '0.75rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    whiteSpace: 'normal',
+    lineHeight: 1.3,
+  },
+  '& .MuiDataGrid-columnHeader, & .MuiDataGrid-cell': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+  '& .MuiDataGrid-cell': {
+    display: 'flex',
+    alignItems: 'center',
+    paddingTop: '0.5rem',
+    paddingBottom: '0.5rem',
+    whiteSpace: 'normal',
+    overflowWrap: 'anywhere',
+    lineHeight: 1.43,
+    fontSize: '0.875rem',
+  },
+  '& .MuiDataGrid-cell > *': { minWidth: 0, maxWidth: '100%' },
+  '& .MuiDataGrid-cell .MuiChip-root': { height: 'auto', minHeight: 24, maxWidth: '100%' },
+  '& .MuiDataGrid-cell .MuiChip-label': { whiteSpace: 'normal', overflowWrap: 'break-word', paddingTop: 2, paddingBottom: 2 },
+  '& .MuiDataGrid-cell:focus, & .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus, & .MuiDataGrid-columnHeader:focus-within': {
+    outline: `2px solid ${theme.palette.primary.main}`,
+    outlineOffset: -2,
+  },
+  '& .MuiDataGrid-row:hover': { backgroundColor: theme.palette.action.hover },
+  '& .MuiDataGrid-row:last-of-type .MuiDataGrid-cell': { borderBottom: 0 },
+  '@media (prefers-reduced-motion: reduce)': { '& *': { transition: 'none', animation: 'none' } },
+}));
+export const StudioGridCellStack = styled('div')({ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.35rem', minWidth: 0, width: '100%' });
+export const StudioGridChipRow = styled('div')({ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', minWidth: 0 });
+export const StudioGridHint = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  borderRadius: 4,
+  textDecorationLine: 'underline',
+  textDecorationStyle: 'dotted',
+  textUnderlineOffset: '0.2em',
+  cursor: 'help',
+  '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
+}));
+export const StudioGridMutedHint = styled(StudioGridHint)(({ theme }) => ({ color: theme.palette.text.secondary }));
+export const StudioGridCount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
+export const StudioGridColumnRow = styled('li')(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  padding: '0.125rem 0',
+  '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
+}));
+export const StudioGridColumnList = styled('ul')({ listStyle: 'none', margin: 0, padding: 0 });
+export const StudioGridNoWrap = styled('span')({ whiteSpace: 'nowrap' });
+export const SalesGridMember = styled('span')({ display: 'block', minWidth: 0, width: '100%' });
 export const SalesOrderCardList = styled('ul')(({ theme }) => ({
   listStyle: 'none',
   margin: 0,
@@ -4759,19 +4821,6 @@ export const SalesOrderCardList = styled('ul')(({ theme }) => ({
   backgroundColor: theme.palette.background.paper,
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: 12,
-}));
-export const SalesTable = styled(Table)(({ theme }) => ({
-  [theme.breakpoints.down('xl')]: {
-    '& .MuiTableCell-root:not(.MuiTableCell-paddingCheckbox)': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
-  },
-}));
-export const SalesNoWrapCell = styled(TableCell)({ whiteSpace: 'nowrap' });
-export const SalesMemberCell = styled(TableCell)(({ theme }) => ({
-  whiteSpace: 'nowrap',
-  maxWidth: '14rem',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  [theme.breakpoints.up('lg')]: { maxWidth: '18rem' },
 }));
 export const SalesMemberName = styled('span')({ display: 'block', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', overflowWrap: 'anywhere' });
 export const SalesMemberEmail = styled('span')(({ theme }) => ({
@@ -4785,9 +4834,7 @@ export const SalesMemberEmail = styled('span')(({ theme }) => ({
   userSelect: 'text',
 }));
 export const OrderDetailValue = styled(Typography)<AsElement>(({ theme }) => ({ minWidth: 0, [theme.breakpoints.up('sm')]: { textAlign: 'right' } }));
-export const SalesFitCell = styled(TableCell)({ width: '1%' });
 export const SalesCouponCode = styled('span')({ display: 'block', width: 'max-content', maxWidth: '10rem', overflowWrap: 'break-word' });
-export const SalesProductCell = styled(TableCell)(({ theme }) => ({ width: '100%', minWidth: '10rem', [theme.breakpoints.up('xl')]: { minWidth: '14rem' } }));
 export const SalesDateLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'inline-flex',
   flexDirection: 'column',

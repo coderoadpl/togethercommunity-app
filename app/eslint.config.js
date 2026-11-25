@@ -691,6 +691,7 @@ export default tseslint.config(
               from: ['web-features'],
               allow: [
                 '@mui/material',
+                '@mui/x-data-grid',
                 '@mui/x-tree-view',
                 '@tanstack/react-query',
                 '@tanstack/react-router',
@@ -718,6 +719,7 @@ export default tseslint.config(
               from: ['web-ui'],
               allow: [
                 '@mui/material',
+                '@mui/x-data-grid',
                 '@tiptap/extension-code-block',
                 '@tiptap/extension-image',
                 '@tiptap/extension-italic',

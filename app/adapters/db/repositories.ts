@@ -226,6 +226,7 @@ import {
   salesLinks,
   products,
   spaces,
+  staffListLayouts,
   suppressions,
   spaceEventRsvps,
   spaceEvents,
@@ -3074,6 +3075,11 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
             eq(providerCustomerOwners.customerId, stripeCustomerId),
           ),
         ),
+      ));
+
+      await tx.delete(staffListLayouts).where(and(
+        eq(staffListLayouts.tenantId, tenantId),
+        eq(staffListLayouts.userId, member.userId),
       ));
 
       await tx

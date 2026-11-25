@@ -1,6 +1,6 @@
 {
-  "hash": "c1e54e4cbcbba02812dc01528779d63de6aa865425bc245297c6dbba2b5269bd",
-  "shortId": "c1e54e4cbcbb",
+  "hash": "cbf524c96d809d489eacd0258a5bed520184ac8bcb8432c39e2e0e6eb5d9b7e4",
+  "shortId": "cbf524c96d80",
   "schema": {
     "constraints": [
       {
@@ -2002,6 +2002,11 @@
         "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
         "name": "session_user_id_user_id_fk",
         "table": "session"
+      },
+      {
+        "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",
+        "name": "staff_list_layouts_user_id_fkey",
+        "table": "staff_list_layouts"
       },
       {
         "definition": "FOREIGN KEY (user_id) REFERENCES \"user\"(id) ON DELETE CASCADE",

@@ -606,9 +606,10 @@ Each recorded refusal also logs one error line with a stable marker that
 operators can search for or attach a log-drain alert to:
 `[payment-webhook-rejected] tenant=<id> event=<id> type=<type> reason=<code>`.
 A failed record or resolve write logs
-`[payment-webhook-rejected] record failed ...` or `... resolve failed ...`, and a
-failure while queueing the staff e-mail after the row was written logs
-`... notify failed ...`.
+`[payment-webhook-rejected] record failed ...` or `... resolve failed ...`. After
+the row is written, an outbox that refuses the staff e-mail logs
+`... staff e-mail not queued ...` and any other failure while preparing it logs
+`... notify failed ...`; the next delivery of the event queues it again.
 
 Rollback: the e-mail is rendered when it is queued and stored as an
 `m2m-transactional` outbox message with source app `payment-event-rejections`

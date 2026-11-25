@@ -171,7 +171,7 @@ export const recordStripeWebhookOutcome = async (
     return rejection;
   });
   if (recorded === undefined) return;
-  // Every refusal re-queues: the outbox ids are fixed per event and recipient, so a retry fills a gap left by a failed or interrupted queue without a second e-mail.
+  // Every refusal re-queues: the outbox ids are fixed per event and recipient index, so a retry fills a gap left by a failed or interrupted queue without a second e-mail.
   await guarded('notify', async () => {
     if (await notifyStaff(tenant, recorded, deps)) deps.dispatchEmail();
   });

@@ -4142,11 +4142,17 @@ const shopManagementKey = apiKey
   .command('shop-management')
   .description('Shop management keys (verified owner session only)');
 
-const shopManagementKeyCreateOptionsSchema = z.object({
-  scope: z.array(shopManagementScopeSchema).min(1),
-  expiresAt: z.string().datetime(),
-  mode: shopManagementKeyModeSchema.optional(),
-});
+const shopManagementKeyCreateOptionsSchema = z.union([
+  z.object({
+    scope: z.array(shopManagementScopeSchema).min(1),
+    expiresAt: z.string().datetime(),
+    mode: shopManagementKeyModeSchema.optional(),
+  }).strict(),
+  z.object({
+    purpose: z.literal('purchase-smoke'),
+    expiresAt: z.string().datetime(),
+  }).strict(),
+]);
 
 shopManagementKey
   .command('create <name...>')
@@ -4154,15 +4160,18 @@ shopManagementKey
   .option('--scope <scope...>', 'Shop scopes (required): shop:catalog:read, shop:catalog:write, shop:orders:read, shop:fulfilment:write, shop:settings:read, shop:settings:write, shop:integrations:read, shop:integrations:write')
   .option('--expires-at <iso>', 'ISO datetime when the key expires (required), at most 30 days ahead (7 days is the suggested lifetime)')
   .option('--mode <mode>', 'direct (default): writes change live state; propose: writes become change proposals the owner decides on')
+  .option('--purpose <purpose>', 'purchase-smoke: a key for the purchase smoke of the synthetic workspace only; takes no --scope or --mode')
   .action(
     withInput(z.tuple([z.array(z.string().min(1)).min(1), shopManagementKeyCreateOptionsSchema]), async (ctx, [nameWords, options]) => {
       emit(
-        await ctx.api.createShopManagementKey({
-          name: nameWords.join(' '),
-          scopes: options.scope,
-          expiresAt: options.expiresAt,
-          ...(options.mode === undefined ? {} : { mode: options.mode }),
-        }),
+        await ctx.api.createShopManagementKey('purpose' in options
+          ? { name: nameWords.join(' '), scopes: [], purpose: options.purpose, expiresAt: options.expiresAt }
+          : {
+            name: nameWords.join(' '),
+            scopes: options.scope,
+            expiresAt: options.expiresAt,
+            ...(options.mode === undefined ? {} : { mode: options.mode }),
+          }),
         ctx.json,
         (data) =>
           `created ${data.apiKey.mode === 'propose' ? 'propose-mode ' : ''}shop management key ${data.apiKey.name} (${data.apiKey.id})\nsecret (shown once): ${data.secret}`,

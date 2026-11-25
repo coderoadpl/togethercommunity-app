@@ -1948,6 +1948,8 @@ purchase key through the same owner-session endpoint, using
 `{name, purpose: "purchase-smoke", scopes: [], mode: "direct", expiresAt}`.
 It keeps the 30-day maximum expiry and normal owner-only revoke/purge controls.
 The secret is returned once. Mixed scopes and propose mode are refused.
+From the CLI, signed in as that owner:
+`together --tenant acme api-key shop-management create Purchase smoke --purpose purchase-smoke --expires-at <ISO datetime>`.
 
 This purpose authorizes exactly two routes:
 

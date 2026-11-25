@@ -17,7 +17,7 @@ const harness = (deleteResult: Awaited<ReturnType<StorageProvider['delete']>> = 
   const unexpected = () => { throw new Error('The wrapped storage must not be called'); };
   const storage: StorageProvider = {
     delete: remove, objectUrl, list: unexpected, getObject: unexpected, putObject: unexpected, probe: unexpected,
-    probeCors: unexpected, presignPut: unexpected, presignGet: unexpected, head: unexpected, healthcheck: unexpected, test: unexpected,
+    copyObject: unexpected, digestObject: unexpected, probeCors: unexpected, presignPut: unexpected, presignGet: unexpected, head: unexpected, healthcheck: unexpected, test: unexpected,
   };
   const logger = { error: vi.fn<(message: string) => void>() };
   const wrapped = storageWithDeletesAfterCommit(storage, { defer: (effect) => { deferred.push(effect); } }, logger);

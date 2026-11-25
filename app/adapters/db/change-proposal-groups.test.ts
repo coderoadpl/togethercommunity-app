@@ -2,6 +2,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createContentHash } from '#adapters/crypto/content-hash.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { createTenantSecretResolver } from '#adapters/crypto/tenant-secret-resolver.js';
 import {
@@ -36,15 +37,18 @@ import {
 
 import type { ChangeProposalBoundOptions } from './change-proposal-bounds.js';
 import { createChangeProposalGroupRepository } from './change-proposal-groups.js';
+import { createQuarantinedImageRepository } from './change-proposal-images.js';
 import { createChangeProposalOwnerNotifier, createChangeProposalPeopleReader } from './change-proposal-people.js';
 import { createChangeProposalTransaction } from './change-proposal-transaction.js';
 import { createChangeProposalEventRepository, createChangeProposalRepository, createChangeProposalTargetLabelReader } from './change-proposals.js';
 import { closeDb, createDb, type Db } from './client.js';
+import { createKeyDownloadFileRepository } from './key-download-files.js';
 import { createTenantSecretRepository } from './repositories.js';
 import {
   changeProposalEvents,
   changeProposalGroups,
   changeProposals,
+  courses,
   emailOutbox,
   entityVersions,
   productDownloadAssets,
@@ -108,7 +112,7 @@ const storage: StorageProvider = (() => {
       storageCalls.push(`delete ${input.url}`);
       return ok({ deleted: true });
     },
-    list: refuse('list'), getObject: refuse('getObject'), putObject: refuse('putObject'), probe: refuse('probe'), probeCors: refuse('probeCors'),
+    list: refuse('list'), getObject: refuse('getObject'), putObject: refuse('putObject'), probe: refuse('probe'), copyObject: refuse('copyObject'), digestObject: refuse('digestObject'), probeCors: refuse('probeCors'),
     presignPut: refuse('presignPut'), presignGet: refuse('presignGet'), head: refuse('head'), healthcheck: refuse('healthcheck'), test: refuse('test'),
   };
 })();
@@ -128,6 +132,10 @@ const deps = (db: Db = database.db, bounds: ChangeProposalBoundOptions = {}) => 
     changeProposalPeople: createChangeProposalPeopleReader(db),
     changeProposalOwnerNotifier: createChangeProposalOwnerNotifier(db, bounds),
     realtimeBus: { publish: () => undefined },
+    quarantinedImages: createQuarantinedImageRepository(db, bounds),
+    keyDownloadFiles: createKeyDownloadFileRepository(db, bounds),
+    secretResolver: createTenantSecretResolver(createTenantSecretRepository(db), secretCrypto),
+    contentHash: createContentHash(),
     storage,
     logger,
     ids: { nextId: () => `group-${String(++sequence)}` },
@@ -831,4 +839,35 @@ describe('stable effects when the ids created at approval sort the other way, ov
     expect(approved.items.map((item) => item.status)).toEqual(['applied', 'applied', 'applied', 'applied']);
     expect(await database.db.select().from(products).where(eq(products.slug, 'teapot'))).toEqual([]);
   });
+});
+
+describe('the courses of a group over the database', () => {
+  it('takes every course an item names before any item locks a product, so a held course never waits behind a group-held product', async () => {
+    await database.db.insert(courses).values({ id: 'course-intro', tenantId: TENANT, name: 'Intro course', description: '', createdAt: NOW }).onConflictDoNothing();
+    const groupId = await newGroup();
+    await add(groupId, 'product.update', { id: 'mug', title: 'Big mug' });
+    await add(groupId, 'product.set-access', { id: 'draft', accessItems: [{ level: 'course', courseId: 'course-intro' }] });
+    const holder = await connectedClient();
+    const prober = await connectedClient();
+    const observer = await connectedClient();
+    try {
+      await holder.query('begin');
+      await holder.query('select id from courses where tenant_id = $1 and id = $2 for update', [TENANT, 'course-intro']);
+      const approval = approve(groupId);
+      await untilLockWaiters(observer, 1);
+      await prober.query('begin');
+      const probed = await prober.query('select id from products where tenant_id = $1 and id = $2 for update nowait', [TENANT, 'mug'])
+        .then(() => 'free', (cause: unknown) => cause);
+      await prober.query('rollback');
+      await holder.query('commit');
+      expect(probed).toBe('free');
+      expect(unwrap(await approval).items.map((item) => item.status)).toEqual(['applied', 'applied']);
+    } finally {
+      await holder.end();
+      await prober.end();
+      await observer.end();
+    }
+    expect((await database.db.select({ accessItems: products.accessItems }).from(products).where(eq(products.id, 'draft')))[0]?.accessItems)
+      .toEqual([{ level: 'course', courseId: 'course-intro' }]);
+  }, 30_000);
 });

@@ -1,9 +1,11 @@
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { en } from '../../../i18n/en.js';
 import { renderWithProviders } from '../../../test/render.js';
+import { server } from '../../../test/server.js';
 import { StorageWizard, storageCorsJson } from './StorageWizard.js';
 
 const openConnectionStep = async () => {
@@ -84,5 +86,60 @@ describe('StorageWizard CORS settings', () => {
     expect(screen.getByTestId('storage-cors-json-toggle')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByTestId('storage-cors-json-toggle')).not.toHaveAttribute('aria-controls');
     expect(screen.queryByTestId('storage-cors-json')).not.toBeInTheDocument();
+  });
+});
+
+describe('StorageWizard download link check', () => {
+  const diagnostic = (signedResponseOverrides: 'honoured' | 'ignored' | 'refused') => ({
+    code: 'storage.available',
+    message: 'Server diagnostic text',
+    signedResponseOverrides,
+  });
+
+  const probeAndSave = async (signedResponseOverrides: 'honoured' | 'ignored' | 'refused') => {
+    server.use(
+      http.post('/api/integrations/storage/probe', () => HttpResponse.json({ ok: true, data: { diagnostic: diagnostic(signedResponseOverrides) } })),
+      http.post('/api/integrations/storage/configure', () => HttpResponse.json({
+        ok: true,
+        data: {
+          diagnostic: diagnostic(signedResponseOverrides),
+          secret: { key: 's3.configuration', maskedPreview: 'acce…', updatedAt: '2026-11-20T10:00:00.000Z' },
+        },
+      })),
+    );
+    renderWithProviders(<StorageWizard configured={false} origins={['https://courses.example.org']} />);
+    await openConnectionStep();
+    await userEvent.type(screen.getByTestId('storage-endpoint'), 'https://storage.example.org');
+    await userEvent.type(screen.getByTestId('storage-bucket'), 'files');
+    await userEvent.type(screen.getByTestId('storage-access-key'), 'access');
+    await userEvent.type(screen.getByTestId('storage-secret-key'), 'secret');
+    await userEvent.click(screen.getByTestId('storage-connection-continue'));
+    await userEvent.click(screen.getByTestId('storage-probe'));
+  };
+
+  it.each([
+    ['refused', en.integrations.storageDownloadOverridesRefused, en.integrations.storageSavedOverridesRefused],
+    ['ignored', en.integrations.storageDownloadOverridesIgnored, en.integrations.storageSavedOverridesIgnored],
+  ] as const)('warns after a successful probe and confirms the save with the warning when the storage %s the download link overrides', async (outcome, warning, saved) => {
+    await probeAndSave(outcome);
+
+    expect(await screen.findByTestId('storage-probe-warning')).toHaveTextContent(warning);
+    expect(screen.queryByTestId('storage-probe-success')).not.toBeInTheDocument();
+    expect(screen.queryByText('Server diagnostic text')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('storage-save'));
+    const savedWarning = await screen.findByTestId('storage-save-warning');
+    expect(savedWarning).toHaveTextContent(saved);
+    expect(savedWarning).toHaveTextContent(en.integrations.storageSaved.replace(/\.$/u, ''));
+    expect(savedWarning).not.toHaveTextContent('You can still save');
+  });
+
+  it('shows plain success when the storage honours the download link overrides', async () => {
+    await probeAndSave('honoured');
+
+    expect(await screen.findByTestId('storage-probe-success')).toHaveTextContent(en.integrations.storageProbeSuccess);
+    expect(screen.queryByTestId('storage-probe-warning')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('storage-save'));
+    expect(await screen.findByTestId('storage-save-success')).toBeInTheDocument();
+    expect(screen.queryByTestId('storage-save-warning')).not.toBeInTheDocument();
   });
 });

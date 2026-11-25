@@ -18,18 +18,25 @@ import type {
   ChangeProposalTransitionGuard,
 } from '#core/server/index.js';
 
-import { busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions, type ChangeProposalBounds } from './change-proposal-bounds.js';
+import {
+  busyAfterRollback,
+  changeProposalBounds,
+  lockWorkspaceProposals,
+  type ChangeProposalBoundOptions,
+  type ChangeProposalBounds,
+} from './change-proposal-bounds.js';
+import { quarantinedImagesPresent } from './change-proposal-images.js';
 import {
   boundedWrite,
   countCapReached,
   insertProposal,
   keyAcceptsProposals,
-  lockWorkspaceProposals,
   parseProposal,
   recordProposalExpiry,
   updateProposalStatus,
 } from './change-proposals.js';
 import type { Db } from './client.js';
+import { holdProposedFiles, linkProposedFiles } from './key-download-files.js';
 import { changeProposalGroups, changeProposals } from './schema.js';
 
 type ChangeProposalGroupRow = typeof changeProposalGroups.$inferSelect;
@@ -138,7 +145,7 @@ const groupRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangePropos
     ? []
     : (await db.select().from(changeProposalGroups)
         .where(and(eq(changeProposalGroups.tenantId, tenantId), inArray(changeProposalGroups.id, [...ids])))).map(parseGroup),
-  addItem: async (tenantId, proposal, event, clock) => {
+  addItem: async (tenantId, proposal, event, clock, images = [], files = []) => {
     const parsed = changeProposalSchema.parse(proposal);
     if (parsed.tenantId !== tenantId) throw new Error('Change proposal belongs to another tenant');
     if (parsed.status !== 'pending') throw new Error('A new change proposal must be pending');
@@ -148,6 +155,7 @@ const groupRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangePropos
     return busyAfterRollback(() => db.transaction(async (tx): Promise<ChangeProposalGroupItemAddition> => {
       if (!await lockWorkspaceProposals(tx, tenantId, bounds)) return { kind: 'busy' };
       if (!await keyAcceptsProposals(tx, tenantId, parsed.proposedByKeyId, clock.nowIso())) return { kind: 'key_inactive' };
+      if (!await quarantinedImagesPresent(tx, tenantId, parsed.proposedByKeyId, images)) return { kind: 'image_missing' };
       const current = await lockGroup(tx, tenantId, groupId, parsed.proposedByKeyId);
       if (current === null) return { kind: 'not_found' };
       const now = clock.nowIso();
@@ -157,9 +165,12 @@ const groupRepositoryOver = (db: Db, bounds: ChangeProposalBounds): ChangePropos
       if (current.items.length + 1 !== groupPosition || (first !== undefined && first.expiresAt !== parsed.expiresAt)) {
         return { kind: 'group_changed' };
       }
+      if (!await holdProposedFiles(tx, tenantId, parsed.proposedByKeyId, files)) return { kind: 'file_unavailable' };
       const cap = await countCapReached(tx, tenantId, parsed.proposedByKeyId, now);
       if (cap !== null) return { kind: 'cap_exceeded', cap };
-      return { kind: 'created', proposal: await insertProposal(tx, tenantId, parsed, event) };
+      const created = await insertProposal(tx, tenantId, parsed, event);
+      await linkProposedFiles(tx, tenantId, parsed.proposedByKeyId, files, created.id);
+      return { kind: 'created', proposal: created };
     }), { kind: 'busy' } as const);
   },
   lock: (tenantId, id) => lockGroup(db, tenantId, id),

@@ -319,6 +319,19 @@ export const transactionalEmailMessagesEn: TransactionalEmailMessages = {
       };
     },
   },
+  paymentEventRejectedEmail: {
+    noCheckoutSession: 'none',
+    render: ({ tenantName, reference, eventId, eventIdHtml, checkoutSession, checkoutSessionHtml, reason, reasonHtml, firstSeenText, firstSeenHtml, studioUrl, studioUrlHtml }) => {
+      const summary = 'A buyer paid at Stripe, but no order was recorded, so this payment has no order yet.';
+      const retry = 'Stripe retries the delivery automatically for up to three days. If a retry succeeds, the order appears in sales and the payment leaves the list in the Studio.';
+      const hold = 'Do not refund the payment or ask the buyer to pay again before support has checked it.';
+      return {
+        subject: `[${tenantName}] Payment received but no order recorded: ${reference}`,
+        html: `<p>${summary}</p><p>${retry}</p><p><strong>${hold}</strong></p><p>Reason: ${reasonHtml}<br>Stripe event: ${eventIdHtml}<br>Checkout session: ${checkoutSessionHtml}<br>First seen: ${firstSeenHtml}</p><p><a href="${studioUrlHtml}">Open the list in the Studio</a></p>`,
+        text: `${summary}\n${retry}\n${hold}\nReason: ${reason}\nStripe event: ${eventId}\nCheckout session: ${checkoutSession}\nFirst seen: ${firstSeenText}\n${studioUrl}`,
+      };
+    },
+  },
   stockLowEmail: {
     noThreshold: 'not set',
     render: ({ tenantName, productTitle, productTitleHtml, available, threshold, oversold, studioUrl, studioUrlHtml }) => ({

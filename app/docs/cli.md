@@ -89,6 +89,37 @@ pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
   --email buyer@example.test --accept-terms
 ```
 
+## Product gallery
+
+A product has a cover and an ordered gallery of at most 12 images, each with a
+URL and alternative text (see [Products: Gallery](products.md#gallery)).
+`product image-upload <file>` uploads a PNG, JPEG, WebP or SVG file of up to
+5 MiB to the workspace storage and prints its URL; the upload alone does not
+change any product. `product create|update --images-file <path>` then sets the
+whole gallery, in order, from a JSON array (`-` reads it from stdin). An update
+without the flag keeps the stored gallery and `[]` removes every image.
+Unknown fields, more than 12 entries, a URL listed twice or an alternative text
+longer than 250 characters fail before the request.
+
+```bash
+pnpm --silent run cli --tenant acme product image-upload ./front.png
+pnpm --silent run cli --tenant acme product image-upload ./back.webp
+pnpm --silent run cli --tenant acme product update <product-id> --images-file images.json
+```
+
+with `images.json`:
+
+```json
+[
+  { "url": "/api/public/assets/product-image/<front-file>.png", "alt": "Printed holder, front" },
+  { "url": "/api/public/assets/product-image/<back-file>.webp", "alt": "" }
+]
+```
+
+With a [shop management key](shop-management-keys.md#product-covers-gallery-images-and-sales-links)
+the same steps are `shop images upload <file>` and
+`shop products create|update --images-file <path>`.
+
 ## Staff refunds
 
 `order refund-preview <orderId>` prints the paid amount, the amount refunded
@@ -169,7 +200,7 @@ workspace, revoked or not, and prints the count; it refuses without `--yes`.
 `api-keys shop-management events [--key <id>] [--cursor <event-id>] [--limit <n>]`
 lists the workspace's shop management key history (creation, revocation, purge
 and keyed mutating requests handed to a shop route handler), newest first.
-The `shop products|prices|stock|orders|settings|branding|cover|sales-links|integrations|proposals` commands use such a key from the environment
+The `shop products|prices|stock|orders|settings|branding|cover|images|files|sales-links|integrations|proposals` commands use such a key from the environment
 variable named by `--api-key-env` (default `TOGETHER_SHOP_KEY`) and never send
 the stored session; see the guide for the full command list. With a
 propose-mode key the catalogue, `shop settings set` and
@@ -177,15 +208,73 @@ propose-mode key the catalogue, `shop settings set` and
 exit `0` when the server answers `202`, and `shop proposals list|show|withdraw`
 reach that key's own proposals; the receipt of an applied proposal shows the
 resource it created or changed, to name in a follow-up proposal.
+With such a key `shop cover upload <productId> <file>` uploads the cover into
+the key's private quarantine and proposes attaching it, printing the receipt
+and the address the image takes once approved; `shop branding upload <kind>
+<file>` prints that address and the `shop settings set` command that proposes
+it, or proposes the settings change itself with `--attach`. Both accept
+`--group <id>`, and the image stays private until the owner approves.
+With a direct-mode key `shop files upload <productId> <file> [--replaces <assetId>] [--note <text>]`
+checks the product, uploads the file (streamed from disk, at most 256 MiB, the
+type taken from its extension), completes it and attaches it as a new file or
+the next version of `--replaces`, refusing before the upload a `--note` over
+500 characters or a `--replaces` that is not a ready file of the product; `shop files copy <fromProductId> <assetId> <toProductId>`
+copies a ready file on the server and attaches the copy to the other product;
+`shop files list <productId>`, `shop files remove <productId> <assetId>`,
+`shop files staged` and `shop files discard <id>` list a product's files, remove
+a version, and list or discard the key's staged files. With a propose-mode key
+`shop files upload` and `shop files copy` stage the file the same way and
+propose attaching it, printing the receipt, the staged file (with `kept while
+the proposal is pending` in place of its 7-day staging expiry) and that it stays
+private until the owner approves, and `shop files remove` proposes the
+removal of a ready file; all three accept `--group <id>`, and with it `upload` and `copy` do
+not check a `'$proposal:<id>'` product first; see
+[Download files](shop-management-keys.md#download-files).
+`shop products access <productId>` states the whole new list of what a product
+grants in one command: `--course <id>` alone, repeatable, grants whole courses;
+with exactly one `--course`, `--module <id>` and `--lesson <id>` (each
+repeatable) grant those modules and lessons instead of the whole course, each
+wherever it is used, and `--exclude-module <id>` grants the whole course without
+those modules; `--access-items <json>` states a list of any other shape, and
+`--clear` a list with nothing in it. A combination that states no list or
+mixes these forms is refused before any request. With a propose-mode key it
+prints the proposal receipt and accepts `--group <id>`, and the product may be
+a `'$proposal:<id>'`; a direct-mode key gets `forbidden` from the server and
+changes nothing ([What a product grants](shop-management-keys.md#what-a-product-grants)).
 `proposals list [--status <status>] [--group <id>] [--cursor <id>] [--limit <n>]`,
 `proposals show <id>`, `proposals approve <id>` and
 `proposals reject <id> [--note <text>]` let the owner,
 in their own session, read every change proposal of the workspace with its
-before/after effect, approve it or reject it. `proposals approve` prints the
+before/after effect, approve it or reject it. `proposals show` and
+`proposals group show` print, under `names:`, the title of every course, module
+and lesson of a `product.set-access` proposal, or `no longer exists` for an id
+that no longer names one. `proposals show` also lists the
+staged file a download file proposal attaches, where a copy comes from and,
+while the proposal is pending, whether it still holds the file and the command
+that downloads it: `proposals file <id> <file id> --out <path> [--force]` asks the
+server for a 60-second link and streams the file from the storage, without
+printing the link, through `fetchProposedFile` of `core/client` (no
+credentials, no redirect followed, and no failure message that repeats the
+link), into a new temporary file next to `--out`
+(`.<name>.partial-<random>`, opened exclusively with mode `0600`, so only the
+account that runs the command can read it, whatever the umask, and so can the
+file moved onto `--out`, also one that replaces a file of another mode with
+`--force`), writing every byte of each
+chunk and counting the bytes written; a chunk that would take the count past
+the announced size is not written, and the download stops there, so the
+temporary file never holds more than the announced size. Only when that count
+is the announced size does it move the file onto `--out`: without `--force` an `--out` that
+exists, also one that appeared during the download, is refused and left as it
+is; with `--force` it is replaced in one rename. A download that breaks off, a
+write that makes no progress and a size that is not the announced one remove
+only the temporary file, so an existing `--out` is never truncated or removed.
+`proposals approve` prints the
 outcome first: `applied` exits `0` and names the resource by the operation
 (`applied: price <id>` for a new price, `applied: sales link <id>`,
-`applied: settings`); `stale` (the live state changed since the
-proposal was made) and `failed` (the live use-case refused the stored change,
+`applied: file <id>` for an attached file, `applied: settings`); `stale` (the live state changed since the
+proposal was made, or an image or file it attaches is no longer available, in
+which case it prints that reason from the proposal's history without its code,
+`stale: The proposed file <id> is no longer available, …`) and `failed` (the live use-case refused the stored change,
 with its error code and message) apply nothing and exit `6`, the conflict exit
 code, as does approving a proposal that is no longer pending.
 Proposals that depend on each other go into a
@@ -199,14 +288,18 @@ creates something: a product, a price or a sales link), quoted so the shell
 leaves the `$` alone, for
 example `shop prices add --product '$proposal:<id>' --kind one_time --price 49 --group <group id>`.
 The owner runs `proposals group show <id>` (the items in order with their
-effects, the items digest and the exact approve command; `itemsDigest` and
+effects and, for an item that attaches a staged file, the same file lines as
+`proposals show`: the file, whether it is a copy of a version of another
+product, whether the item still holds it and the `proposals file` command; then
+the items digest and the exact approve command; `itemsDigest` and
 `approveCommand` with `--json`),
 `proposals group approve <id> --items-digest <digest>` (the digest that `show`
 printed is required; the command reads the group again and, when its items
 changed since, prints the current items with their new digest and exits `6`
-without sending anything; otherwise it approves exactly those items: `0` when
-every item was applied, `6` when the group ends `stale` or `failed`, as for a
-single approval) and
+without sending anything; otherwise it prints those items with the same file
+lines and approves exactly them: `0` when every item was applied, `6` when the
+group ends `stale` or `failed`, as for a single approval, with
+`stale: item <n>: <reason>` when an item's file or image is gone) and
 `proposals group reject <id> [--note <text>]`; `proposals list --group <id>`
 lists one group and `proposals list` shows the group and position of each
 grouped item. A grouped item cannot be approved, rejected or withdrawn alone.

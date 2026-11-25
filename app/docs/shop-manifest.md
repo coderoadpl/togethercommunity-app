@@ -230,6 +230,9 @@ format, not a tax recommendation.
           "deliveryMethod": "shipping",
           "parcelTemplate": "small",
           "coverUrl": "https://togethercommunity.app/assets/paperback.png",
+          "images": [
+            { "url": "https://togethercommunity.app/assets/paperback-back.png", "alt": "Back cover of the paperback" }
+          ],
           "variantGroup": "book",
           "variantLabel": "Paperback",
           "compliance": {
@@ -556,7 +559,7 @@ error; the tool does not convert product types or rename slugs.
 
 The metadata fields follow the existing physical product routes: `description`,
 `vatRate`, `vatExemptionBasis`, `deliveryMethod`, `parcelTemplate`, `salesChannel`,
-`compliance`, `personalization`, `variantGroup`, `variantLabel`, and `coverUrl`. Only the metadata fields an
+`compliance`, `personalization`, `variantGroup`, `variantLabel`, `images`, and `coverUrl`. Only the metadata fields an
 entry specifies are managed: an omitted field of an existing product is not
 compared or written and keeps its stored value. When the tool creates a product,
 the product route's defaults fill omitted fields: an empty description, delivery
@@ -602,7 +605,12 @@ changed. Omission leaves stock unmanaged; it does not disable tracking.
 
 `coverUrl` accepts the existing route's HTTP(S) or root-relative asset URL.
 Omission preserves the existing cover, and `null` clears it. The command attaches
-an already available URL and never uploads image bytes. `published` explicitly
+an already available URL and never uploads image bytes. `images` is the ordered
+[product gallery](products.md#gallery), at most 12 `{ "url", "alt" }` objects
+with the same URL forms as `coverUrl`; it is managed as a whole list in order,
+so a reordered list is a change, `[]` removes every image and an omitted field
+leaves the stored gallery unchanged. Like the cover, the gallery attaches
+already uploaded URLs only. `published` explicitly
 publishes or unpublishes the product after all other selected changes.
 
 Products absent from the manifest are untouched. The tool does not delete

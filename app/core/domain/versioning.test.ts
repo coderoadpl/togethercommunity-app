@@ -110,6 +110,19 @@ describe('upcaster chain runner', () => {
     ]);
   });
 
+  it('reads a v11 product with an empty gallery and keeps the v12 gallery order', () => {
+    const legacy = readSnapshot('product', { schemaVersion: 11, payload: SNAPSHOT_FIXTURES.product[11] });
+    expect(legacy.ok && legacy.value.payload).toMatchObject({ images: [] });
+
+    const gallery = readSnapshot('product', { schemaVersion: 12, payload: SNAPSHOT_FIXTURES.product[12] });
+    expect(gallery.ok && gallery.value.payload).toMatchObject({
+      images: [
+        { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000005.webp', alt: 'Lamp, front view' },
+        { url: 'https://cdn.example.test/lamp-side.jpg', alt: '' },
+      ],
+    });
+  });
+
   it('parks unsafe legacy document and link URLs on an invalid host', () => {
     const result = readSnapshot('course_lesson', {
       schemaVersion: 5,

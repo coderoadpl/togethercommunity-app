@@ -1,6 +1,6 @@
 {
-  "hash": "60516d92cc79421abd5d7390cafadb8093ed22d32f3b8dd97ff89f6dcdbb9787",
-  "shortId": "60516d92cc79",
+  "hash": "9e2afabee961fed23c7fcd10c496065791034c18cba4952f4637258b0d0fcff2",
+  "shortId": "9e2afabee961",
   "schema": {
     "constraints": [
       {
@@ -287,6 +287,11 @@
         "definition": "CHECK ((at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposal_events_at_check",
         "table": "change_proposal_events"
+      },
+      {
+        "definition": "CHECK ((attempts > 0))",
+        "name": "payment_event_rejections_attempts_check",
+        "table": "payment_event_rejections"
       },
       {
         "definition": "CHECK ((body_format = ANY (ARRAY['plain'::text, 'markdown'::text])))",
@@ -1500,6 +1505,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "payment_event_rejections_tenant_id_fkey",
+        "table": "payment_event_rejections"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "post_reactions_tenant_id_tenants_id_fk",
         "table": "post_reactions"
       },
@@ -2599,6 +2609,11 @@
         "table": "tenant_config_sources"
       },
       {
+        "definition": "PRIMARY KEY (tenant_id, event_id)",
+        "name": "payment_event_rejections_tenant_id_event_id_pk",
+        "table": "payment_event_rejections"
+      },
+      {
         "definition": "PRIMARY KEY (tenant_id, id)",
         "name": "change_proposal_download_files_pkey",
         "table": "change_proposal_download_files"
@@ -3431,6 +3446,11 @@
         "definition": "CREATE INDEX organization_members_user_idx ON organization_members USING btree (user_id)",
         "name": "organization_members_user_idx",
         "table": "organization_members"
+      },
+      {
+        "definition": "CREATE INDEX payment_event_rejections_unresolved_idx ON payment_event_rejections USING btree (tenant_id, last_seen_at) WHERE (resolved_at IS NULL)",
+        "name": "payment_event_rejections_unresolved_idx",
+        "table": "payment_event_rejections"
       },
       {
         "definition": "CREATE INDEX platform_audit_events_created_idx ON platform_audit_events USING btree (created_at, id)",
@@ -9677,6 +9697,91 @@
           }
         ],
         "name": "product_stock"
+      },
+      {
+        "columns": [
+          {
+            "default": "1",
+            "generated": "",
+            "identity": "",
+            "name": "attempts",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "checkout_session_id",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "event_type",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "first_seen_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "last_seen_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason_code",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reason_message",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "resolved_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "payment_event_rejections"
       },
       {
         "columns": [

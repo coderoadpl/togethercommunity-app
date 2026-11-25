@@ -217,6 +217,7 @@ import {
   notificationsUnreadOutputSchema,
   ordersListOutputSchema,
   ordersReconciliationOutputSchema,
+  paymentEventRejectionsOutputSchema,
   orderDetailOutputSchema,
   invoiceOutputSchema,
   ordersExportOutputSchema,
@@ -366,6 +367,7 @@ import {
   type NotificationsListInput,
   type OrdersListQueryInput,
   type OrdersReconciliationQueryInput,
+  type PaymentEventRejectionsQueryInput,
   type OrdersExportQueryInput,
   type ProductPriceCreateInput,
   type ProductPriceDeactivateInput,
@@ -1483,6 +1485,19 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  listPaymentEventRejections: (
+    input: PaymentEventRejectionsQueryInput = {},
+    signal?: AbortSignal,
+  ) => request(
+    options,
+    API_ROUTES.paymentEventRejections.method,
+    input.limit === undefined
+      ? API_ROUTES.paymentEventRejections.path
+      : `${API_ROUTES.paymentEventRejections.path}?${new URLSearchParams({ limit: String(input.limit) }).toString()}`,
+    paymentEventRejectionsOutputSchema,
+    undefined,
+    signal,
+  ),
   getOrder: (id: string, signal?: AbortSignal) =>
     request(
       options,

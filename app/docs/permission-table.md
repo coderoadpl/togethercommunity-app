@@ -34,7 +34,7 @@ The staging use-cases of `key-download-files.ts` authorize through the same-file
 
 The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.
 
-Closed capability count: 145. Route rows: 570. Exported `Ctx` use-case rows: 425.
+Closed capability count: 145. Route rows: 571. Exported `Ctx` use-case rows: 426.
 
 ## Human-readable diff
 
@@ -511,6 +511,7 @@ no changes
 | `POST /api/products/prices/deactivate` | product:price:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/reconciliation` | order:reconcile | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `GET /api/orders/rejected-payments` | order:reconcile | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/consumer-sales-summary` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/export` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/:orderId` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -933,6 +934,7 @@ no changes
 | `organizations.ts#updateOrganization` | organization:settings:write | organization-owner | organization-owner | yes | core/server/usecases/organizations.ts organization authorization call |
 | `organizations.ts#listOrganizationMembers` | organization:member:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |
 | `organizations.ts#listOrganizationAuditEvents` | organization:audit:read | organization-owner, organization-admin | organization-owner, organization-admin | yes | core/server/usecases/organizations.ts organization authorization call |
+| `payment-event-rejections.ts#listPaymentEventRejections` | order:reconcile | owner, admin | owner, admin | yes | core/server/usecases/payment-event-rejections.ts authorization call |
 | `platform-data-reset.ts#resetPlatformData` | platform:data:reset | platform-owner | platform-owner | yes | core/server/usecases/platform-data-reset.ts authorization call |
 | `probe-stripe-permissions.ts#probeStripePermissions` | tenant:secret:write | owner | owner | yes | core/server/usecases/probe-stripe-permissions.ts authorization call |
 | `product-access-issues.ts#listProductAccessIssues` | product:access:read | owner, admin | owner, admin | yes | core/server/usecases/product-access-issues.ts authorization call |
@@ -1052,13 +1054,13 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | Kind | Location | Expression |
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:34` | `API_KEY_HEADER,` |
-| api-key | `apps/server/src/internal-app.ts:218` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1319` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1321` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1343` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1357` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1888` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1888` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:219` | `authenticateApiKey,` |
+| api-key | `apps/server/src/internal-app.ts:1321` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1323` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1345` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1359` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1890` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1890` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:45` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:94` | `const apiIdentity = (tenant: Tenant): Identity => ({` |
@@ -1067,7 +1069,7 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 | api-key | `apps/server/src/marketing-routes.ts:119` | `const authenticated = await authenticateApiKey(resolved.value.tenant.id, key, deps);` |
 | api-key | `apps/server/src/marketing-routes.ts:125` | `identity: apiIdentity(resolved.value.tenant),` |
 | api-key | `apps/server/src/marketing-routes.ts:607` | `identity: apiIdentity({ id: settings.tenantId, slug: '', name: '', status: 'active', plan: 'self_hosted', contentVersion: 1 }),` |
-| staff-role | `apps/server/src/public-app.ts:677` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
+| staff-role | `apps/server/src/public-app.ts:678` | `const canTest = identity?.tenantId === tenant.value.tenant.id && identity.staffRole !== null;` |
 | api-key | `apps/server/src/shop-machine-auth.ts:4` | `import { API_KEY_HEADER, changeProposalGroupIdSchema, PROPOSAL_GROUP_HEADER, TENANT_HEADER } from '#core/contract/index.js';` |
 | api-key | `apps/server/src/shop-machine-auth.ts:116` | `const key = headers.get(API_KEY_HEADER);` |
 | staff-role | `core/server/usecases/community-access.ts:63` | `if (!ctx.identity.staffRole && !ctx.identity.memberId) {` |

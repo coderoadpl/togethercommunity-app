@@ -380,6 +380,9 @@ const ordersReconciliationOptionsSchema = z.object({
     .transform((value) => Number.parseInt(value, 10))
     .optional(),
 });
+const rejectedPaymentsOptionsSchema = z.object({
+  limit: ordersReconciliationOptionsSchema.shape.limit,
+});
 const supportMessageOptionsSchema = z.object({
   subject: z.string().trim().min(1),
   body: z.string().trim().min(1),
@@ -2173,6 +2176,25 @@ ordersCommand
                   (row) =>
                     `${row.createdAt}\t${row.memberEmail}\t${row.productTitle}\t${row.amountCents} ${row.currency}\t(${row.orderId.slice(0, 8)})`,
                 )
+                .join('\n'),
+      );
+    }),
+  );
+
+ordersCommand
+  .command('rejected-payments')
+  .description('List payments Stripe reported as paid that the webhook could not record as an order')
+  .option('--limit <n>')
+  .action(
+    withInput(z.tuple([rejectedPaymentsOptionsSchema]), async (ctx, [options]) => {
+      emit(
+        await ctx.api.listPaymentEventRejections(options.limit === undefined ? {} : { limit: options.limit }),
+        ctx.json,
+        (data) =>
+          data.rejections.length === 0
+            ? 'no payments that could not be recorded'
+            : data.rejections
+                .map((row) => `${row.firstSeenAt}\t${row.lastSeenAt}\t${row.attempts} attempts\t${row.reasonCode}: ${row.reasonMessage}\t${row.eventId}\t${row.checkoutSessionId ?? '-'}`)
                 .join('\n'),
       );
     }),

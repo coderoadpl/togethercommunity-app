@@ -25,6 +25,7 @@ import {
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
+import { paymentEventRejectedOutboxId } from '#core/domain/payment-event-rejection.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -552,6 +553,11 @@ const deps = (input: {
       claim: async () => 'claimed',
       finalize: async () => undefined,
       release: async () => undefined,
+    },
+    paymentEventRejections: {
+      record: async (tenantId, { seenAt, ...rejection }) => ({ tenantId, ...rejection, firstSeenAt: seenAt, lastSeenAt: seenAt, attempts: 1, resolvedAt: null }),
+      resolve: async () => undefined,
+      listUnresolved: async () => [],
     },
     purchases: {
       createMemberGrant: async (purchase) => ({
@@ -6048,6 +6054,15 @@ describe('new route authorization', () => {
     ).toBe(200);
   });
 
+  it('denies members and permits staff on the payments that could not be recorded', async () => {
+    expect(
+      (await scopedApp('member').request(API_PATHS.paymentEventRejections, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await scopedApp('staff').request(API_PATHS.paymentEventRejections, { headers })).status,
+    ).toBe(200);
+  });
+
   it('restricts storage probing and configuration to an owner', async () => {
     const body = JSON.stringify({
       provider: 'minio',
@@ -9424,6 +9439,88 @@ describe('checkout consent ordering', () => {
       signatureHeader: signatureHeader ?? '',
       webhookSecret: 'plaintext',
       validateInvoiceTenant: expect.any(Function),
+    });
+  });
+
+  describe('a refused paid checkout delivery', () => {
+    const payload = JSON.stringify({
+      id: 'evt_refused_paid', type: 'checkout.session.completed', livemode: true,
+      data: { object: {
+        id: 'cs_refused_paid', customer: 'cus_refused', payment_intent: 'pi_refused', payment_status: 'paid',
+        amount_total: 1000, currency: 'pln', customer_details: { email: 'buyer@togethercommunity.app' },
+        metadata: { tenantId: acme.id },
+      } },
+    });
+    const signed = (secret: string) => {
+      const timestamp = Math.floor(Date.now() / 1000);
+      return `t=${timestamp},v1=${createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest('hex')}`;
+    };
+    const deliver = async (signatureHeader: string | undefined, configure: (base: AppDeps) => void = () => undefined) => {
+      const base = deps({ tenants: [acme] });
+      base.payment = createStripePaymentProvider({
+        resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
+        clientFactory: () => { throw new Error('Unexpected Stripe API client'); },
+      });
+      base.tenantAccess = {
+        ...base.tenantAccess,
+        listStaffForTenant: async () => [{ userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: 'en' }],
+      };
+      configure(base);
+      const record = vi.spyOn(base.paymentEventRejections, 'record');
+      const resolve = vi.spyOn(base.paymentEventRejections, 'resolve');
+      const enqueue = vi.spyOn(base.emailOutbox, 'enqueue');
+      const error = vi.spyOn(base.logger, 'error');
+      const response = await buildApp(base).request(`/api/webhooks/stripe/${acme.id}`, {
+        method: 'POST', headers: signatureHeader === undefined ? {} : { 'stripe-signature': signatureHeader }, body: payload,
+      });
+      return { response, record, resolve, enqueue, error };
+    };
+
+    it('keeps the refusal for Stripe, records the event and queues the staff e-mail when the signature verifies', async () => {
+      const { response, record, enqueue, error } = await deliver(signed('plaintext'));
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Stripe checkout metadata is missing productId' } });
+      expect(record).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+        eventId: 'evt_refused_paid', checkoutSessionId: 'cs_refused_paid', reasonCode: 'validation',
+      }));
+      expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
+        id: paymentEventRejectedOutboxId(acme.id, 'evt_refused_paid', 'owner@togethercommunity.app'), to: 'owner@togethercommunity.app',
+        payload: expect.objectContaining({ kind: 'm2m-transactional' }), sourceApp: 'payment-event-rejections',
+      }));
+      expect(error).toHaveBeenCalledWith(`[payment-webhook-rejected] tenant=${acme.id} event=evt_refused_paid type=checkout.session.completed reason=validation`);
+    });
+
+    it('keeps the 500 for Stripe and records the event with the masked reason when processing throws', async () => {
+      const { response, record, enqueue } = await deliver(signed('plaintext'), (base) => {
+        base.processedPaymentEvents = {
+          ...base.processedPaymentEvents,
+          claim: async () => { throw new Error('connection reset while reading buyer@togethercommunity.app'); },
+        };
+      });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'internal' } });
+      expect(record).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+        eventId: 'evt_refused_paid', reasonCode: 'internal', reasonMessage: 'Payment processing failed unexpectedly',
+      }));
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(enqueue.mock.calls)).not.toContain('buyer@togethercommunity.app');
+    });
+
+    it.each<[string, string | undefined]>([
+      ['a missing signature header', undefined],
+      ['a forged signature', `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}`],
+      ['a signature made with another secret', 'wrong-secret'],
+    ])('records nothing and e-mails nobody for %s', async (_label, header) => {
+      const { response, record, resolve, enqueue, error } = await deliver(header === 'wrong-secret' ? signed('whsec_someone_else') : header);
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(record).not.toHaveBeenCalled();
+      expect(resolve).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(error.mock.calls.flat().join('\n')).not.toContain('[payment-webhook-rejected]');
     });
   });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { changeProposalGroupItemsDigest } from './change-proposal-group-digest.js';
+import { changeProposalGroupItemsDigest, sha256HexOfText } from './change-proposal-group-digest.js';
 
 describe('the items digest of a change proposal group', () => {
   it.each([
@@ -23,5 +23,15 @@ describe('the items digest of a change proposal group', () => {
     ];
     expect(new Set(digests).size).toBe(digests.length);
     expect(changeProposalGroupItemsDigest(['item-1', 'item-2'])).toBe(digests[0]);
+  });
+});
+
+describe('sha256HexOfText', () => {
+  it.each([
+    ['', 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'],
+    ['abc', 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'],
+    ['café ☕ 𝄞', '30ec1cbccafc39251eaa999b7dcd27fd57c0b4cc04d8d5e6b55037c57f9005b4'],
+  ])('is the SHA-256 of the UTF-8 bytes of %j', (text, digest) => {
+    expect(sha256HexOfText(text)).toBe(digest);
   });
 });

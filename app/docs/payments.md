@@ -555,6 +555,76 @@ not mark fulfillment complete; a later delivery can process after checkout has
 created the subscription. Checkout completion remains responsible for the initial
 order and enrollment.
 
+## Payments that could not be recorded
+
+A signature-verified live `checkout.session.completed` or
+`checkout.session.async_payment_succeeded` event whose session Stripe reports
+as paid (`payment_status` `paid`) can still be refused with a non-2xx answer,
+for example when its metadata no longer matches the checkout snapshot, or end
+in a 500 when its processing throws. Stripe then retries the delivery for about
+three days and gives up. So that a refusal does not go unnoticed, the webhook
+route records it after the answer is decided, in `payment_event_rejections`
+(migration 0172):
+
+- One row per workspace and Stripe event: event type, checkout session id, the
+  `AppError` code, a reason, first and last sighting and the attempt count.
+  Every later refusal of the same event bumps the count. No payload, buyer
+  e-mail or address is stored. The reason is the error message only when it is
+  one of the constant refusal messages of the checkout webhook path; any other
+  message, which can quote checkout metadata or stored data, is replaced by a
+  fixed text for its code (`internal`: `Payment processing failed
+  unexpectedly`).
+- A thrown error is recorded as `internal` and then rethrown, so Stripe still
+  gets the same 500.
+- Nothing is recorded for a request whose signature fails, for test-mode,
+  foreign-tenant events or sessions whose status is not `paid`, for an
+  in-progress conflict (another worker holds the event) or when a live order
+  already exists for the session. When a concurrent delivery commits the order
+  while the refusal is being recorded, the row is resolved right away.
+- A later delivery of the same event resolves the row (`resolved_at`) only when
+  it processed the payment or a live order exists for the session; a 2xx that
+  ignored the event (ownership conflict, mode mismatch) leaves it open.
+- Recording never changes the answer: a failed write is only logged, so the
+  refusal still makes Stripe retry and an acceptance stays an acceptance.
+
+The workspace staff recipients get one e-mail per event: the workspace support
+address when one is set, otherwise every staff member once per address (outbox
+id `payment-event-rejected:<tenantId>:<eventId>:<recipient key>`, where the key
+is the first 16 hex characters of the SHA-256 of the trimmed, lower-cased
+address, kept on conflict). Every refusal while the row is open and no live order exists queues
+the alert again, so a queue that failed after the row was written is filled on
+the next retry, and the outbox id fixed per address keeps it to one e-mail per
+recipient whatever order the staff list comes back in; a staff member added
+during Stripe's retries gets the alert on the next retry. It says the payment succeeded at Stripe but no order was recorded,
+that Stripe retries for up to three days, not to refund or ask the buyer to pay
+again before support has checked it, and the reason.
+
+Owners and admins see the unresolved rows that still have no live order for
+their checkout session in Studio → Sales under **Payments that could not be
+recorded** (`GET /api/orders/rejected-payments`, capability `order:reconcile`);
+the CLI reads the same list with `together orders rejected-payments [--limit
+<n>]`, and `--json` prints one envelope.
+
+Each recorded refusal also logs one error line with a stable marker that
+operators can search for or attach a log-drain alert to:
+`[payment-webhook-rejected] tenant=<id> event=<id> type=<type> reason=<code>`.
+A failed record or resolve write logs
+`[payment-webhook-rejected] record failed ...` or `... resolve failed ...`. After
+the row is written, an outbox that refuses the staff e-mail logs
+`... staff e-mail not queued ...` and any other failure while preparing it logs
+`... notify failed ...`; the next delivery of the event queues it again.
+
+Rollback: the e-mail is rendered when it is queued and stored as an
+`m2m-transactional` outbox message with source app `payment-event-rejections`
+that, unlike an API-submitted message, needs no workspace mail transport. An
+older release already renders and lists that shape, so after a rollback a
+queued alert is still sent and shown in the sends list. An older release ignores the `payment_event_rejections` table; keep the
+table and migration 0172 when rolling back the binary. While the older release
+runs, its `/api/health` reports `schemaFingerprintMatch: false` because the live
+schema keeps the new table, so the hourly production health monitor fails and
+sends one alert on that change; expect it and do not treat it as a new
+incident.
+
 ## Test mode for staff
 
 A tenant owner can configure an independent Stripe sandbox in Studio → Integrations → Stripe → Test mode. Create a restricted key in the tenant's Stripe sandbox and enter the `rk_test_` key in this card. Grant the same checkout, subscription and webhook permissions shown for the live integration. The live card accepts only `rk_live_` keys; the test card accepts only `rk_test_` keys, including when credentials are saved through the API.

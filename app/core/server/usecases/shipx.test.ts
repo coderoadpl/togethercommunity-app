@@ -596,6 +596,21 @@ describe('create InPost shipment', () => {
     expect(await h.eventTypes()).toEqual(['attempt_claimed', 'shipment_adopted', 'offer_bought', 'operation_finished']);
   });
 
+  it('refuses an adopted canceled shipment without another ShipX read', async () => {
+    const real = createScriptedShipxClient({
+      find: () => ok(remoteShipment('2002', { status: 'canceled', trackingNumber: null, reference: 'order-1' })),
+    });
+    const h = harness({ real });
+    h.seed({ status: 'unknown', createAttemptedAt: '2026-11-08T09:55:00.000Z' });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({
+      ok: false,
+      error: { code: 'conflict', details: { state: 'label_canceled', trackingNumber: null, shipxShipmentId: '2002' } },
+    });
+    expect(real.calls.get).toEqual([]);
+    expect(h.ship).not.toHaveBeenCalled();
+    expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'failed' } });
+  });
+
   it('pays an adopted shipment that is still waiting for payment', async () => {
     const real = createScriptedShipxClient({
       find: () => ok(remoteShipment('2002', { status: 'offers_prepared', reference: 'order-1' })),

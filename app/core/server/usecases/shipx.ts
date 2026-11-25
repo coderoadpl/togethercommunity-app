@@ -559,7 +559,8 @@ const runShipment = async (
     shipmentId = remote.id;
   }
 
-  if (run.shipment.status === SHIPX_STATUS_CANCELED) return err(labelCanceled(run.shipment.trackingNumber, shipmentId));
+  const known = remote ?? run.shipment;
+  if (known.status === SHIPX_STATUS_CANCELED) return err(labelCanceled(known.trackingNumber, shipmentId));
   let labelShipment: Pick<ShipxShipment, 'status' | 'trackingNumber'> = run.shipment;
   if (remote !== null || !shipxShipmentBought(run.shipment)) {
     const bought = remote !== null && shipxShipmentBought(remote)

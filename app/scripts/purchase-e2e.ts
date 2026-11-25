@@ -41,7 +41,7 @@ import {
 
 type Fetch = typeof fetch;
 
-export type PurchaseE2eEnvironment = 'staging' | 'production';
+export type PurchaseE2eEnvironment = 'staging';
 
 export interface PurchaseE2eOptions {
   baseUrl: string;
@@ -53,6 +53,7 @@ export interface PurchaseE2eOptions {
   runId: string;
   testOrderCap: number;
   databaseFingerprint: { expected: string | null; production: string | null };
+  platformDomain: string;
 }
 
 export interface PurchaseE2eCheck {
@@ -172,9 +173,7 @@ export const assertTargetIdentity = (
   if (health.environment !== environment) {
     throw new Error(`health reports environment "${health.environment}", the run targets ${environment}`);
   }
-  if (health.production !== (environment === 'production')) {
-    throw new Error(`health reports production=${String(health.production)} for ${environment}`);
-  }
+  if (health.production) throw new Error('health reports a production deployment');
   const observed = health.databaseFingerprint;
   if (observed === null) throw new Error('health reported no database fingerprint');
   if (environment === 'staging' && observed === fingerprints.production) {
@@ -260,6 +259,12 @@ export const runPurchaseE2e = async (
 ): Promise<PurchaseE2eResult> => {
   const request: Fetch = (input, init) => unguardedRequest(input, { ...init, redirect: 'error' });
   const run = createRun();
+  const refused = stagingTargetProblems(options);
+  if (refused.length > 0) {
+    await run.step('target-identity', () => Promise.reject(new Error(refused.join('; '))));
+    run.skipRest('the run refuses this target before any request');
+    return run.result();
+  }
   const origin = new URL(options.baseUrl).origin;
   const bypass: Record<string, string> = options.bypassSecret === null ? {} : { [BYPASS_HEADER]: options.bypassSecret };
   const startedAt = timing.now();
@@ -345,12 +350,12 @@ export const runPurchaseE2e = async (
   };
 
   const configured = await run.step('test-slot-configure', async () => {
-    const result = valueOf(await api.configureStripe({ mode: 'test', restrictedKey: options.keys.restricted }), 'test slot configuration');
-    if (result.mode !== 'test') throw new Error(`the configuration landed in the ${result.mode} slot`);
     const secrets = valueOf(await api.listTenantSecrets(), 'tenant secrets');
     if (secrets.stripeMode !== null || secrets.secrets.some((secret) => secret.key === 'stripe.restrictedKey')) {
-      throw new Error('the live payment slot holds a key, so a checkout the server did not take as a test would reach it; the run stops before any checkout');
+      throw new Error('the live payment slot holds a key, so a checkout the server did not take as a test would reach it; the run stops before configuring anything');
     }
+    const result = valueOf(await api.configureStripe({ mode: 'test', restrictedKey: options.keys.restricted }), 'test slot configuration');
+    if (result.mode !== 'test') throw new Error(`the configuration landed in the ${result.mode} slot`);
     valueOf(await api.setTenantSecret({ key: 'stripe.testWebhookSecret', value: forwardingSecret }), 'forwarding signing secret');
     return true;
   });
@@ -612,7 +617,25 @@ const fixtureOrigin = (baseUrl: string, platformDomain: string): boolean => {
   const url = new URL(baseUrl);
   return url.protocol === 'https:'
     && url.hostname.startsWith(`${SMOKE_TENANT_SLUG}.`)
-    && url.hostname.endsWith(`.${platformDomain}`);
+    && url.hostname.endsWith(`.${platformDomain}`)
+    && url.hostname !== `${SMOKE_TENANT_SLUG}.${platformDomain}`;
+};
+
+const HOST_PROBLEM = `the base URL must be the https origin of the ${SMOKE_TENANT_SLUG} fixture workspace on a staging host of the platform domain`;
+
+export const stagingTargetProblems = (
+  options: Pick<PurchaseE2eOptions, 'environment' | 'baseUrl' | 'platformDomain' | 'keys' | 'databaseFingerprint'>,
+): string[] => {
+  const environment: string = options.environment;
+  return [
+    ...(environment === 'staging' ? [] : [PRODUCTION_REFUSAL]),
+    ...(fixtureOrigin(options.baseUrl, options.platformDomain) ? [] : [HOST_PROBLEM]),
+    ...[
+      testModeKeyProblem('the restricted key', 'restricted', options.keys.restricted),
+      testModeKeyProblem('the publishable key', 'publishable', options.keys.publishable),
+    ].filter((problem): problem is string => problem !== null),
+    ...(options.databaseFingerprint.production === null ? ['the production database fingerprint is missing'] : []),
+  ];
 };
 const DEFAULT_TEST_ORDER_CAP = 300;
 
@@ -620,10 +643,11 @@ const PRODUCTION_REFUSAL = 'PURCHASE_E2E_ENVIRONMENT=production is refused until
 
 export const purchaseE2eOptionsFromEnv = (env: Environment): { options: PurchaseE2eOptions } | { problems: string[] } => {
   const problems: string[] = [];
+  const platformDomain = provided(env, 'PURCHASE_E2E_PLATFORM_DOMAIN') ?? DEFAULT_PLATFORM_DOMAIN;
   const baseUrl = provided(env, 'PURCHASE_E2E_BASE_URL');
   if (baseUrl === null) problems.push('PURCHASE_E2E_BASE_URL is not configured');
-  else if (!fixtureOrigin(baseUrl, provided(env, 'PURCHASE_E2E_PLATFORM_DOMAIN') ?? DEFAULT_PLATFORM_DOMAIN)) {
-    problems.push(`PURCHASE_E2E_BASE_URL must be the https origin of the ${SMOKE_TENANT_SLUG} fixture workspace on the platform domain`);
+  else if (!fixtureOrigin(baseUrl, platformDomain)) {
+    problems.push(`PURCHASE_E2E_BASE_URL must be the https origin of the ${SMOKE_TENANT_SLUG} fixture workspace on a staging host of the platform domain`);
   }
   const environment = provided(env, 'PURCHASE_E2E_ENVIRONMENT');
   if (environment === 'production') problems.push(PRODUCTION_REFUSAL);
@@ -662,6 +686,7 @@ export const purchaseE2eOptionsFromEnv = (env: Environment): { options: Purchase
         expected: provided(env, 'PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT'),
         production: productionFingerprint,
       },
+      platformDomain,
     },
   };
 };

@@ -463,7 +463,8 @@ is the one that processes the provider's real event payloads. It refuses
 decision on the credential it may use. It runs only on the `acme`
 fixture workspace: the target must be the `https://acme.` origin on the platform
 domain (`PURCHASE_E2E_PLATFORM_DOMAIN`, default `togethercommunity.app`), every
-request refuses redirects, `/api/health` must report `staging` on a database
+request refuses redirects, the production fixture host `https://acme.<domain>` is
+refused before any request, `/api/health` must report `staging` on a database
 other than `PRODUCTION_DATABASE_FINGERPRINT` (and equal to
 `PURCHASE_E2E_EXPECTED_DATABASE_FINGERPRINT` when set), `/api/me` must resolve
 `tenant-acme` for the signed-in staff account, and every key must be a test-mode
@@ -511,7 +512,10 @@ returns the same object for 30 days
 [Events](https://docs.stripe.com/api/events)). The server therefore verifies,
 parses and fulfils exactly what an endpoint on the account default version would
 receive. Not covered: the provider's own delivery over the network and its own
-signature. The endpoint the test-slot configuration registers still exists in
+signature. The endpoint the configuration registers is pinned to the library's
+API version, while the forwarded events carry the account default version, so
+the purchase checks exercise the account-default shape and check 12 covers the
+pinned one. The endpoint the test-slot configuration registers still exists in
 the sandbox; its deliveries to the protected host fail, and the provider stops
 retrying them after a few hours.
 

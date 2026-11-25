@@ -79,9 +79,10 @@ const options: PurchaseE2eOptions = {
   runId: 'run-1',
   testOrderCap: 3,
   databaseFingerprint: { expected: STAGING_FINGERPRINT, production: PRODUCTION_FINGERPRINT },
+  platformDomain: 'togethercommunity.app',
 };
 
-const HOST_PROBLEM = 'PURCHASE_E2E_BASE_URL must be the https origin of the acme fixture workspace on the platform domain';
+const HOST_PROBLEM = 'PURCHASE_E2E_BASE_URL must be the https origin of the acme fixture workspace on a staging host of the platform domain';
 
 const lockerOrder: OrderView = {
   id: 'order-1',
@@ -137,7 +138,10 @@ describe('purchaseE2eOptionsFromEnv', () => {
       PURCHASE_E2E_BASE_URL: 'https://acme.togethercommunity.app',
       PURCHASE_E2E_ENVIRONMENT: 'production',
     })).toEqual({
-      problems: ['PURCHASE_E2E_ENVIRONMENT=production is refused until a recorded owner decision names the credential a production run may use'],
+      problems: [
+        HOST_PROBLEM,
+        'PURCHASE_E2E_ENVIRONMENT=production is refused until a recorded owner decision names the credential a production run may use',
+      ],
     });
   });
 
@@ -172,6 +176,7 @@ describe('purchaseE2eOptionsFromEnv', () => {
     'https://studio.staging.togethercommunity.app',
     'http://acme.staging.togethercommunity.app',
     'https://acme.staging.example.net',
+    'https://acme.togethercommunity.app',
   ])('refuses %s', (baseUrl) => {
     expect(purchaseE2eOptionsFromEnv({ ...stagingEnv, PURCHASE_E2E_BASE_URL: baseUrl })).toEqual({ problems: [HOST_PROBLEM] });
   });
@@ -379,6 +384,19 @@ const recordingFetch = (answer: (url: URL, init: RequestInit | undefined) => Res
 };
 
 describe('runPurchaseE2e', () => {
+  it.each([
+    ['the production host', { baseUrl: 'https://acme.togethercommunity.app' }],
+    ['another workspace', { baseUrl: 'https://studio.staging.togethercommunity.app' }],
+    ['a live key', { keys: { restricted: 'rk_live_example', publishable: 'pk_test_example' } }],
+    ['no production fingerprint', { databaseFingerprint: { expected: null, production: null } }],
+  ])('sends no request at all for %s', async (_name, override) => {
+    const { calls, request } = recordingFetch(() => jsonResponse({ ok: true, data: health('staging', false) }));
+    const result = await runPurchaseE2e({ ...options, ...override }, request);
+    expect(result.failing).toEqual(['target-identity']);
+    expect(calls).toEqual([]);
+  });
+
+
   it('writes nothing when the host is not the targeted environment', async () => {
     const { calls, request } = recordingFetch(() => jsonResponse({ ok: true, data: health('production', true) }));
     const result = await runPurchaseE2e(options, request);

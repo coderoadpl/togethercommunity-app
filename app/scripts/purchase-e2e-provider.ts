@@ -75,7 +75,7 @@ const providerCall = async (request: Fetch, call: ProviderRequest): Promise<unkn
   if (!response.ok) {
     const failure = providerErrorSchema.safeParse(json);
     const detail = failure.success
-      ? `: ${failure.data.error.message ?? failure.data.error.code ?? 'no message'}${failure.data.error.param === undefined ? '' : ` (param ${failure.data.error.param})`}`
+      ? `: ${failure.data.error.code ?? 'no code'}${failure.data.error.param === undefined ? '' : ` (param ${failure.data.error.param})`}`
       : '';
     throw new Error(`provider ${call.method} ${call.path} answered HTTP ${String(response.status)}${detail}`);
   }
@@ -252,8 +252,8 @@ const providerEventListSchema = z.object({ data: z.array(z.unknown()), has_more:
 
 /**
  * The webhook body the provider sends is the Event object, frozen at creation,
- * so the event read back here is byte-for-byte what an endpoint on the account
- * default version would receive, minus the provider's own signature.
+ * so forwarding the event read back here tests the same content an endpoint on
+ * the account default version would receive, not the provider's own delivery.
  */
 export const listRecentEvents = async (
   request: Fetch,

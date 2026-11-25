@@ -50,7 +50,7 @@ restoring a version saved before galleries existed clears the gallery. The
 version preview lists the gallery in order, so a version that differs only in
 its gallery or in the order of its images shows the gallery as changed.
 
-Rollback: migration 0168 adds `products.images` with the default `[]`. The
+Rollback: migration 0171 adds `products.images` with the default `[]`. The
 previous release ignores the column, so its product writes keep the stored
 gallery and its public offer omits `images`; storefronts then fall back to
 `coverUrl`. Product content versions written by this release are snapshot

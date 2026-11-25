@@ -1263,6 +1263,7 @@ export interface Messages {
     moreItemsLabel: (params: { count: number }) => string;
     showItems: (params: { count: number }) => string;
     hideItems: string;
+    openMemberAccount: (params: { member: string }) => string;
     rejectedPaymentsHeading: string;
     rejectedPaymentsHint: string;
     rejectedPaymentsReason: string;

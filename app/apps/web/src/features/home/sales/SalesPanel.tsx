@@ -1,5 +1,6 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
+import { OrderMemberIdentity } from './OrderMemberIdentity.js';
 import { OrderProductSummary } from './OrderProductSummary.js';
 import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
@@ -13,7 +14,6 @@ import {
   Checkbox,
   FormControl,
   InputLabel,
-  Link as MuiLink,
   MenuItem,
   Select,
   Stack,
@@ -37,7 +37,7 @@ import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../co
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatDateTime, formatPrice, formatTime } from '../../../lib/format.js';
-import { SalesCardAmount, SalesCardControl, SalesCardMemberLink, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesFitCell, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesProductCell, SalesTable } from '../../../theme.js';
+import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesFitCell, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesProductCell, SalesTable } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -161,9 +161,6 @@ export const SalesPanel = () => {
       <span>{formatDate(order.createdAt, language, SALES_LINK_TIME_ZONE)}</span>
       <SalesDateTime>{formatTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}</SalesDateTime>
     </SalesDateLink>
-  );
-  const memberLink = (order: OrderListItem) => (
-    <MuiLink component={Link} to={`/panel/members/${order.memberId}`}>{order.memberName ?? order.memberEmail}</MuiLink>
   );
   const orderSource = (order: OrderListItem) => [order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ');
   const productCell = (order: OrderListItem) => <OrderProductSummary order={order} />;
@@ -437,7 +434,7 @@ export const SalesPanel = () => {
                 <SalesOrderCard key={order.id} data-testid="sales-row">
                   <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                      <SalesCardMemberLink component={Link} to={`/panel/members/${order.memberId}`} underline="always">{order.memberName ?? order.memberEmail}</SalesCardMemberLink>
+                      <SalesCardControl><OrderMemberIdentity order={order} /></SalesCardControl>
                     </Box>
                     <SalesCardAmount>{formatPrice(order.amountCents, order.currency, language)}</SalesCardAmount>
                   </Stack>
@@ -482,7 +479,7 @@ export const SalesPanel = () => {
                     <TableRow key={order.id} data-testid="sales-row">
                       {canWriteInvoice ? <TableCell padding="checkbox">{selectBox(order)}</TableCell> : null}
                       <SalesNoWrapCell>{orderLink(order)}</SalesNoWrapCell>
-                      <SalesMemberCell title={order.memberName ?? order.memberEmail}>{memberLink(order)}</SalesMemberCell>
+                      <SalesMemberCell title={order.memberName === null ? order.memberEmail : `${order.memberName}\n${order.memberEmail}`}><OrderMemberIdentity order={order} /></SalesMemberCell>
                       <SalesProductCell>
                         {productCell(order)}
                         {narrow && orderSource(order) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(order)}</Typography> : null}

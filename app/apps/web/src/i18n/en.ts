@@ -1461,6 +1461,7 @@ export const en: Messages = {
     moreItemsLabel: ({ count }) => format(plural(count, 'and {count} more item', 'and {count} more items'), { count }),
     showItems: ({ count }) => format('Show all {count} items', { count }),
     hideItems: 'Hide items',
+    openMemberAccount: ({ member }) => format('{member}: open the member account', { member }),
     rejectedPaymentsHeading: 'Payments that could not be recorded',
     rejectedPaymentsHint: 'Stripe reports these payments as paid, but no order was recorded. Stripe retries each delivery for up to three days. Do not refund or ask the buyer to pay again before support has checked it.',
     rejectedPaymentsReason: 'Reason',

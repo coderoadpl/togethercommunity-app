@@ -435,6 +435,19 @@ describe('payment card totals', () => {
 });
 
 describe('staff refund dialog', () => {
+  it('keeps the quantity and the full name of a long product on a restock chip', async () => {
+    const longName = 'Volume 1 "Plan" — printed copy, signed and numbered by the author, with a dedication on the first page';
+    const order = { ...paidOrder, lines: paidOrder.lines?.map((entry) => entry.productId === 'mug' ? { ...entry, name: longName } : entry) };
+    serve({ order }, { ...preview, returnableStock: [{ productId: 'mug', quantity: 2 }] });
+    await renderDetail();
+    const dialog = await openDialog();
+    const chip = within(dialog).getByTestId('staff-refund-unit');
+    expect(chip).toHaveAttribute('title', `${longName} × 2`);
+    expect(chip).toHaveTextContent(`${longName} × 2`);
+    expect(within(chip).getByText('× 2')).not.toHaveTextContent(longName);
+    expect(within(within(dialog).getByTestId('staff-refund-consequences')).getByText(messages.consequenceRestockAndRemove({ units: `${longName} × 2` }))).toBeVisible();
+  });
+
   it('requests a full refund with the default stock and packing choices and refreshes the order', async () => {
     const calls = serve({ order: paidOrder });
     acceptRefunds(calls);
@@ -1024,12 +1037,12 @@ describe('staff refund history and ship anyway', () => {
     expect(screen.getAllByTestId('sales-staff-refund-chip')).toHaveLength(1);
   });
 
-  it('keeps a long buyer name on one line in the orders table with the full name in its title', async () => {
+  it('keeps a long buyer name on one line in the orders table with the name and e-mail in its title', async () => {
     const memberName = 'Alexandra Konstantinopolitanczykiewicz-Smith';
     serveOrders([{ ...paidOrder, memberName }]);
     await renderAt('/panel/sales', SalesPanel);
-    const member = await screen.findByRole('link', { name: memberName });
-    expect(member.closest('td')).toHaveAttribute('title', memberName);
+    const member = await screen.findByRole('link', { name: en.sales.openMemberAccount({ member: `${memberName} (buyer@example.org)` }) });
+    expect(member.closest('td')).toHaveAttribute('title', `${memberName}\nbuyer@example.org`);
   });
 
   describe('on a phone', () => {
@@ -1047,15 +1060,15 @@ describe('staff refund history and ship anyway', () => {
     });
     afterEach(() => { vi.unstubAllGlobals(); });
 
-    it('opens the order from the whole card and keeps the buyer name a link to the member', async () => {
+    it('opens the order from the whole card and keeps the buyer identity a link to the member', async () => {
       serveOrders([paidOrder]);
       await renderAt('/panel/sales', inStudioTheme(<SalesPanel />));
       const card = await screen.findByTestId('sales-row');
       expect(within(card).getByTestId('sales-card-order-link')).toHaveAttribute('href', '/panel/sales/o1');
       expect(within(card).getByTestId('sales-card-order-link').querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-      const member = within(card).getByRole('link', { name: 'Alex Smith' });
+      const member = within(card).getByRole('link', { name: /^Alex Smith \(/ });
       expect(member).toHaveAttribute('href', '/panel/members/member-1');
-      expect(member).toHaveClass('MuiLink-underlineAlways');
+      expect(member).toHaveTextContent('Alex Smith');
     });
   });
 });

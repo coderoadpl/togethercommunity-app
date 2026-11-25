@@ -4773,6 +4773,18 @@ export const SalesMemberCell = styled(TableCell)(({ theme }) => ({
   textOverflow: 'ellipsis',
   [theme.breakpoints.up('lg')]: { maxWidth: '18rem' },
 }));
+export const SalesMemberName = styled('span')({ display: 'block', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', overflowWrap: 'anywhere' });
+export const SalesMemberEmail = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  overflowWrap: 'anywhere',
+  color: theme.palette.text.secondary,
+  userSelect: 'text',
+}));
+export const OrderDetailValue = styled(Typography)<AsElement>(({ theme }) => ({ minWidth: 0, [theme.breakpoints.up('sm')]: { textAlign: 'right' } }));
 export const SalesFitCell = styled(TableCell)({ width: '1%', whiteSpace: 'nowrap' });
 export const SalesProductCell = styled(TableCell)(({ theme }) => ({ width: '100%', minWidth: '10rem', [theme.breakpoints.up('xl')]: { minWidth: '14rem' } }));
 export const SalesDateLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
@@ -4789,6 +4801,8 @@ export const SalesProductLine = styled('div')({ ...SALES_FILL_CELL, display: 'fl
 export const SalesProductName = styled('span')({ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
 export const SalesProductMore = styled('span')(({ theme }) => ({ flexShrink: 0, color: theme.palette.text.secondary, whiteSpace: 'nowrap' }));
 export const SalesProductToggle = styled(IconButton, { shouldForwardProp: (prop) => prop !== 'expanded' })<{ expanded: boolean }>(({ theme, expanded }) => ({
+  position: 'relative',
+  zIndex: 1,
   flexShrink: 0,
   padding: '0.125rem',
   '& svg': {
@@ -4808,7 +4822,6 @@ export const SalesOrderCard = styled('li')(({ theme }) => ({
   '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
 }));
 export const SalesCardControl = styled('span')({ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column' });
-export const SalesCardMemberLink = styled(Link)<AsElement & { to?: string }>({ position: 'relative', zIndex: 1 });
 export const SalesCardOrderLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',

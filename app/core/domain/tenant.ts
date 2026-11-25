@@ -401,6 +401,7 @@ export const memberSchema = z.object({
 export type Member = z.infer<typeof memberSchema>;
 
 export const DELETED_MEMBER_DISPLAY = '[deleted-member]';
+const MEMBER_TOMBSTONE_DOMAIN = 'anonymized.invalid';
 
 /**
  * A ban is a reversible moderation state: the person keeps their account, their
@@ -417,9 +418,11 @@ export const MAX_MEMBER_BAN_REASON_LENGTH = 500;
  * by a future sign-in or purchase.
  */
 export const memberTombstone = (memberId: string): { email: string; userId: string } => ({
-  email: `deleted-${memberId}@anonymized.invalid`,
+  email: `deleted-${memberId}@${MEMBER_TOMBSTONE_DOMAIN}`,
   userId: `deleted:${memberId}`,
 });
+
+export const isMemberTombstoneEmail = (email: string): boolean => email.endsWith(`@${MEMBER_TOMBSTONE_DOMAIN}`);
 
 export const memberWithProductIdsSchema = z.object({
   id: z.string(),

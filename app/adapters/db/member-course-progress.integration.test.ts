@@ -351,13 +351,13 @@ it('changes only the calling tenant when another tenant has the same member and 
   const eventsBefore = await otherEvents();
   const pair = { memberId: MEMBER, courseId: COURSE };
 
-  expect(await progress.removeCompletedLesson(TENANT, { ...pair, lessonId: 'lesson-1', now: nextInstant() })).toBeNull();
+  expect(await progress.removeCompletedLesson(TENANT, { memberId: MEMBER, courseIds: [COURSE], lessonId: 'lesson-1', now: nextInstant() })).toEqual([]);
   expect(await storedProgress()).toBeUndefined();
   expect(await completionEvents()).toEqual([]);
 
   await progress.addCompletedLesson(TENANT, { ...pair, id: PROGRESS, lessonId: 'lesson-2', now: nextInstant() });
   await progress.setLastViewed(TENANT, { ...pair, id: 'own-pointer', lessonId: 'lesson-2', moduleId: 'module', chapterId: 'chapter', now: nextInstant() });
-  await progress.removeCompletedLesson(TENANT, { ...pair, lessonId: 'lesson-2', now: nextInstant() });
+  await progress.removeCompletedLesson(TENANT, { memberId: MEMBER, courseIds: [COURSE], lessonId: 'lesson-2', now: nextInstant() });
 
   expect(await otherProgress()).toEqual([otherRow]);
   expect(await otherEvents()).toEqual(eventsBefore);

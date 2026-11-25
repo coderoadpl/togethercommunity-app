@@ -16,6 +16,7 @@ export type AppVars = {
     sessionId?: string;
     secureHeadersNonce?: string;
     signupRedirectOrigin?: string;
+    noReferrer?: true;
     signupRateLimit?: AppError;
     tenantRedirectHit?: { tenantId: string; redirectId: string };
   };

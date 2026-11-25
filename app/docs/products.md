@@ -22,6 +22,50 @@ and the shop manifest. See
 for what is refused and what stays allowed. Restoring a product version never
 changes its sales channel.
 
+## Gallery
+
+Besides its cover (`coverUrl`), every product has an ordered gallery, `images`:
+a list of at most 12 `{ "url": "<image-url>", "alt": "<alternative text>" }`
+entries. `url` takes the same forms as the cover (an absolute HTTP(S) URL or a
+root-relative platform asset path such as
+`/api/public/assets/product-image/<file>`) and appears at most once; `alt` is
+trimmed text of up to 250 characters and defaults to `""`. A new product starts
+with `[]`.
+
+The staff product API, the shop management key routes, the import API and the
+shop manifest accept `images`. An update with `images` replaces the whole list
+in the given order, `[]` clears it, and an update without the field keeps the
+stored gallery; the Studio editor has no gallery editor yet and never sends the
+field, so saving a product there keeps its gallery. Gallery images are uploaded
+like covers, with the `product-image` asset kind
+(`POST /api/image-assets/product-image/upload` and `.../complete`, PNG, JPEG,
+WebP or SVG up to 5 MiB); completion publishes the image without attaching it.
+From the CLI, `product image-upload <file>` prints the URL and
+`product update <id> --images-file <path>` sets the gallery (see [CLI](cli.md)).
+
+The public offer and the sales-link offer lines return `images` (`[]` when
+empty) next to `coverUrl`, with URLs in the same form. Product versions carry
+the gallery like the cover, so restoring a version restores its gallery;
+restoring a version saved before galleries existed clears the gallery. The
+version preview lists the gallery in order, so a version that differs only in
+its gallery or in the order of its images shows the gallery as changed.
+
+Rollback: migration 0171 adds `products.images` with the default `[]`. The
+previous release ignores the column, so its product writes keep the stored
+gallery and its public offer omits `images`; storefronts then fall back to
+`coverUrl`. Product content versions written by this release are snapshot
+version 12; that release refuses to open or restore them as newer than its
+version 11 and leaves the rows intact.
+
+Pending change proposals survive the release in both directions. A product
+without gallery images has no `images` entry in a proposal's effect, so a
+product creation or draft deletion proposed before this release still applies
+after it, and a product creation proposed without `images` stores no `images`
+key in its input, so the previous release can still apply it after a rollback.
+The previous release marks a proposal that sends `images`, or the draft
+deletion of a product with gallery images, stale on approval and changes
+nothing.
+
 ## History retention
 
 A never-published draft without orders, grants, sales-link items or checkout references can be deleted. Its prices, price history and download assets go with it. Automatically recorded base prices and zero-price entries do not prevent deletion. Other tenants' data is unchanged. Products that have ever been published remain protected from draft deletion.

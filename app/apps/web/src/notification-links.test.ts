@@ -234,4 +234,22 @@ describe('change proposal notifications', () => {
     expect(`${parts.before}${parts.isolated}${parts.after}`).toBe(en.notifications.changeProposalGroup({ title }));
     expect(notificationSnippetParts(en, proposal(''))).toEqual({ before: '', isolated: '', after: '' });
   });
+
+  it('reads the typed payload of a new notification, whose community fields stay empty', () => {
+    const typed = (groupTitle: string | null): Notification => {
+      const base = proposal('');
+      return {
+        ...base,
+        payload: {
+          ...base.payload,
+          authorDisplay: null,
+          changeProposal: { keyName: 'Catalogue agent', groupId: groupTitle === null ? null : 'group-1', groupTitle },
+        },
+      };
+    };
+    expect(notificationTitle(en, typed(null))).toBe(en.notifications.changeProposal({ key: 'Catalogue agent' }));
+    expect(notificationSnippet(en, typed(null))).toBe('');
+    expect(notificationSnippet(en, typed('Launch'))).toBe(en.notifications.changeProposalGroup({ title: 'Launch' }));
+    expect(notificationSnippetParts(en, typed('Launch')).isolated).toBe('Launch');
+  });
 });

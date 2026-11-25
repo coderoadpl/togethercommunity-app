@@ -295,11 +295,14 @@ describe('the owner bell for change proposals', () => {
       const response = await sessionRequest(ownerToken, 'GET', API_PATHS.notifications);
       expect(response.status).toBe(200);
       return envelope(notificationsListOutputSchema).parse(await response.json()).data.notifications
-        .filter((entry) => entry.kind === 'change-proposal' && entry.payload.authorDisplay === proposer.apiKey.name);
+        .filter((entry) => entry.kind === 'change-proposal' && entry.payload.changeProposal?.keyName === proposer.apiKey.name);
     };
     const rung = await bell();
     expect(rung).toHaveLength(1);
-    expect(rung[0]).toMatchObject({ readAt: null, payload: { authorDisplay: proposer.apiKey.name, contextKind: 'tenant' } });
+    expect(rung[0]).toMatchObject({
+      readAt: null,
+      payload: { authorDisplay: proposer.apiKey.name, contextKind: 'tenant', changeProposal: { keyName: proposer.apiKey.name, groupId: null, groupTitle: null } },
+    });
 
     const read = await sessionRequest(ownerToken, 'POST', API_PATHS.notificationRead, { id: rung[0]?.id });
     expect(read.status).toBe(200);

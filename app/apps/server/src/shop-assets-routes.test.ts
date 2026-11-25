@@ -164,6 +164,42 @@ describe('shop asset routes with shop management keys', () => {
     expect(objects.get(unsignedUrl(location))).toEqual(new Uint8Array(png));
   });
 
+  it('uploads gallery images without attaching them, then sets the ordered gallery with a product update', async () => {
+    const secret = await createShopKey([WRITE]);
+    const product = await createProduct(secret);
+    const completed: string[] = [];
+    for (const fileName of ['front.png', 'side.png']) {
+      const started = await keyed(secret, 'POST', SHOP_ASSETS_ROUTES.productImageUpload.path, {
+        kind: 'product-image', fileName, contentType: 'image/png', sizeBytes: png.byteLength,
+      });
+      expect(started.status).toBe(200);
+      const candidate = envelope(shopAssetsContracts.productImageUpload.output).parse(await started.json()).data;
+      objects.set(unsignedUrl(candidate.upload.url), png);
+      const response = await keyed(secret, 'POST', SHOP_ASSETS_ROUTES.productImageComplete.path, { key: candidate.key });
+      expect(response.status).toBe(200);
+      completed.push(envelope(shopAssetsContracts.productImageComplete.output).parse(await response.json()).data.url);
+    }
+    const [front, side] = completed;
+    if (front === undefined || side === undefined) throw new Error('Expected two completed gallery images');
+    expect(front).toMatch(/^\/api\/public\/assets\/product-image\/[0-9a-f-]{36}\.png$/u);
+    const coverKind = await keyed(secret, 'POST', SHOP_ASSETS_ROUTES.productImageUpload.path, {
+      kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: png.byteLength,
+    });
+    expect(coverKind.status).toBe(400);
+
+    const images = [{ url: side, alt: 'Side view' }, { url: front, alt: '' }];
+    const attached = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, images });
+    expect(attached.status).toBe(200);
+    expect(envelope(shopCatalogContracts.updateProduct.output).parse(await attached.json()).data.product.images).toEqual(images);
+    const renamed = await keyed(secret, 'POST', SHOP_CATALOG_ROUTES.updateProduct.path, { id: product.id, title: 'Renamed handbook' });
+    expect(envelope(shopCatalogContracts.updateProduct.output).parse(await renamed.json()).data.product.images).toEqual(images);
+
+    const served = await app.request(`${baseUrl}${side}`, { headers: { host: acmeHost, origin: 'https://store.example.test' } });
+    expect(served.status).toBe(302);
+    const location = z.string().url().parse(served.headers.get('location'));
+    expect(new URL(location).pathname).toContain('/image-assets/acme/product-image/');
+  });
+
   it('rejects an unknown field in cover upload and sales-link bodies before any write', async () => {
     const secret = await createShopKey([READ, WRITE]);
     const product = await createProduct(secret);

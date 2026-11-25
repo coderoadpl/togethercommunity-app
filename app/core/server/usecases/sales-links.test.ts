@@ -120,6 +120,22 @@ it('carries the cover of each line so the offer can show the product picture bes
   expect(salesLinkOfferSchema.parse(result.value).lines.map((line) => line.coverUrl)).toEqual(['https://cdn.example.com/print.jpg', null]);
 });
 
+it('carries the ordered gallery of each line in the same address form as its cover, and an empty gallery for a line without one', async () => {
+  const coverUrl = '/api/public/assets/product-cover/00000000-0000-4000-8000-000000000001.png';
+  const gallery = [
+    { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000003.webp', alt: 'Back' },
+    { url: 'https://cdn.example.com/front.jpg', alt: '' },
+  ];
+  findByIds.mockResolvedValue(products.map((product) => product.id === 'print' ? { ...product, coverUrl, images: gallery } : product));
+  const result = await getPublicSalesLink('workspace', link.slug, deps);
+  if (!result.ok) throw new Error('offer failed');
+  expect(result.value.lines.map((line) => [line.coverUrl, line.images])).toEqual([[coverUrl, gallery], [null, []]]);
+  const parsed = salesLinkOfferSchema.parse(result.value);
+  expect(parsed.lines.map((line) => line.images)).toEqual([gallery, []]);
+  const withoutGallery = { ...result.value, lines: result.value.lines.map((line) => Object.fromEntries(Object.entries(line).filter(([key]) => key !== 'images'))) };
+  expect(salesLinkOfferSchema.parse(withoutGallery).lines.map((line) => line.images)).toEqual([[], []]);
+});
+
 it('carries the personalisation setting of each offer line and parses through the offer schema', async () => {
   const personalization = { label: 'Add an engraving', description: '', inputLabel: 'Engraving text', maxLength: 200, condition: null };
   findByIds.mockResolvedValue(products.map((product) => product.id === 'print' ? { ...product, personalization } : product));

@@ -68,6 +68,20 @@ const productionTickers: BackgroundTicker[] = [
   {
     intervalMs: env.EMAIL_DISPATCH_INTERVAL_MS,
     run: async () => {
+      const sweeps = Promise.all([
+        deps.sweepQuarantinedImages().then((result) => {
+          if (!result.ok) process.stderr.write(`[change-proposal] quarantined image sweep failed: ${safeLogMessage(result.error.message)}\n`);
+          else if (result.value.failed > 0) process.stderr.write(`[change-proposal] quarantined image sweep failed: ${String(result.value.failed)} of its steps failed\n`);
+        }, (error: unknown) => {
+          process.stderr.write(`[change-proposal] quarantined image sweep failed: ${safeErrorMessage(error)}\n`);
+        }),
+        deps.sweepKeyDownloadFiles().then((result) => {
+          if (!result.ok) process.stderr.write(`[key-download] staged download file sweep failed: ${safeLogMessage(result.error.message)}\n`);
+          else if (result.value.failed > 0) process.stderr.write(`[key-download] staged download file sweep failed: ${String(result.value.failed)} of its steps failed\n`);
+        }, (error: unknown) => {
+          process.stderr.write(`[key-download] staged download file sweep failed: ${safeErrorMessage(error)}\n`);
+        }),
+      ]);
       await Promise.all([
         deps.releaseExpiredStockReservations().catch((error: unknown) => {
           process.stderr.write(`[stock] expired reservation sweep failed: ${safeErrorMessage(error)}\n`);
@@ -84,6 +98,7 @@ const productionTickers: BackgroundTicker[] = [
         process.stderr.write(`[order-refund] ticker dispatch failed: ${safeErrorMessage(error)}\n`);
       });
       await runMetaCapiDispatch(deps.metaCapi, deps.logger, 'node ticker');
+      await sweeps;
     },
   },
   {

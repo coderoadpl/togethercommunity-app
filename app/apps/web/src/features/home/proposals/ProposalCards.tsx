@@ -6,7 +6,13 @@ import { z } from 'zod';
 import { ApiError } from '#core/client/index.js';
 import {
   CHANGE_PROPOSAL_LIMITS,
-  knownChangeProposalOperation,
+  changeProposalImageReferences,
+  changeProposalRefusalOf,
+  changeProposalStagedFileId,
+  isChangeProposalFileMissingNote,
+  isChangeProposalImageMissingNote,
+  registeredChangeProposalOperation,
+  type ChangeProposalEventView,
   type ChangeProposalGroupOwnerView,
   type ChangeProposalOwnerView,
 } from '#core/domain/index.js';
@@ -18,7 +24,7 @@ import { useToast } from '../../../components/ui/Toast.js';
 import { localizePanelError, useLanguage, useTranslations, type Messages } from '../../../i18n/index.js';
 import { formatDateTime } from '../../../lib/format.js';
 import { FinePrint, WrapAnywhereText } from '../../../theme.js';
-import { ApprovalSummary } from './ProposalApproval.js';
+import { ApprovalFilesNote, ApprovalImagesNote, ApprovalSummary, GroupAccessSentences, GroupFileSentences } from './ProposalApproval.js';
 import { ProposalFieldRows, ReferenceText, type StockNow } from './ProposalChanges.js';
 import {
   groupReferences,
@@ -33,12 +39,34 @@ type Translations = Messages['changeProposals'];
 
 export type SettledStatus = 'stale' | 'failed' | 'expired';
 
+export type MissingAsset = 'image' | 'file';
+
+export type StaleCause = MissingAsset | 'unconfirmed';
+
+export interface Failure {
+  operation: string;
+  message: string;
+}
+
 export interface SettledOutcome {
   key: string;
   title: string;
   status: SettledStatus;
-  reason: string | null;
+  failure: Failure | null;
+  missing: StaleCause | null;
 }
+
+export const failureOf = (proposal: Pick<ChangeProposalOwnerView, 'operation' | 'failureMessage'>): Failure | null =>
+  proposal.failureMessage === null ? null : { operation: proposal.operation, message: proposal.failureMessage };
+
+const UNWORDED_REFUSALS: ReadonlySet<string> = new Set(['product.set-access', 'download.add', 'download.replace', 'download.remove']);
+
+const failureReason = (t: Translations, failure: Failure | null): string | null => {
+  if (failure === null) return null;
+  const refusal = changeProposalRefusalOf(failure.message);
+  if (refusal !== null) return t.refusal[refusal];
+  return UNWORDED_REFUSALS.has(failure.operation) ? null : failure.message;
+};
 
 export interface DecisionCallbacks {
   onSettled: (outcome: SettledOutcome) => void;
@@ -52,12 +80,34 @@ const errorCode = (error: unknown): string | null => error instanceof ApiError ?
 const groupItemsChanged = (error: unknown): boolean =>
   error instanceof ApiError && error.appError.code === 'conflict' && groupItemsChangedSchema.safeParse(error.appError.details).success;
 
-export const outcomeExplanation = (t: Translations, status: string, reason: string | null): string | null => {
-  if (status === 'stale') return t.outcomeStale;
-  if (status === 'failed') return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
+const staleExplanation = (t: Translations, missing: StaleCause | null): string => {
+  if (missing === 'image') return t.outcomeImageUnavailable;
+  if (missing === 'file') return t.outcomeFileUnavailable;
+  return missing === 'unconfirmed' ? t.outcomeStaleUnconfirmed : t.outcomeStale;
+};
+
+export const outcomeExplanation = (t: Translations, status: string, failure: Failure | null, missing: StaleCause | null = null): string | null => {
+  if (status === 'stale') return staleExplanation(t, missing);
+  if (status === 'failed') {
+    const reason = failureReason(t, failure);
+    return reason === null ? t.outcomeFailedUnknown : t.outcomeFailed({ reason });
+  }
   if (status === 'expired') return t.outcomeExpired;
   return null;
 };
+
+export const missingAssetOf = (event: Pick<ChangeProposalEventView, 'kind' | 'note'>): MissingAsset | null => {
+  if (event.kind !== 'stale') return null;
+  if (isChangeProposalImageMissingNote(event.note)) return 'image';
+  return isChangeProposalFileMissingNote(event.note) ? 'file' : null;
+};
+
+export const staleForMissingAsset = (events: readonly ChangeProposalEventView[]): MissingAsset | null =>
+  events.map(missingAssetOf).find((missing) => missing !== null) ?? null;
+
+export const mayBeStaleForMissingAsset = (proposal: Pick<ChangeProposalOwnerView, 'status' | 'operation' | 'input'>): boolean =>
+  proposal.status === 'stale'
+  && (changeProposalImageReferences(proposal.operation, proposal.input).length > 0 || changeProposalStagedFileId(proposal.operation, proposal.input) !== null);
 
 const isSettledStatus = (status: string): status is SettledStatus =>
   status === 'stale' || status === 'failed' || status === 'expired';
@@ -177,14 +227,14 @@ export const ProposalBody = ({
   live,
   labelComponent,
 }: {
-  proposal: Pick<ChangeProposalOwnerView, 'operation' | 'input' | 'effect' | 'target'>;
+  proposal: Pick<ChangeProposalOwnerView, 'id' | 'operation' | 'input' | 'effect' | 'target' | 'proposedFiles' | 'accessLabels'>;
   references?: GroupReferences;
   live: boolean;
   labelComponent: 'h3' | 'h4';
 }) => {
   const t = useTranslations().changeProposals;
   const stockNow = useStockNow(proposal, live);
-  const known = knownChangeProposalOperation(proposal.operation) !== null;
+  const known = registeredChangeProposalOperation(proposal.operation) !== null;
   return (
     <Stack useFlexGap spacing="0.75rem">
       {known ? null : (
@@ -199,6 +249,7 @@ export const ProposalBody = ({
         {...(references === undefined ? {} : { references })}
         stockNow={stockNow}
         labelComponent={labelComponent}
+        pendingProposalId={live ? proposal.id : null}
       />
     </Stack>
   );
@@ -301,7 +352,16 @@ const useDecisionFeedback = () => {
     }
     toast.error(localizePanelError(error, t));
   };
-  return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed };
+  const missingAsset = async (decided: ChangeProposalOwnerView): Promise<StaleCause | null> => {
+    if (!mayBeStaleForMissingAsset(decided)) return null;
+    try {
+      const detail = await queryClient.fetchQuery(actions.changeProposal(decided.id));
+      return staleForMissingAsset(detail.proposal.events);
+    } catch {
+      return 'unconfirmed';
+    }
+  };
+  return { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset };
 };
 
 const DecisionActions = ({
@@ -340,10 +400,10 @@ export const SingleProposalCard = ({
   onSettled,
   onDecided,
 }: { proposal: ChangeProposalOwnerView } & DecisionCallbacks) => {
-  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed } = useDecisionFeedback();
+  const { t, toast, busy, setBusy, refreshLists, refreshAfterApproval, failed, missingAsset } = useDecisionFeedback();
   const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
   const title = operationTitle(t.changeProposals, proposal.operation);
-  const known = knownChangeProposalOperation(proposal.operation) !== null;
+  const known = registeredChangeProposalOperation(proposal.operation) !== null;
 
   const approve = useMutation({
     ...actions.approveChangeProposal,
@@ -356,9 +416,11 @@ export const SingleProposalCard = ({
         return;
       }
       if (isSettledStatus(decided.status)) {
-        const explanation = outcomeExplanation(t.changeProposals, decided.status, decided.failureMessage);
+        const missing = await missingAsset(decided);
+        const failure = failureOf(decided);
+        const explanation = outcomeExplanation(t.changeProposals, decided.status, failure, missing);
         if (explanation !== null) toast.info(explanation);
-        onSettled({ key: decided.id, title, status: decided.status, reason: decided.failureMessage });
+        onSettled({ key: decided.id, title, status: decided.status, failure, missing });
       }
     },
     onError: async (error) => {
@@ -422,7 +484,17 @@ const groupStatusLabel = (t: Translations, status: ChangeProposalGroupOwnerView[
 const orderedItems = (group: ChangeProposalGroupOwnerView) =>
   group.items.toSorted((left, right) => (left.groupPosition ?? 0) - (right.groupPosition ?? 0));
 
-const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerView; position: number; references: GroupReferences }) => {
+const GroupItem = ({
+  item,
+  position,
+  references,
+  live,
+}: {
+  item: ChangeProposalOwnerView;
+  position: number;
+  references: GroupReferences;
+  live: boolean;
+}) => {
   const t = useTranslations().changeProposals;
   return (
     <Stack useFlexGap spacing="0.5rem" component="li" data-testid={`proposal-group-item-${item.id}`} sx={{ listStyle: 'none' }}>
@@ -430,7 +502,7 @@ const GroupItem = ({ item, position, references }: { item: ChangeProposalOwnerVi
         {t.groupStep({ position, operation: operationTitle(t, item.operation) })}
       </Typography>
       <TargetLine proposal={item} references={references} />
-      <ProposalBody proposal={item} references={references} live labelComponent="h4" />
+      <ProposalBody proposal={item} references={references} live={live} labelComponent="h4" />
     </Stack>
   );
 };
@@ -496,10 +568,11 @@ export const GroupProposalCard = ({
       }
       const offending = decided.items.find((item) => item.status === 'failed') ?? decided.items.find((item) => item.status === 'stale');
       const status = decided.status === 'failed' ? 'failed' : 'stale';
-      const reason = status === 'failed' ? offending?.failureMessage ?? null : null;
-      const explanation = outcomeExplanation(t.changeProposals, status, reason);
+      const failure = status === 'failed' && offending !== undefined ? failureOf(offending) : null;
+      const missing = status === 'stale' ? staleForMissingAsset(decided.items.flatMap((item) => item.events)) : null;
+      const explanation = outcomeExplanation(t.changeProposals, status, failure, missing);
       if (explanation !== null) toast.info(explanation);
-      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, reason });
+      onSettled({ key: decided.id, title: t.changeProposals.groupHeading({ count: decided.items.length }), status, failure, missing });
     },
     onError: groupFailed,
   });
@@ -515,8 +588,9 @@ export const GroupProposalCard = ({
   });
   const pending = approve.isPending || reject.isPending;
   const open = groupView?.status === 'open';
-  const approvable = open && items.length > 0 && items.every((item) => knownChangeProposalOperation(item.operation) !== null);
+  const approvable = open && items.length > 0 && items.every((item) => registeredChangeProposalOperation(item.operation) !== null);
   const references = groupReferences(items);
+  const shownItems = items.filter((item) => shownIds.includes(item.id));
 
   return (
     <SectionCard
@@ -554,7 +628,7 @@ export const GroupProposalCard = ({
           )}
           <Stack component="ol" useFlexGap spacing="1.25rem" sx={{ m: 0, p: 0 }}>
             {items.map((item, index) => (
-              <GroupItem key={item.id} item={item} position={item.groupPosition ?? index + 1} references={references} />
+              <GroupItem key={item.id} item={item} position={item.groupPosition ?? index + 1} references={references} live={open} />
             ))}
           </Stack>
         </>
@@ -563,7 +637,15 @@ export const GroupProposalCard = ({
         dialog={dialog}
         onClose={() => setDialog(null)}
         approveTitle={t.changeProposals.approveGroupTitle({ count: shownIds.length })}
-        approveBody={<Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>}
+        approveBody={(
+          <>
+            <Typography variant="body2">{t.changeProposals.approveGroupBody({ count: shownIds.length })}</Typography>
+            <GroupAccessSentences items={shownItems} references={references} />
+            <GroupFileSentences items={shownItems} references={references} />
+            <ApprovalImagesNote proposals={shownItems} group />
+            <ApprovalFilesNote proposals={shownItems} group />
+          </>
+        )}
         approveDisabled={group.isFetching || changed !== null}
         rejectTitle={t.changeProposals.rejectGroupTitle}
         pending={pending}

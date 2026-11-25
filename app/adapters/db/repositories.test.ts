@@ -353,6 +353,46 @@ describe('product repository', () => {
     }))).resolves.toBe('slug_taken');
   });
 
+  it('stores the ordered gallery, defaults it to empty, and keeps the order through updates', async () => {
+    const repo = createProductRepository(db);
+    const gallery = [
+      { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000002.webp', alt: 'Back view' },
+      { url: 'https://cdn.example.test/front.jpg', alt: '' },
+    ];
+    await repo.create(GLOBEX, product({ id: 'prod-globex-gallery', tenantId: GLOBEX, images: gallery }));
+    await db.insert(products).values({
+      id: 'prod-globex-gallery-default', tenantId: GLOBEX, slug: 'prod-globex-gallery-default', title: 'Raw insert', description: '',
+      priceCents: 100, currency: 'PLN', createdAt: NOW,
+    });
+    expect(await repo.findById(GLOBEX, 'prod-globex-gallery')).toMatchObject({ images: gallery });
+    expect(await repo.findById(GLOBEX, 'prod-globex-gallery-default')).toMatchObject({ images: [] });
+
+    const stored = await repo.findById(GLOBEX, 'prod-globex-gallery');
+    if (stored === null) throw new Error('Gallery product missing');
+    const version = {
+      id: 'version-gallery', entityKind: 'product' as const, entityId: stored.id, schemaVersion: 12,
+      payload: stored, createdAt: NOW, createdBy: null,
+    };
+    const reordered = [...gallery].reverse();
+    expect(await repo.update(GLOBEX, { ...stored, images: reordered }, version)).toMatchObject({ images: reordered });
+    expect(await repo.findById(GLOBEX, 'prod-globex-gallery')).toMatchObject({ images: reordered });
+    const withoutGallery = { ...stored, title: 'Renamed' };
+    delete withoutGallery.images;
+    expect(await repo.update(GLOBEX, withoutGallery, { ...version, id: 'version-gallery-keep' }))
+      .toMatchObject({ title: 'Renamed', images: reordered });
+    expect(await repo.update(GLOBEX, { ...stored, images: [] }, { ...version, id: 'version-gallery-2' })).toMatchObject({ images: [] });
+    expect(await repo.findById(ACME, 'prod-globex-gallery')).toBeNull();
+  });
+
+  it('writes only the checkout consents and keeps the stored access list when the access list is left out', async () => {
+    const repo = createProductRepository(db);
+    await repo.create(GLOBEX, product({ id: 'prod-globex-consents', tenantId: GLOBEX, slug: 'prod-globex-consents' }));
+    await db.update(products).set({ accessItems: [{ level: 'course', courseId: 'course-kept' }] })
+      .where(and(eq(products.tenantId, GLOBEX), eq(products.id, 'prod-globex-consents')));
+    expect(await repo.updateAccessItems(GLOBEX, 'prod-globex-consents', null, undefined, ['consent-kept']))
+      .toMatchObject({ accessItems: [{ level: 'course', courseId: 'course-kept' }], checkoutConsentDefinitionIds: ['consent-kept'] });
+  });
+
   it('stores the sales channel, defaults it to any, and returns it on every product read', async () => {
     const repo = createProductRepository(db);
     await repo.create(GLOBEX, product({ id: 'prod-globex-link-only', tenantId: GLOBEX, salesChannel: 'sales_links_only' }));
@@ -643,6 +683,64 @@ describe('member event repository', () => {
       'member-event-open-type',
       'member-event-invalid-payload',
     ]));
+  });
+});
+
+describe('member course progress repository', () => {
+  const courseRow = (id: string): Course => ({
+    id, tenantId: ACME, name: id, description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false, legacyId: null, createdAt: NOW,
+  });
+  const seed = async () => {
+    await createCourseRepository(db).create(ACME, courseRow('course-progress-a'));
+    await createCourseRepository(db).create(ACME, courseRow('course-progress-b'));
+    await createCourseRepository(db).create(ACME, courseRow('course-progress-c'));
+    await db.insert(memberCourseProgress).values([
+      { id: 'progress-a', tenantId: ACME, memberId: 'mem-acme', courseId: 'course-progress-a', completedLessonIds: ['lesson-shared', 'lesson-kept'], updatedAt: PAST },
+      { id: 'progress-b', tenantId: ACME, memberId: 'mem-acme', courseId: 'course-progress-b', completedLessonIds: ['lesson-shared'], updatedAt: PAST },
+      { id: 'progress-c', tenantId: ACME, memberId: 'mem-acme', courseId: 'course-progress-c', completedLessonIds: ['lesson-shared'], updatedAt: PAST },
+    ]);
+  };
+  const completions = async () => Object.fromEntries((await db
+    .select({ id: memberCourseProgress.id, completedLessonIds: memberCourseProgress.completedLessonIds })
+    .from(memberCourseProgress)
+    .where(inArray(memberCourseProgress.id, ['progress-a', 'progress-b', 'progress-c'])))
+    .map((row) => [row.id, row.completedLessonIds]));
+
+  afterEach(async () => {
+    await db.execute(sql`drop trigger if exists fail_progress_b on member_course_progress`);
+    await db.execute(sql`drop function if exists fail_progress_b()`);
+    await db.delete(memberCourseProgress).where(inArray(memberCourseProgress.id, ['progress-a', 'progress-b', 'progress-c']));
+    await db.delete(courses).where(inArray(courses.id, ['course-progress-a', 'course-progress-b', 'course-progress-c']));
+  });
+
+  it('removes a completed lesson from every named course row of the member and leaves the others', async () => {
+    await seed();
+    const saved = await createMemberCourseProgressRepository(db).removeCompletedLesson(ACME, {
+      memberId: 'mem-acme', courseIds: ['course-progress-b', 'course-progress-a', 'course-missing'], lessonId: 'lesson-shared', now: NOW,
+    });
+    expect(saved.map((row) => [row.courseId, row.completedLessonIds, row.updatedAt])).toEqual([
+      ['course-progress-a', ['lesson-kept'], NOW],
+      ['course-progress-b', [], NOW],
+    ]);
+    expect(await createMemberCourseProgressRepository(db).removeCompletedLesson(GLOBEX, {
+      memberId: 'mem-acme', courseIds: ['course-progress-c'], lessonId: 'lesson-shared', now: NOW,
+    })).toEqual([]);
+    expect(await completions()).toEqual({ 'progress-a': ['lesson-kept'], 'progress-b': [], 'progress-c': ['lesson-shared'] });
+  });
+
+  it('keeps every row completed when one of the removals fails', async () => {
+    await seed();
+    await db.execute(sql`create function fail_progress_b() returns trigger language plpgsql as $body$
+      begin raise exception 'progress write refused'; end $body$`);
+    await db.execute(sql`create trigger fail_progress_b before update on member_course_progress
+      for each row when (new.id = 'progress-b') execute function fail_progress_b()`);
+
+    await expect(createMemberCourseProgressRepository(db).removeCompletedLesson(ACME, {
+      memberId: 'mem-acme', courseIds: ['course-progress-a', 'course-progress-b'], lessonId: 'lesson-shared', now: NOW,
+    })).rejects.toThrow();
+    expect(await completions()).toEqual({
+      'progress-a': ['lesson-shared', 'lesson-kept'], 'progress-b': ['lesson-shared'], 'progress-c': ['lesson-shared'],
+    });
   });
 });
 
@@ -2608,6 +2706,8 @@ describe('course/module/lesson repositories', () => {
     expect(await modules.findById(ACME, 'module-acme')).toMatchObject({ courseIds: ['course-acme'] });
     expect(await lessons.findById(ACME, 'lesson-acme')).toMatchObject({ isPreview: true });
     expect(await lessons.findById(GLOBEX, 'lesson-acme')).toBeNull();
+    expect(await lessons.existingIds(ACME, ['lesson-acme', 'lesson-gone'])).toEqual(['lesson-acme']);
+    expect(await lessons.existingIds(GLOBEX, ['lesson-acme'])).toEqual([]);
     expect(await lessons.listPreviews(ACME)).toEqual([
       { id: 'lesson-acme', name: 'L', courseId: 'course-acme' },
     ]);

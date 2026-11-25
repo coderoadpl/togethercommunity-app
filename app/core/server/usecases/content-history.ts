@@ -283,6 +283,7 @@ const restoreProduct = (
       title: snapshot.title,
       description: snapshot.description,
       coverUrl: snapshot.coverUrl,
+      images: snapshot.images ?? [],
       visibility: snapshot.visibility,
     },
     deps,

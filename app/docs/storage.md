@@ -22,6 +22,234 @@ per-run budget, and an unreachable endpoint is reported as unknown instead of
 as a bucket CORS failure. Until a verified custom domain has a successful stored
 result, Settings → Addresses links back to the storage wizard.
 
+## Image prefixes
+
+Image assets (covers, branding images, avatars) live under these prefixes in the
+tenant bucket:
+
+| Prefix | Holds | Served |
+|---|---|---|
+| `image-asset-candidates/<workspace>/<kind>/` | an upload between its presigned `PUT` and its completion | never. Completion deletes it, also when its checks fail; the minute sweep deletes a propose-mode key's candidate 20 minutes after its upload started, completed or not, a second `PUT` through a still valid URL included, and deletes it once more 10 minutes later, so a `PUT` accepted before the URL expired that finishes after the first delete does not stay either. A live upload that is never completed stays, and the storage orphan report lists it |
+| `image-assets/<workspace>/<kind>/` | completed images, and images a change proposal approval published under their SHA-256, written just before that approval commits; a copy written by an approval that then did not end applied stays until its withdrawal or the minute sweep deletes it | through `/api/public/assets/<kind>/<file>`, a redirect to a signed `GET` |
+| `image-asset-quarantine/<workspace>/<key id>/<kind>/` | images a propose-mode shop management key uploaded, awaiting the owner's approval | never publicly; the owner previews them through the change proposal owner route |
+
+The public asset route asks the storage for `attachment` on every SVG through
+the signed `response-content-disposition`. Since a provider that ignores
+signed overrides is accepted (below), the server also writes every SVG under
+`image-assets/` with a stored `content-disposition: attachment`, both a live
+completion and a change proposal approval, so a browser that opens such an
+address downloads it on any provider. An SVG written before this release
+keeps the metadata it was written with, and nothing rewrites it: on a provider
+that ignores overrides, upload the image again in the owner's session (a live
+upload writes a new object under a new address, with the stored disposition)
+and set the field to that address. Proposing the same bytes again through a
+propose-mode key does not help: they have the same digest, so approval reuses
+the existing public copy, old metadata included.
+
+A propose-mode key's presigned `PUT` targets the candidate prefix like any
+other upload, so the bucket CORS rules above cover it; its signature also
+covers `content-length`, so the bucket accepts only a body of the declared
+size. The quarantine is
+described in [Change proposals](change-proposals.md#images).
+
+## Download file prefixes
+
+Product files live under the workspace's private download prefix:
+
+| Prefix | Holds | Served |
+|---|---|---|
+| `<workspace>/product-downloads/<product>/<file>/` | files uploaded in the product editor | to buyers with active access, through a signed `GET` or a personalised copy |
+| `<workspace>/product-downloads/key-uploads/<key id>/` | a shop management key's upload between its presigned `PUT` (signed for the declared size) and its completion | never. A completion copies it server-side and deletes it; the minute sweep deletes it again once its upload record is 20 minutes old and no completion holds it, a second `PUT` through a still valid URL included, and once more a day after the upload URL expired (a day and 15 minutes after the upload started), so a `PUT` accepted before the URL expired that finishes after the sweep does not stay |
+| `<workspace>/product-downloads/key-files/<key id>/<file>/` | files a shop management key staged, by completing an upload or by a server-side copy of a ready product file; once attached, the product file itself | never to a key or a buyer while staged; the verified owner gets a 60-second signed download of one a pending change proposal holds ([Download files](change-proposals.md#download-files)); an attached file is served like any other product file |
+
+A key writes only its own `key-uploads/` object, through the presigned `PUT`
+of its upload ([Download files](shop-management-keys.md#download-files)).
+Only the server writes under `key-files/`: the completion of an upload and a
+key's copy of a ready product file write the staged object with the
+workspace's storage credentials, which no key ever receives. The server-side
+copy into `key-files/` replaces the object metadata with
+`application/octet-stream`, `attachment` and `no-store`, so no header the key
+sent with its upload survives.
+
+Who deletes them:
+
+- a `key-uploads/` object: a completion that staged it or that failed for a
+  definite reason (nothing uploaded, a wrong size or type, a copy the storage
+  refused), and the minute sweep once its upload record is 20 minutes old; for
+  a record whose completion attempt is still running or was interrupted (its
+  outcome unknown), only once that attempt also started 30 minutes ago, while
+  a record with no attempt, a completed one or one that failed definitely
+  needs only the 20 minutes. When the
+  sweep settles the record it records, in the same transaction, an owed
+  deletion of the upload object that is due a day after the upload URL
+  expired (a day and 15 minutes after the upload started), and deletes it once
+  more then, whether or not an object is there. Until it is due, that owed
+  deletion is not counted against the staging limits: the daily limit still
+  counts the upload's declared bytes for the day after the upload started,
+  which leaves those bytes uncounted for the last 15 minutes before the delete
+  is due; once due, it counts until the storage confirms the delete;
+- a `key-files/` object that is still staged: a completion or copy that wrote
+  it and then failed for a definite reason; the key's discard, also of a file a
+  pending proposal holds (an approval of that proposal then ends `stale`);
+  the release after a rejection, withdrawal or recorded expiry of the change
+  proposal that held it, or after the revocation or purge of its key; and the
+  minute sweep 7 days after staging, once the key is revoked, expired or purged,
+  or once the proposal that held it was rejected, withdrawn or expired. The
+  release and the sweep never delete a file a pending, unexpired proposal
+  holds;
+- the destination of a completion or copy whose storage outcome is unknown (a
+  copy or read the storage did not answer in time, a connection error, a server
+  error, a copy answer without a copy result): only the minute sweep, once its
+  record is 20 minutes old and 30 minutes have passed since the attempt
+  started, the time within which the storage finishes a copy it accepted
+  (below), because a copy the storage still runs may land after any earlier
+  delete. Until then the
+  record keeps the upload object and the destination, and both count against
+  the key's limits;
+- the destination of a completion attempt that a later completion took over:
+  the takeover, which counts that extra object against the key's and the
+  workspace's limits under their staging locks and is refused when it does not
+  fit, writes a destination of its own under a fresh file id and, in
+  the same transaction, records the earlier destination as an owed deletion
+  that is due 30 minutes after the earlier attempt started. The minute sweep
+  deletes it then, whether or not an object is there, and it counts against the
+  key's limits until the storage confirms the delete;
+- a `key-files/` object that is attached: removing that file version (by a
+  direct-mode key, by an approved `download.remove` proposal or in the product
+  editor) or deleting the draft product.
+
+Every staged or upload object is owned by a database row: an upload or copy
+record (its upload object, and its destination until a completion hands it to a
+staged row), a staged file, or an owed deletion (the upload object of a settled
+upload included, until its second delete a day after its upload URL expired). The
+exception is a provider write that lands later than the assumptions at the end
+of this section allow: such an object has no row and only the storage orphan
+report lists it. Which row a storage delete holds depends on the row. The
+release of an upload or copy record, after a completion or copy and in the
+minute sweep, deletes its objects while its transaction holds the record row.
+A staged file is never deleted under its own row: the key's discard, the
+release after a decision and the minute sweep lock it, remove it and record an
+owed deletion of its object in one committed transaction, and the delete then
+runs while a second transaction holds that owed-deletion row, as the sweep's
+delete of any owed deletion does (the first delete after an owner's removal is
+the exception below). Either way an attach, which needs the staged row,
+can no longer take over an object whose delete is sent. The
+copy and the read of a completion or copy hold no row lock; they are fenced by
+the attempt id and by a destination of their own. A delete that takes effect
+while its transaction rolls back, or whose answer is lost, still leaves the row
+in place, and the sweep deletes the object again. A `404` answer to a delete
+whose body is a complete S3 error document (an `Error` root closed at the end
+of the body, no comment or processing instruction in it, exactly one `Code`
+element directly under the root) with the code `NoSuchKey` counts as a
+confirmed delete: the code is read from the answer, not checked against the
+bucket. Any other `404` (an empty body, or one that cannot be read within its
+size limit or deadline, a proxy page, a missing bucket `NoSuchBucket`, a
+document cut off or carrying a comment) does not. A read, a digest
+or a copy answered `404` with `NoSuchBucket`, or with a body that cannot be
+read, is a storage error, not a missing object. Removing a file version or deleting a draft product whose file
+object a key staged (`key-files/<key id>/<file>/<name>`; an owner file of a
+product whose id is `key-files` has one segment less and is not one),
+discarding a staged file, and the minute sweep of
+a staged file record the object's deletion in
+`change_proposal_download_deletions` in the transaction that deletes the file's
+row, before any storage delete, owed by the key whose `key-files/` prefix holds the object,
+whoever removed the file; the owed bytes count against that key's and the
+workspace's staging limits until the storage confirms the delete
+([Download files](shop-management-keys.md#download-files)). After a key's
+removal or discard, and after the sweep moved a staged file, the deletion that
+follows holds and removes that row, and keeps it when the storage does not
+confirm the delete; after
+a removal in the product editor, an approved removal proposal or a draft
+deletion the object is deleted once after its row as before, without the owed
+row, and the minute sweep deletes it once more and removes the row. That delete cannot remove a newer file: every
+completion attempt and every copy writes a destination of its own under a fresh
+file id, and no path writes to a `key-files/` address that a staged file or a
+product file names. A late copy of a superseded completion attempt lands only on
+that attempt's own destination, which no staged file names and the sweep
+deletes. This rests on two assumptions: an S3-compatible provider finishes or
+abandons a CopyObject it accepted within 30 minutes (the signed copy request
+itself expires 60 seconds after it was signed), and a `PUT` it accepted before
+the upload URL expired within a day.
+
+The bucket must not keep object versions: leave versioning off (never
+enabled), or, where the provider keeps versions, add a lifecycle rule that
+expires noncurrent versions and delete markers. Every delete the server sends
+names an object key without a version, so on a bucket that keeps versions it
+only adds a delete marker and the earlier bytes stay stored as a noncurrent
+version, and each `PUT` through a still valid upload URL keeps one more full
+version. The staging limits, the owed deletions and the minute sweep count and
+delete current objects only, so on such a bucket the stored bytes grow past
+every limit while the database shows them deleted. The storage probe does not
+read the bucket's versioning status; check it with the provider when you
+configure the bucket.
+
+The minute sweep has a budget of 10 seconds of its own. The cron route runs it
+after e-mail and refund dispatch with an end 50 seconds after the tick
+started, 10 seconds before the 60-second function limit, and does not start it
+at all when the dispatch before it already reached that end. The Node ticker
+starts it before the dispatch and awaits it beside the dispatch, and its tick
+ends when both are done. It starts no
+workspace and no row after the earlier of the two ends, and the deadlines of
+its lock waits and storage requests end by then. These ends are scheduling
+targets, not a guaranteed return time: the wait for a pool connection is not
+counted in them, and statements bounded one by one can together run past
+them. Its discovery of workspaces, the listing of a workspace's rows and the
+recording of their failed attempts run with a statement timeout and a lock
+timeout of what is left, but at least 1 second, and one that runs out lists or
+records nothing, so its rows wait for the next run. The retention purge of a
+workspace runs in one transaction and sets, once before its statements, a
+statement timeout of what is left and a lock timeout of the lesser of that and
+the configured lock wait cap (5 seconds by default). Its statements delete the
+records, insert their purge events (skipped when no record was purged) and
+delete the expired events, and it deletes nothing when one of them runs out. The timeout bounds each
+statement, not the purge as a whole: three statements that each finish within
+it can together end, and commit, after the run's budget is spent. The listing
+after the purge starts only when what is left still covers a row. The retention purge of a workspace deletes at
+most 50 settled records and 50 expired events per run, oldest first, so a
+backlog is worked off over several runs. It starts a row only when what is left covers a lock wait of at least 250
+milliseconds and 1 second for each of the row's storage deletes (two for an
+upload record that still owns its upload object and its destination). The row's
+lock wait gets what is left minus those seconds, and each delete, the lookup of
+the storage endpoint included, gets at most 10 seconds and what is left minus 1
+second for each delete still to come in that row, so the sweep's lock waits and
+storage requests end by its end; the 10 seconds before the function limit are
+for its database statements and the answer. It serves workspaces, and inside a
+workspace one queue of upload and copy records, staged files and owed deletions
+(an owed deletion with a not-before time only once that time passed), longest
+waiting first, by the time of a row's last failed delete or else its creation;
+a failed delete records its attempt, so rows whose deletion keeps failing move
+behind the others. A row another request holds past the lock wait, and a row
+the budget could not cover, are tried again on the next run. A workspace whose
+database or storage call rejects is logged and counted and the sweep goes on
+with the next workspace; a run with any such failure answers its count, which
+the tick logs as a failed run, and the rows wait for the next run. Each state change of an
+upload or copy record is appended, in the same transaction, to
+`change_proposal_download_upload_events` (the record, the key, the attempt, the
+kind of change and a short machine reason), which the sweep deletes 30 days
+after each event. The storage orphan report counts the objects these rows name
+(staged objects, the upload object and the destination of an open record, owed
+deletions) as pending, and classifies an attached object like any other
+product file. Files uploaded in the product editor are deleted as before: the
+object is deleted once after its row.
+
+A file a key staged is stored as `application/octet-stream` with a bare
+`attachment` disposition, and a buyer's signed link asks the storage for the
+file's type and name instead (`response-content-type`,
+`response-content-disposition`). The storage probe that runs when storage is
+configured or tested signs such a read of its scratch object and reports
+`signedResponseOverrides` in its diagnostic: `"honoured"` when the answer
+carries the requested type and name, `"ignored"` when the provider answers the
+read without them, and `"refused"` when the read with the overrides fails. None
+of them fails the configuration. With a provider that ignores the overrides, a
+buyer receives such a file as an `application/octet-stream` download named
+after the last segment of its stored object, the file's sanitised name. For a
+provider that refuses them the diagnostic message is a warning that buyer
+download links carry these overrides, so buyers may not be able to download
+files from it. The storage wizard in the panel shows either outcome after the
+probe as a warning in the page's language instead of the plain success
+message, and still lets the owner save; after saving, the warning says that
+the configuration was saved and keeps what buyers' downloads get.
+
 ## File versions
 
 Digital download products deliver personalised PDF and EPUB copies or signed,
@@ -53,7 +281,7 @@ published but has no downloadable file until another upload completes. A new
 publication still requires a ready file or another supported delivery method.
 
 New versions do not automatically email buyers. The publisher can send a
-campaign to announce an update. Visible watermarks and an online reader are outside this flow. The CLI currently has no product-file upload command.
+campaign to announce an update. Visible watermarks and an online reader are outside this flow. The CLI has no product-file upload command for an owner session; a direct-mode shop management key uploads and attaches files with `shop files upload`, and a propose-mode key uploads them and proposes attaching them with the same command ([Download files](shop-management-keys.md#download-files)).
 
 The additive migration backfills existing files as version 1 in their own
 lineages. Pending replacements retain their target until completion; retries of

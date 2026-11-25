@@ -185,6 +185,8 @@ import type {
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
+  ListLayout,
+  ListLayoutId,
   OrderBillingFilter,
   OrderInvoiceFilter,
   OrderSortDirection,
@@ -1980,6 +1982,12 @@ export interface PaymentEventRejectionRepository {
   ): Promise<PaymentEventRejection>;
   resolve(tenantId: string, eventId: string, resolvedAt: string): Promise<void>;
   listUnresolved(tenantId: string, limit: number): Promise<PaymentEventRejection[]>;
+}
+
+export interface ListLayoutRepository {
+  get(tenantId: string, userId: string, listId: ListLayoutId): Promise<ListLayout | null>;
+  put(tenantId: string, userId: string, listId: ListLayoutId, layout: ListLayout): Promise<void>;
+  delete(tenantId: string, userId: string, listId: ListLayoutId): Promise<void>;
 }
 
 /** Generates and hashes tenant API-key secrets; kept behind a port for deterministic tests. */

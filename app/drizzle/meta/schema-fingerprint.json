@@ -1,6 +1,6 @@
 {
-  "hash": "9e2afabee961fed23c7fcd10c496065791034c18cba4952f4637258b0d0fcff2",
-  "shortId": "9e2afabee961",
+  "hash": "c1e54e4cbcbba02812dc01528779d63de6aa865425bc245297c6dbba2b5269bd",
+  "shortId": "c1e54e4cbcbb",
   "schema": {
     "constraints": [
       {
@@ -1625,6 +1625,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "staff_list_layouts_tenant_id_fkey",
+        "table": "staff_list_layouts"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "stock_events_tenant_id_fkey",
         "table": "stock_events"
       },
@@ -2732,6 +2737,11 @@
         "definition": "PRIMARY KEY (tenant_id, survey_id, revision)",
         "name": "survey_events_pkey",
         "table": "survey_events"
+      },
+      {
+        "definition": "PRIMARY KEY (tenant_id, user_id, list_id)",
+        "name": "staff_list_layouts_tenant_id_user_id_list_id_pk",
+        "table": "staff_list_layouts"
       },
       {
         "definition": "PRIMARY KEY (transaction_id)",
@@ -10793,6 +10803,51 @@
           }
         ],
         "name": "order_feed_epoch"
+      },
+      {
+        "columns": [
+          {
+            "default": "now()",
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "layout",
+            "notNull": true,
+            "type": "jsonb"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "list_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "user_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "staff_list_layouts"
       },
       {
         "columns": [

@@ -37,7 +37,7 @@ import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../co
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDate, formatDateTime, formatPrice, formatTime } from '../../../lib/format.js';
-import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesFitCell, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesProductCell, SalesTable } from '../../../theme.js';
+import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesCouponCode, SalesDateLink, SalesDateTime, SalesFitCell, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesProductCell, SalesTable } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -486,7 +486,7 @@ export const SalesPanel = () => {
                       </SalesProductCell>
                       {narrow ? null : <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>}
                       <SalesNoWrapCell>{formatPrice(order.amountCents, order.currency, language)}</SalesNoWrapCell>
-                      {narrow ? null : <SalesFitCell data-testid="sales-row-coupon">{order.couponCode ?? '—'}</SalesFitCell>}
+                      {narrow ? null : <SalesFitCell data-testid="sales-row-coupon"><SalesCouponCode>{order.couponCode ?? '—'}</SalesCouponCode></SalesFitCell>}
                       {narrow ? null : <TableCell>{orderSource(order) || '—'}</TableCell>}
                       <TableCell>
                         <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem' }}>{statusChips(order)}</Stack>

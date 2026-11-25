@@ -1459,7 +1459,7 @@ export const en: Messages = {
     reconciliationAge: ({ date }) => format('Paid {date}', { date }),
     moreItems: ({ count }) => format('+{count}', { count }),
     moreItemsLabel: ({ count }) => format(plural(count, 'and {count} more line', 'and {count} more lines'), { count }),
-    showItems: ({ count }) => format('Show all {count} lines', { count }),
+    orderLines: ({ count }) => format('Order lines ({count})', { count }),
     openMemberAccount: ({ member }) => format('{member}: open the member account', { member }),
     rejectedPaymentsHeading: 'Payments that could not be recorded',
     rejectedPaymentsHint: 'Stripe reports these payments as paid, but no order was recorded. Stripe retries each delivery for up to three days. Do not refund or ask the buyer to pay again before support has checked it.',

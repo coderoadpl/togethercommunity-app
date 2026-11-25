@@ -65,7 +65,7 @@ describe('OrderProductSummary', () => {
     expect(screen.getByTestId('sales-product-more')).toHaveTextContent(`+11${en.sales.moreItemsLabel({ count: 11 })}`);
     const items = screen.getByTestId('sales-product-items');
     expect(items).not.toBeVisible();
-    const toggle = screen.getByRole('button', { name: en.sales.showItems({ count: 12 }) });
+    const toggle = screen.getByRole('button', { name: en.sales.orderLines({ count: 12 }) });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveAttribute('aria-controls', items.id);
 
@@ -73,7 +73,7 @@ describe('OrderProductSummary', () => {
     expect(toggle).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(toggle).toHaveAccessibleName(en.sales.showItems({ count: 12 }));
+    expect(toggle).toHaveAccessibleName(en.sales.orderLines({ count: 12 }));
     expect(items).toBeVisible();
     expect(within(items).getAllByRole('listitem').map((item) => item.textContent)).toEqual(twelveItems.map((entry) => entry.name));
 
@@ -96,7 +96,7 @@ describe('OrderProductSummary', () => {
     await renderRouted(<OrderProductSummary order={order({ salesLinkId: 'sl1', salesLinkTitle: 'Starter bundle', lines: [{ ...line('Printed copy'), personalization }, line('Notebook')] })} />, 'pl');
     expect(await screen.findByText(`${pl.salesLinks.salesLink}: Starter bundle`)).toBeVisible();
     expect(screen.getByTestId('sales-personalization-chip')).toHaveTextContent(pl.personalization.marker);
-    expect(screen.getByRole('button', { name: pl.sales.showItems({ count: 2 }) })).toBeVisible();
+    expect(screen.getByRole('button', { name: pl.sales.orderLines({ count: 2 }) })).toBeVisible();
     expect(screen.getByTestId('sales-product-more')).toHaveTextContent(`+1${pl.sales.moreItemsLabel({ count: 1 })}`);
   });
 
@@ -114,7 +114,7 @@ describe('OrderMemberIdentity', () => {
     expect(link).toHaveTextContent('Ada');
     const email = screen.getByTestId('order-member-email');
     expect(email).toHaveTextContent('ada@example.com');
-    const emailLink = within(email).getByText('ada@example.com');
+    const emailLink = within(email).getByRole('link', { name: 'ada@example.com' });
     expect(emailLink).toHaveAttribute('href', '/panel/members/m1');
     expect(emailLink).toHaveAttribute('tabindex', '-1');
     await userEvent.setup().tab();

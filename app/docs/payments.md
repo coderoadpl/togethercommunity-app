@@ -609,8 +609,13 @@ A failed record or resolve write logs
 Rollback: the e-mail is rendered when it is queued and stored as an
 `m2m-transactional` outbox message with source app `payment-event-rejections`
 that, unlike an API-submitted message, needs no workspace mail transport. An
-older release already renders and lists that shape, so after a rollback a queued alert is still sent and shown in the sends
-list. An older release ignores the `payment_event_rejections` table.
+older release already renders and lists that shape, so after a rollback a
+queued alert is still sent and shown in the sends list. An older release ignores the `payment_event_rejections` table; keep the
+table and migration 0172 when rolling back the binary. While the older release
+runs, its `/api/health` reports `schemaFingerprintMatch: false` because the live
+schema keeps the new table, so the hourly production health monitor fails and
+sends one alert on that change; expect it and do not treat it as a new
+incident.
 
 ## Test mode for staff
 

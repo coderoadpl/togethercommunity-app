@@ -62,6 +62,19 @@ describe('payment event rejection repository', () => {
     expect(await database.db.select().from(paymentEventRejections)).toHaveLength(1);
   });
 
+  it('keeps the earliest first sighting, the latest last sighting and the latest reason when refusals arrive out of order', async () => {
+    const repository = createPaymentEventRejectionRepository(database.db);
+    const later = '2026-11-20T12:00:00.000Z';
+
+    await repository.record('tenant-acme', { ...rejection('evt_late', later, 'Checkout total does not match its lines'), eventType: 'checkout.session.async_payment_succeeded' });
+    const recorded = await repository.record('tenant-acme', rejection('evt_late', now));
+
+    expect(recorded).toMatchObject({
+      firstSeenAt: now, lastSeenAt: later, attempts: 2,
+      eventType: 'checkout.session.async_payment_succeeded', reasonMessage: 'Checkout total does not match its lines',
+    });
+  });
+
   it('keeps the same event id of two workspaces apart', async () => {
     const repository = createPaymentEventRejectionRepository(database.db);
 

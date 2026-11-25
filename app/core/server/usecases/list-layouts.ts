@@ -24,10 +24,10 @@ export interface ListLayoutDeps {
 type LayoutKey = { tenantId: string; listId: ListLayoutId };
 
 const layoutKey = (ctx: Ctx, listId: unknown, tenant: Result<string, AppError>): Result<LayoutKey, AppError> => {
-  const parsed = listLayoutIdSchema.safeParse(listId);
-  if (!parsed.success) return err(validation('Unknown list', parsed.error.flatten()));
   if (!tenant.ok) return tenant;
   if (ctx.machineActor !== undefined) return err(forbidden('List layouts belong to a signed-in person'));
+  const parsed = listLayoutIdSchema.safeParse(listId);
+  if (!parsed.success) return err(validation('Unknown list', parsed.error.flatten()));
   return ok({ tenantId: tenant.value, listId: parsed.data });
 };
 
@@ -54,8 +54,8 @@ export const saveListLayout = async (
   if (!owner.ok) return owner;
   const parsed = listLayoutSchema.safeParse(layout);
   if (!parsed.success) return err(validation('Invalid list layout', parsed.error.flatten()));
-  if (JSON.stringify(parsed.data).length > LIST_LAYOUT_MAX_BYTES) {
-    return err(validation(`A list layout is at most ${String(LIST_LAYOUT_MAX_BYTES)} characters`));
+  if (new TextEncoder().encode(JSON.stringify(parsed.data)).byteLength > LIST_LAYOUT_MAX_BYTES) {
+    return err(validation(`A list layout is at most ${String(LIST_LAYOUT_MAX_BYTES)} bytes`));
   }
   await deps.listLayouts.put(owner.value.tenantId, ctx.identity.userId, owner.value.listId, parsed.data);
   return ok({ layout: parsed.data });

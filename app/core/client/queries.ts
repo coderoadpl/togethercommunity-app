@@ -2349,11 +2349,14 @@ export const surveyActions = (api: ApiClient) => ({
   invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
 });
 
+const listLayoutKey = (tenantId: string, userId: string | undefined, listId: ListLayoutId) =>
+  ['list-layouts', tenantId, userId, listId] as const;
+
 export const listLayoutActions = (api: ApiClient) => ({
-  get: (tenantId: string, listId: ListLayoutId) => defineQuery({ queryKey: ['list-layouts', tenantId, listId] as const, call: ({ signal }) => api.getListLayout({ listId }, signal) }),
-  save: defineMutation({ mutationKey: ['list-layouts', 'save'], call: (input: Parameters<ApiClient['saveListLayout']>[0]) => api.saveListLayout(input) }),
-  reset: defineMutation({ mutationKey: ['list-layouts', 'reset'], call: (input: Parameters<ApiClient['resetListLayout']>[0]) => api.resetListLayout(input) }),
-  invalidates: (tenantId: string, listId: ListLayoutId) => ({ queryKey: ['list-layouts', tenantId, listId] as const }),
+  get: (tenantId: string, userId: string | undefined, listId: ListLayoutId) => defineQuery({ queryKey: listLayoutKey(tenantId, userId, listId), call: ({ signal }) => api.getListLayout({ listId }, signal) }),
+  save: async (input: Parameters<ApiClient['saveListLayout']>[0]) => unwrap(await api.saveListLayout(input)),
+  reset: async (input: Parameters<ApiClient['resetListLayout']>[0]) => unwrap(await api.resetListLayout(input)),
+  invalidates: (tenantId: string, userId: string | undefined, listId: ListLayoutId) => ({ queryKey: listLayoutKey(tenantId, userId, listId) }),
 });
 
 export const probeStripePermissionsMutation = (api: ApiClient) =>

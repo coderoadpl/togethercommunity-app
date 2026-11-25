@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Identity, ImpersonationPrincipal, ListLayout, StaffRole } from '#core/domain/index.js';
+import { LIST_LAYOUT_MAX_BYTES, type Identity, type ImpersonationPrincipal, type ListLayout, type StaffRole } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
 import type { ListLayoutRepository } from '../ports.js';
@@ -73,6 +73,9 @@ describe('list layouts', () => {
     expect(await getListLayout(ctx, 'orders', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await saveListLayout(ctx, 'orders', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(await resetListLayout(ctx, 'orders', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await getListLayout(ctx, 'unknown', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await saveListLayout(ctx, 'unknown', layout, store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await resetListLayout(ctx, 'unknown', store.deps)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
     expect(store.rows.size).toBe(0);
   });
 
@@ -124,6 +127,18 @@ describe('list layouts', () => {
     expect(JSON.stringify(oversize).length).toBeGreaterThan(16 * 1024);
     expect(await saveListLayout({ identity: identity('owner') }, 'orders', oversize, store.deps))
       .toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(store.rows.size).toBe(0);
+  });
+
+  it('refuses multibyte data when its UTF-8 size alone exceeds the limit', async () => {
+    const store = createStore();
+    const filters = Object.fromEntries(Array.from({ length: 30 }, (_value, index) => [`filter-${String(index)}`, String.fromCodePoint(0x754c).repeat(200)]));
+    const oversize = { ...layout, filters };
+    const serialized = JSON.stringify(oversize);
+    expect(serialized.length).toBeLessThan(LIST_LAYOUT_MAX_BYTES);
+    expect(new TextEncoder().encode(serialized).byteLength).toBeGreaterThan(LIST_LAYOUT_MAX_BYTES);
+    expect(await saveListLayout({ identity: identity('owner') }, 'orders', oversize, store.deps))
+      .toMatchObject({ ok: false, error: { code: 'validation', message: `A list layout is at most ${LIST_LAYOUT_MAX_BYTES} bytes` } });
     expect(store.rows.size).toBe(0);
   });
 

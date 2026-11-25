@@ -49,6 +49,7 @@ interface ProviderRequest {
   path: string;
   params?: Record<string, string>;
   version?: string;
+  idempotencyKey?: string;
 }
 
 const providerCall = async (request: Fetch, call: ProviderRequest): Promise<unknown> => {
@@ -62,6 +63,7 @@ const providerCall = async (request: Fetch, call: ProviderRequest): Promise<unkn
     headers: {
       authorization: `Bearer ${call.key}`,
       ...(call.version === undefined ? {} : { 'stripe-version': call.version }),
+      ...(call.idempotencyKey === undefined ? {} : { 'idempotency-key': call.idempotencyKey }),
       ...(call.method === 'POST' ? { 'content-type': 'application/x-www-form-urlencoded' } : {}),
     },
     body: call.method === 'POST' ? new URLSearchParams(call.params ?? {}).toString() : null,
@@ -158,7 +160,9 @@ export const retrieveCheckoutSession = async (
     path: `/v1/checkout/sessions/${encodeURIComponent(sessionId)}`,
     ...(version === undefined ? {} : { version }),
   });
-  return { parsed: providerCheckoutSessionSchema.parse(raw), raw };
+  const parsed = providerCheckoutSessionSchema.parse(raw);
+  if (parsed.id !== sessionId) throw new Error(`the provider did not return checkout session ${sessionId}`);
+  return { parsed, raw };
 };
 
 const paymentMethodSchema = z.object({ id: z.string().min(1) });
@@ -224,6 +228,44 @@ export const listPaymentRefunds = async (request: Fetch, key: string, paymentInt
   return list.data;
 };
 
+const createdTestRefundSchema = z.object({
+  livemode: z.literal(false).optional(),
+  amount: z.number().int().positive(),
+  payment_intent: z.string(),
+});
+
+export const refundTestCheckout = async (
+  request: Fetch,
+  key: string,
+  sessionId: string,
+  expectedPaymentIntent: string,
+  expectedTotalCents: number,
+  partialAmountCents: number | null,
+  idempotencyKey: string,
+): Promise<number> => {
+  const { parsed: session } = await retrieveCheckoutSession(request, key, sessionId);
+  const intent = paymentIntentOf(session);
+  if (session.payment_status !== 'paid' || session.amount_total !== expectedTotalCents
+    || intent === null || !/^pi_[A-Za-z0-9]+$/.test(intent) || intent !== expectedPaymentIntent) {
+    throw new Error(`checkout ${sessionId} is not the paid test session this run confirmed`);
+  }
+  if (partialAmountCents !== null && (partialAmountCents <= 0 || partialAmountCents >= expectedTotalCents)) {
+    throw new Error('the partial refund must be positive and below the checkout total');
+  }
+  const amount = partialAmountCents ?? expectedTotalCents;
+  const refund = createdTestRefundSchema.parse(await providerCall(request, {
+    key,
+    method: 'POST',
+    path: '/v1/refunds',
+    params: { payment_intent: intent, amount: String(amount) },
+    idempotencyKey,
+  }));
+  if (refund.payment_intent !== intent || refund.amount !== amount) {
+    throw new Error(`the provider did not return the requested refund of checkout ${sessionId}`);
+  }
+  return refund.amount;
+};
+
 const REPLAY_SECRET = 'whsec_purchase_e2e_replay';
 
 export const webhookSignatureHeader = (payloadRaw: string, secret: string, timestamp: number): string => {
@@ -252,11 +294,6 @@ export type ProviderEvent = z.output<typeof providerEventSchema>;
 
 const providerEventListSchema = z.object({ data: z.array(z.unknown()), has_more: z.boolean() });
 
-/**
- * The webhook body the provider sends is the Event object, frozen at creation,
- * so forwarding the event read back here tests the same content an endpoint on
- * the account default version would receive, not the provider's own delivery.
- */
 export const listRecentEvents = async (
   request: Fetch,
   key: string,

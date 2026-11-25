@@ -14,6 +14,12 @@ export const ChevronIcon = () => (
   </StrokeIcon>
 );
 
+export const ExpandChevronIcon = () => (
+  <StrokeIcon>
+    <path d="m6 9 6 6 6-6" />
+  </StrokeIcon>
+);
+
 export const RefundIcon = () => (
   <StrokeIcon>
     <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />

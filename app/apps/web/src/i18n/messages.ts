@@ -1259,6 +1259,10 @@ export interface Messages {
     reconciliationHint: string;
     reconciliationEmpty: string;
     reconciliationAge: (params: { date: string }) => string;
+    moreItems: (params: { count: number }) => string;
+    moreItemsLabel: (params: { count: number }) => string;
+    showItems: (params: { count: number }) => string;
+    hideItems: string;
     rejectedPaymentsHeading: string;
     rejectedPaymentsHint: string;
     rejectedPaymentsReason: string;

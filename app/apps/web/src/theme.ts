@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, DialogActions, DialogTitle, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, Table, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Chip, Dialog, DialogActions, DialogTitle, Drawer, IconButton, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, Table, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -4766,7 +4766,37 @@ export const SalesTable = styled(Table)(({ theme }) => ({
   },
 }));
 export const SalesNoWrapCell = styled(TableCell)({ whiteSpace: 'nowrap' });
-export const SalesMemberCell = styled(TableCell)({ whiteSpace: 'nowrap', maxWidth: '14rem', overflow: 'hidden', textOverflow: 'ellipsis' });
+export const SalesMemberCell = styled(TableCell)(({ theme }) => ({
+  whiteSpace: 'nowrap',
+  maxWidth: '14rem',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  [theme.breakpoints.up('lg')]: { maxWidth: '18rem' },
+}));
+export const SalesFitCell = styled(TableCell)({ width: '1%', whiteSpace: 'nowrap' });
+export const SalesProductCell = styled(TableCell)(({ theme }) => ({ width: '100%', minWidth: '10rem', [theme.breakpoints.up('xl')]: { minWidth: '14rem' } }));
+export const SalesDateLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
+  display: 'inline-flex',
+  flexDirection: 'column',
+  color: theme.palette.text.primary,
+  textDecoration: 'none',
+  '&:hover, &:focus-visible': { color: theme.palette.primary.main, textDecoration: 'underline' },
+}));
+export const SalesDateTime = styled('span')(({ theme }) => ({ ...theme.typography.caption, color: theme.palette.text.secondary }));
+// Zero intrinsic width keeps a long first item or an expanded list from widening the product column.
+const SALES_FILL_CELL: CSSObject = { width: 0, minWidth: '100%' };
+export const SalesProductLine = styled('div')({ ...SALES_FILL_CELL, display: 'flex', alignItems: 'center', gap: '0.25rem' });
+export const SalesProductName = styled('span')({ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+export const SalesProductMore = styled('span')(({ theme }) => ({ flexShrink: 0, color: theme.palette.text.secondary, whiteSpace: 'nowrap' }));
+export const SalesProductToggle = styled(IconButton, { shouldForwardProp: (prop) => prop !== 'expanded' })<{ expanded: boolean }>(({ theme, expanded }) => ({
+  flexShrink: 0,
+  padding: '0.125rem',
+  '& svg': {
+    transform: expanded ? 'rotate(180deg)' : 'none',
+    '@media (prefers-reduced-motion: no-preference)': { transition: theme.transitions.create('transform', { duration: 150 }) },
+  },
+}));
+export const SalesProductItems = styled('ul')(({ theme }) => ({ ...SALES_FILL_CELL, ...theme.typography.body2, margin: '0.25rem 0 0', paddingLeft: '1.25rem' }));
 export const SalesCardAmount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
 export const SalesOrderCard = styled('li')(({ theme }) => ({
   position: 'relative',
@@ -4888,7 +4918,14 @@ export const RefundFinalNote = styled(Stack)(({ theme }) => ({
 export const RefundAmountField = styled(TextField, { shouldForwardProp: (prop) => prop !== 'locked' })<{ locked: boolean }>(({ theme, locked }) => (
   locked ? { '& .MuiOutlinedInput-root': { backgroundColor: theme.palette.action.hover } } : {}
 ));
+export const RefundUnitChip = styled(Chip)({
+  maxWidth: '100%',
+  '& .MuiChip-label': { display: 'flex', minWidth: 0 },
+});
+export const RefundUnitName = styled('span')({ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+export const RefundUnitQuantity = styled('span')({ flexShrink: 0, whiteSpace: 'pre' });
 export const RefundFieldset = styled('fieldset')(({ theme }) => ({
+  minWidth: 0,
   margin: 0,
   padding: '0.75rem 1rem',
   border: `1px solid ${theme.palette.divider}`,

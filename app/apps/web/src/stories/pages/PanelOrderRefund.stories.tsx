@@ -123,6 +123,24 @@ export const BlockedPermission: Story = refundStory({
   preview: { refundable: false, blockedReason: 'Another refund of this order is still waiting to reach the payment provider', refundedCents: 0, remainderCents: 0, onPackingList: false, waitingRefundId: 'refund-demo-1' },
 });
 
+const longLine = (index: number, name: string, productType = 'physical') => ({
+  productId: `product-long-${String(index)}`, name, productType, quantity: 1, grossCents: 1000, netCents: 813, vatRate: 23, vatCents: 187,
+  vatExemptionBasis: null, vatExemptionBasisKind: null, issuedCount: null,
+});
+
+const longLines = [
+  longLine(1, 'Volume 1 "Plan" — printed copy, signed and numbered by the author, with a dedication on the first page'),
+  longLine(2, 'Project notebook "Build notes: a practical workbook for planning a camper conversion", 2 pcs.'),
+  ...Array.from({ length: 10 }, (_, index) => longLine(index + 3, `Interactive edition and community access — volume ${String(index + 1)}, e-book (PDF + EPUB)`, 'course')),
+];
+
+export const LongProductNames: Story = refundStory({
+  order: { memberName: null, memberEmail: 'm.kowalczyk-nowak.workshop-orders@printing-studio.example.com', lines: longLines, productTitle: 'Starter bundle' },
+  staffRefunds: [],
+  refunded: 0,
+  preview: { returnableStock: [{ productId: 'product-long-1', quantity: 1 }, { productId: 'product-long-2', quantity: 2 }] },
+});
+
 const listed = (overrides: Record<string, unknown>) => ({ ...order, invoice: null, ...overrides });
 
 const toPack = [

@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  actions: read
 
 concurrency:
   group: promotion-guard-${{ github.event.pull_request.number }}
@@ -17,6 +15,10 @@ concurrency:
 jobs:
   promotion-guard:
     name: promotion-guard
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     defaults:

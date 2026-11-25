@@ -77,7 +77,7 @@ const unusableStorage = (): StorageProvider => {
   const refuse = () => { throw new Error('Storage must not be reached in this test'); };
   return {
     delete: refuse, objectUrl: refuse, list: refuse, getObject: refuse, putObject: refuse, probe: refuse,
-    probeCors: refuse, presignPut: refuse, presignGet: refuse, head: refuse, healthcheck: refuse, test: refuse,
+    copyObject: refuse, digestObject: refuse, probeCors: refuse, presignPut: refuse, presignGet: refuse, head: refuse, healthcheck: refuse, test: refuse,
   };
 };
 

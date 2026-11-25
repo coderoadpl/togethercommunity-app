@@ -1,6 +1,8 @@
+import { createHash, createHmac } from 'node:crypto';
+
 import { describe, expect, it, vi } from 'vitest';
 
-import { err, notFound, ok, type StorageConfiguration } from '#core/domain/index.js';
+import { err, notFound, ok, storageFailureIsDefinite, type StorageConfiguration } from '#core/domain/index.js';
 
 import { createS3StorageProvider, mapStorageProbeFailure } from './s3.js';
 
@@ -98,6 +100,7 @@ const fakeBucket = (
     headers?: Record<string, string>;
   },
   allowedOrigins?: string[],
+  options: { ignoresResponseOverrides?: boolean; refusesResponseOverrides?: boolean } = {},
 ) => {
   const requests: Array<{
     method: string;
@@ -143,9 +146,17 @@ const fakeBucket = (
     }
     if (init.method === 'GET') {
       const stored = objects.get(path);
+      const query = new URL(url).searchParams;
+      if (options.refusesResponseOverrides === true && query.has('response-content-disposition')) {
+        return storageResponse(400, '<Error><Code>InvalidArgument</Code></Error>');
+      }
+      const overrides = options.ignoresResponseOverrides === true ? {} : {
+        ...(query.has('response-content-type') ? { 'content-type': query.get('response-content-type') ?? '' } : {}),
+        ...(query.has('response-content-disposition') ? { 'content-disposition': query.get('response-content-disposition') ?? '' } : {}),
+      };
       return stored === undefined
         ? storageResponse(404, '<Error><Code>NoSuchKey</Code></Error>')
-        : storageResponse(200, typeof stored === 'string' ? stored : new TextDecoder().decode(stored));
+        : storageResponse(200, typeof stored === 'string' ? stored : new TextDecoder().decode(stored), { 'content-type': 'text/plain', ...overrides });
     }
     if (init.method === 'HEAD') {
       const stored = objects.get(path);
@@ -182,6 +193,30 @@ describe('createS3StorageProvider', () => {
         '&X-Amz-SignedHeaders=host' +
         '&X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404',
     );
+  });
+
+  it('signs the declared content length of a presigned PUT into its canonical request', () => {
+    const signer = createS3StorageProvider(resolver, { now: () => new Date('2013-05-24T00:00:00.000Z') });
+    const signed = signer.presignPut({ ...DOCS_EXAMPLE, contentLength: 1234 });
+    if (!signed.ok) throw new Error(signed.error.message);
+    const query = 'X-Amz-Algorithm=AWS4-HMAC-SHA256'
+      + '&X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request'
+      + '&X-Amz-Date=20130524T000000Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=content-length%3Bhost';
+    const canonicalRequest = ['PUT', '/test.txt', query, 'content-length:1234', 'host:examplebucket.s3.amazonaws.com', '', 'content-length;host', 'UNSIGNED-PAYLOAD'].join('\n');
+    const stringToSign = ['AWS4-HMAC-SHA256', '20130524T000000Z', '20130524/us-east-1/s3/aws4_request',
+      createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
+    const key = ['20130524', 'us-east-1', 's3', 'aws4_request']
+      .reduce<Buffer | string>((current, part) => createHmac('sha256', current).update(part).digest(), `AWS4${DOCS_EXAMPLE.secretAccessKey}`);
+    const signature = createHmac('sha256', key).update(stringToSign).digest('hex');
+    expect(signed.value).toBe(`https://examplebucket.s3.amazonaws.com/test.txt?${query}&X-Amz-Signature=${signature}`);
+
+    const other = signer.presignPut({ ...DOCS_EXAMPLE, contentLength: 1235 });
+    const unsized = signer.presignPut(DOCS_EXAMPLE);
+    if (!other.ok || !unsized.ok) throw new Error('presign failed');
+    const signatureOf = (url: string) => new URL(url).searchParams.get('X-Amz-Signature');
+    expect(signatureOf(other.value)).not.toBe(signature);
+    expect(new URL(unsized.value).searchParams.get('X-Amz-SignedHeaders')).toBe('host');
+    expect(signer.presignPut({ ...DOCS_EXAMPLE, contentLength: -1 })).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
 
   it('extracts the region from regional virtual-hosted hosts', () => {
@@ -324,6 +359,44 @@ describe('createS3StorageProvider', () => {
     expect(bucket.requests.at(-1)?.redirect).toBe('error');
   });
 
+  it('answers the entity tag a HEAD response carries', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, '', { 'content-length': '12', etag: '"5d41402abc4b2a76b9719d911017c592"' }),
+    });
+    expect(await storage.head(DOCS_EXAMPLE)).toEqual({ ok: true, value: { sizeBytes: 12, etag: '"5d41402abc4b2a76b9719d911017c592"' } });
+  });
+
+  it('answers the bytes of a GET together with the entity tag of that same response, or null without one', async () => {
+    const tagged = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, 'hello', { 'content-length': '5', etag: '"5d41402abc4b2a76b9719d911017c592"' }),
+    });
+    expect(await tagged.getObjectVersion?.(DOCS_EXAMPLE, { maxBytes: 10 }))
+      .toEqual({ ok: true, value: { bytes: new TextEncoder().encode('hello'), etag: '"5d41402abc4b2a76b9719d911017c592"' } });
+    const untagged = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, 'hello', { 'content-length': '5' }),
+    });
+    expect(await untagged.getObjectVersion?.(DOCS_EXAMPLE, { maxBytes: 10 })).toEqual({ ok: true, value: { bytes: new TextEncoder().encode('hello'), etag: null } });
+    expect(await untagged.getObject(DOCS_EXAMPLE, { maxBytes: 10 })).toEqual({ ok: true, value: new TextEncoder().encode('hello') });
+  });
+
+  it('tells an object that does not exist apart from a failed request on HEAD and GET', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(resolver, { now: () => new Date('2026-08-03T12:00:00.000Z'), fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true });
+    const input = { url: storage.objectUrl(MINIO_CONFIGURATION, 'attachments/missing.txt').toString(), accessKeyId: 'minio-access', secretAccessKey: 'minio-secret', region: 'us-east-1' };
+    expect(await storage.head(input)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await storage.getObject(input, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+
+    const failing = createS3StorageProvider(resolver, {
+      allowPrivateEndpoints: true,
+      fetchStorage: async () => storageResponse(503, '<Error><Code>SlowDown</Code></Error>'),
+    });
+    expect(await failing.head(input)).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(await failing.getObject(input, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+  });
+
   it('keeps legacy credentials healthy but requires wizard configuration for the connection test', async () => {
     const keys: string[] = [];
     const storage = createS3StorageProvider({
@@ -381,10 +454,11 @@ describe('createS3StorageProvider', () => {
       value: {
         code: 'storage.available',
         message: 'Storage completed the write, read and delete probe.',
+        signedResponseOverrides: 'honoured',
       },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
-    expect(bucket.requests[3]?.headers).toEqual({
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests[4]?.headers).toEqual({
       Origin: 'http://localhost:48730',
       'Access-Control-Request-Method': 'PUT',
       'Access-Control-Request-Headers': 'content-type',
@@ -615,8 +689,8 @@ describe('createS3StorageProvider', () => {
       ok: false,
       error: { details: { providerCode: 'storage.cors' } },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
-    expect(bucket.requests[3]?.headers).toEqual({
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests[4]?.headers).toEqual({
       Origin: 'https://app.together.example',
       'Access-Control-Request-Method': 'PUT',
       'Access-Control-Request-Headers': 'content-type',
@@ -635,8 +709,8 @@ describe('createS3StorageProvider', () => {
       MINIO_CONFIGURATION,
       ['https://acme.together.example', 'https://app.together.example'],
     )).resolves.toMatchObject({ ok: true, value: { code: 'storage.available' } });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS', 'OPTIONS']);
-    expect(bucket.requests.slice(3).map((request) => request.headers?.Origin)).toEqual([
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS', 'OPTIONS']);
+    expect(bucket.requests.slice(4).map((request) => request.headers?.Origin)).toEqual([
       'https://acme.together.example',
       'https://app.together.example',
     ]);
@@ -659,7 +733,7 @@ describe('createS3StorageProvider', () => {
         details: { providerCode: 'storage.cors', corsOrigin: 'https://acme.together.example' },
       },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
   });
 
   it('reports each deep-health CORS preflight as ok or blocked', async () => {
@@ -790,7 +864,7 @@ describe('createS3StorageProvider', () => {
       ok: true,
       value: { healthy: true },
     });
-    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
   });
 
   it('reports the stored configuration as invalid instead of leaking its content', async () => {
@@ -890,5 +964,457 @@ describe('image publication storage operations', () => {
       },
     });
     expect((await storage.putObject({ ...credentials, body: bytes, contentType: 'image/png' })).ok).toBe(status === 200);
+  });
+
+  it('answers a delete of an object the storage reports missing with the NoSuchKey error code as deleted', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, '<?xml version="1.0" encoding="UTF-8"?>\n<Error><Code>NoSuchKey</Code><Key>candidate</Key></Error>'),
+    });
+    expect(await storage.delete(credentials)).toEqual({ ok: true, value: { deleted: true } });
+  });
+
+  it.each([
+    ['an empty body', ''],
+    ['a proxy page', '<html><body><h1>404 Not Found</h1><p>NoSuchKey</p></body></html>'],
+    ['a missing bucket', '<Error><Code>NoSuchBucket</Code></Error>'],
+    ['another error code', '<Error><Code>NoSuchUpload</Code></Error>'],
+    ['a code that only starts like the missing key', '<Error><Code>NoSuchKeyPolicy</Code></Error>'],
+    ['a comment naming the missing key before the real code', '<Error><!-- <Code>NoSuchKey</Code> --><Code>NoSuchBucket</Code></Error>'],
+    ['a document cut off after the code', '<Error><Code>NoSuchKey</Code><Message>The specified'],
+    ['two codes', '<Error><Code>NoSuchKey</Code><Code>NoSuchBucket</Code></Error>'],
+    ['the code nested below the root', '<Error><Details><Code>NoSuchKey</Code></Details></Error>'],
+    ['a processing instruction inside the root', '<Error><?note x?><Code>NoSuchKey</Code></Error>'],
+    ['content after the root', '<Error><Code>NoSuchKey</Code></Error><Error><Code>NoSuchBucket</Code></Error>'],
+  ])('answers a delete refused with 404 and %s as an unknown outcome', async (_label, body) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, body),
+    });
+    const deleted = await storage.delete(credentials);
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+  });
+
+  it('answers a delete refused with 404 and a body larger than the error body bound as an unknown outcome and cancels the body', async () => {
+    const streamed = streamedResponse(404, 16);
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamed.response,
+    });
+    const deleted = await storage.delete({ ...credentials, deadlineMs: 50 });
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+    expect(streamed.cancel).toHaveBeenCalled();
+    expect(streamed.pulled()).toBeGreaterThan(0);
+    expect(streamed.pulled()).toBeLessThanOrEqual(9 * 1024);
+  });
+
+  it('answers a delete refused with 404 and a body that stalls after its first chunk as an unknown outcome at its deadline and cancels the body', async () => {
+    vi.useFakeTimers();
+    try {
+      const streamed = streamedResponse(404, 'endless');
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: async () => ['93.184.216.34'],
+        fetchStorage: async () => streamed.response,
+      });
+      let settled = false;
+      const deleting = storage.delete({ ...credentials, deadlineMs: 50 }).finally(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(49);
+      expect(streamed.pulled()).toBe(8);
+      expect(settled).toBe(false);
+      expect(streamed.cancel).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      const deleted = await deleting;
+      expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+      expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+      expect(streamed.cancel).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reports a read, a versioned read, a digest and a copy answered 404 with NoSuchBucket as a storage error, not as a missing object', async () => {
+    const answer = { body: '<Error><Code>NoSuchBucket</Code></Error>' };
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(404, answer.body),
+    });
+    const reads = async () => [
+      await storage.getObject(credentials, { maxBytes: 10 }),
+      await storage.getObjectVersion?.(credentials, { maxBytes: 10 }),
+      await storage.digestObject({ ...credentials, deadlineMs: 1_000 }, { maxBytes: 10, headBytes: 4 }),
+    ];
+    for (const read of await reads()) expect(read).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    const copied = await storage.copyObject({
+      configuration: { provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'us-east-1', bucket: 'bucket', accessKeyId: 'key', secretAccessKey: 'secret' },
+      sourceKey: 'a', key: 'b', deadlineMs: 1_000,
+    });
+    expect(copied).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!copied.ok && storageFailureIsDefinite(copied.error)).toBe(true);
+    answer.body = '<Error><Code>NoSuchKey</Code></Error>';
+    for (const read of await reads()) expect(read).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    answer.body = '';
+    expect(await storage.head(credentials)).toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(await storage.getObject(credentials, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it.each([16, 'endless'] as const)('reports a read answered 404 with an unreadable body (%s) as a storage error', async (chunks) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamedResponse(404, chunks).response,
+    });
+    expect(await storage.getObject({ ...credentials, deadlineMs: 50 }, { maxBytes: 10 })).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+  });
+
+  it('reads the whole 404 body of a digest before it closes the connection, so a missing key split across chunks stays a missing key', async () => {
+    const events: string[] = [];
+    const closed: Array<() => boolean> = [];
+    const chunks = ['<Error><Code>NoSuch', 'Key</Code></Error>'].map((part) => new TextEncoder().encode(part));
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        const { dispatcher } = init;
+        if (typeof dispatcher !== 'object' || dispatcher === null || !('destroyed' in dispatcher)) throw new Error('Expected a pinned dispatcher');
+        const isClosed = () => dispatcher.destroyed === true;
+        closed.push(isClosed);
+        let index = 0;
+        return {
+          ok: false, status: 404, headers: { get: () => null }, text: async () => '',
+          body: {
+            cancel: async () => undefined,
+            getReader: () => ({
+              read: async () => {
+                await new Promise((resolve) => { setTimeout(resolve, 5); });
+                const value = chunks[index];
+                index += 1;
+                events.push(`${value === undefined ? 'end' : 'chunk'}${isClosed() ? ' after close' : ''}`);
+                return value === undefined ? { done: true } : { done: false, value };
+              },
+              cancel: async () => undefined,
+              releaseLock: () => undefined,
+            }),
+          },
+        };
+      },
+    });
+    expect(await storage.digestObject({ ...credentials, deadlineMs: 1_000 }, { maxBytes: 10, headBytes: 4 }))
+      .toMatchObject({ ok: false, error: { code: 'not_found' } });
+    expect(events).toEqual(['chunk', 'chunk', 'end']);
+    expect(closed.map((isClosed) => isClosed())).toEqual([true]);
+  });
+
+  it.each([16, 'endless'] as const)('reports a copy answered 404 with an unreadable body (%s) as a storage error without a definite outcome', async (chunks) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => streamedResponse(404, chunks).response,
+    });
+    const copied = await storage.copyObject({
+      configuration: { provider: 'aws_s3', endpoint: 'https://storage.example.test', region: 'us-east-1', bucket: 'bucket', accessKeyId: 'key', secretAccessKey: 'secret' },
+      sourceKey: 'a', key: 'b', deadlineMs: 50,
+    });
+    expect(copied).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!copied.ok && storageFailureIsDefinite(copied.error)).toBe(false);
+  });
+
+  it.each([[400, true], [403, true], [500, false], [503, false]] as const)(
+    'answers a delete refused with status %s as definite only for a refusal: %s',
+    async (status, definite) => {
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: async () => ['93.184.216.34'],
+        fetchStorage: async () => storageResponse(status, '<Error><Code>AccessDenied</Code></Error>'),
+      });
+      const deleted = await storage.delete(credentials);
+      expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+      expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(definite);
+    },
+  );
+
+  it('answers a delete whose connection failed as an unknown outcome', async () => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => { throw new Error('socket hang up'); },
+    });
+    const deleted = await storage.delete(credentials);
+    expect(deleted).toMatchObject({ ok: false, error: { code: 'integration_unavailable' } });
+    expect(!deleted.ok && storageFailureIsDefinite(deleted.error)).toBe(false);
+  });
+
+  it('stores the disposition it is given with the object', async () => {
+    const sent: Array<Record<string, string> | undefined> = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        sent.push(init.headers);
+        return storageResponse(200, '');
+      },
+    });
+    const svg = new TextEncoder().encode('<svg/>');
+    expect((await storage.putObject({ ...credentials, body: svg, contentType: 'image/svg+xml', contentDisposition: 'attachment' })).ok).toBe(true);
+    expect(sent).toEqual([{ 'content-type': 'image/svg+xml', 'content-disposition': 'attachment' }]);
+  });
+});
+
+describe('download file storage operations', () => {
+  const AWS: StorageConfiguration = {
+    provider: 'aws_s3', endpoint: 'https://s3.us-east-1.amazonaws.com', region: 'us-east-1', bucket: 'examplebucket',
+    accessKeyId: DOCS_EXAMPLE.accessKeyId, secretAccessKey: DOCS_EXAMPLE.secretAccessKey,
+  };
+
+  it('signs a server-side copy whose metadata the server replaces, with the copy source and every header in the canonical request', async () => {
+    const sent: Array<{ url: string; headers: Record<string, string> | undefined; method: string }> = [];
+    const storage = createS3StorageProvider(resolver, {
+      now: () => new Date('2013-05-24T00:00:00.000Z'),
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (url, init) => {
+        sent.push({ url, headers: init.headers, method: init.method });
+        return storageResponse(200, '<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>');
+      },
+    });
+    const result = await storage.copyObject({
+      configuration: AWS, sourceKey: 'acme/product-downloads/key-uploads/key 1/upload-1', key: 'acme/product-downloads/key-files/key-1/file-1/a.pdf', deadlineMs: 1_000,
+    });
+    expect(result).toEqual({ ok: true, value: undefined });
+    const [request] = sent;
+    if (request === undefined) throw new Error('no request');
+    const headers = {
+      'cache-control': 'no-store',
+      'content-disposition': 'attachment',
+      'content-type': 'application/octet-stream',
+      'x-amz-copy-source': '/examplebucket/acme/product-downloads/key-uploads/key%201/upload-1',
+      'x-amz-metadata-directive': 'REPLACE',
+    };
+    expect(request.method).toBe('PUT');
+    expect(request.headers).toEqual(headers);
+    const signedHeaders = 'cache-control;content-disposition;content-type;host;x-amz-copy-source;x-amz-metadata-directive';
+    const query = 'X-Amz-Algorithm=AWS4-HMAC-SHA256'
+      + '&X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request'
+      + `&X-Amz-Date=20130524T000000Z&X-Amz-Expires=60&X-Amz-SignedHeaders=${encodeURIComponent(signedHeaders)}`;
+    const path = '/acme/product-downloads/key-files/key-1/file-1/a.pdf';
+    const canonicalRequest = ['PUT', path, query,
+      'cache-control:no-store', 'content-disposition:attachment', 'content-type:application/octet-stream',
+      'host:examplebucket.s3.us-east-1.amazonaws.com', `x-amz-copy-source:${headers['x-amz-copy-source']}`, 'x-amz-metadata-directive:REPLACE',
+      '', signedHeaders, 'UNSIGNED-PAYLOAD'].join('\n');
+    const stringToSign = ['AWS4-HMAC-SHA256', '20130524T000000Z', '20130524/us-east-1/s3/aws4_request',
+      createHash('sha256').update(canonicalRequest).digest('hex')].join('\n');
+    const key = ['20130524', 'us-east-1', 's3', 'aws4_request']
+      .reduce<Buffer | string>((current, part) => createHmac('sha256', current).update(part).digest(), `AWS4${DOCS_EXAMPLE.secretAccessKey}`);
+    const signature = createHmac('sha256', key).update(stringToSign).digest('hex');
+    expect(request.url).toBe(`https://examplebucket.s3.us-east-1.amazonaws.com${path}?${query}&X-Amz-Signature=${signature}`);
+  });
+
+  it('binds a copy to the entity tag of the checked source in a signed header, and answers a source changed since as a definite failure', async () => {
+    const sent: Array<{ url: string; headers: Record<string, string> | undefined }> = [];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (url, init) => {
+        sent.push({ url, headers: init.headers });
+        return storageResponse(412, '<Error><Code>PreconditionFailed</Code></Error>');
+      },
+    });
+    const copied = await storage.copyObject({ configuration: AWS, sourceKey: 'a', sourceEtag: '"3858f62230ac3c915f300c664312c11f"', key: 'b', deadlineMs: 1_000 });
+    if (copied.ok) throw new Error('the copy was accepted');
+    expect(storageFailureIsDefinite(copied.error)).toBe(true);
+    const [request] = sent;
+    expect(request?.headers?.['x-amz-copy-source-if-match']).toBe('"3858f62230ac3c915f300c664312c11f"');
+    expect(new URL(request?.url ?? 'https://missing.test').searchParams.get('X-Amz-SignedHeaders')?.split(';')).toContain('x-amz-copy-source-if-match');
+  });
+
+  it.each([
+    [404, '', 'not_found', true],
+    [403, '<Error><Code>AccessDenied</Code></Error>', 'integration_unavailable', true],
+    [500, '<Error><Code>InternalError</Code></Error>', 'integration_unavailable', false],
+    [200, '<Error><Code>InternalError</Code></Error>', 'integration_unavailable', false],
+    [200, '<?xml version="1.0" encoding="UTF-8"?>\n<Error xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Code>InternalError</Code></Error>', 'integration_unavailable', false],
+    [200, '<s3:Error xmlns:s3="http://s3.amazonaws.com/doc/2006-03-01/"><Code>SlowDown</Code></s3:Error>', 'integration_unavailable', false],
+    [200, '', 'integration_unavailable', false],
+    [200, '<ListBucketResult></ListBucketResult>', 'integration_unavailable', false],
+    [200, '<CopyObject<!-- -->Result><ETag>"x"</ETag></CopyObject<!-- -->Result>', 'integration_unavailable', false],
+  ] as const)('reports a copy answered %s %j as %s, a definite failure: %s', async (status, body, code, definite) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(status, body),
+    });
+    const copied = await storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 1_000 });
+    if (copied.ok) throw new Error('the copy was accepted');
+    expect(copied.error.code).toBe(code);
+    expect(storageFailureIsDefinite(copied.error)).toBe(definite);
+  });
+
+  it.each([
+    '<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>',
+    '<?xml version="1.0" encoding="UTF-8"?>\n<CopyObjectResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><ETag>"x"</ETag></CopyObjectResult>',
+    '<s3:CopyObjectResult xmlns:s3="http://s3.amazonaws.com/doc/2006-03-01/"><s3:ETag>"x"</s3:ETag></s3:CopyObjectResult>',
+    '\uFEFF<?xml version="1.0"?>\n<!-- copied -->\n<!DOCTYPE CopyObjectResult>\n<CopyObjectResult><ETag>"x"</ETag></CopyObjectResult>',
+  ])('accepts a copy answered with the result %j', async (body) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, body),
+    });
+    expect(await storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 1_000 })).toEqual({ ok: true, value: undefined });
+  });
+
+  it.each(['0', '12'])('reports an object of %s bytes against a ceiling of 9 as a definite digest failure', async (length) => {
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(200, '', { 'content-length': length }),
+    });
+    const digest = await storage.digestObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 1_000 }, { maxBytes: 9, headBytes: 4 });
+    if (digest.ok) throw new Error('the digest was accepted');
+    expect(storageFailureIsDefinite(digest.error)).toBe(true);
+  });
+
+  it('streams an object through SHA-256 and answers its size and first bytes without a buffer of the whole object', async () => {
+    const chunks = [new Uint8Array([37, 80, 68, 70]), new Uint8Array([45, 49, 46, 55]), new Uint8Array([10])];
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async (_url, init) => {
+        expect(init.headers?.['Accept-Encoding']).toBe('identity');
+        let index = 0;
+        return {
+          ok: true, status: 200, headers: { get: (name) => name === 'content-length' ? '9' : null },
+          body: { cancel: async () => undefined, getReader: () => ({
+            read: async () => {
+              const value = chunks[index];
+              index += 1;
+              return value === undefined ? { done: true } : { done: false, value };
+            },
+            cancel: async () => undefined, releaseLock: () => undefined,
+          }) },
+          text: async () => '',
+        };
+      },
+    });
+    const digest = await storage.digestObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 1_000 }, { maxBytes: 9, headBytes: 6 });
+    const expected = createHash('sha256').update(Buffer.from([37, 80, 68, 70, 45, 49, 46, 55, 10])).digest('hex');
+    expect(digest).toEqual({ ok: true, value: { sha256: expected, sizeBytes: 9, head: new Uint8Array([37, 80, 68, 70, 45, 49]) } });
+    expect(await storage.digestObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 1_000 }, { maxBytes: 8, headBytes: 6 }))
+      .toMatchObject({ ok: false });
+  });
+
+  it('gives up a HEAD, a delete, a copy and a digest whose storage never answers once the deadline passes', async () => {
+    const pending = () => new Promise<never>(() => undefined);
+    const storage = createS3StorageProvider(resolver, { lookupAddresses: async () => ['93.184.216.34'], fetchStorage: pending });
+    const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 20 };
+    const outcomes = await Promise.all([
+      storage.head(target),
+      storage.delete(target),
+      storage.copyObject({ configuration: AWS, sourceKey: 'a', key: 'b', deadlineMs: 20 }),
+      storage.digestObject(target, { maxBytes: 10, headBytes: 4 }),
+    ]);
+    for (const outcome of outcomes) {
+      expect(outcome).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+      if (!outcome.ok) expect(storageFailureIsDefinite(outcome.error)).toBe(false);
+    }
+  });
+
+  it('gives up a read and a write of a published image whose storage never answers once their deadline passes', async () => {
+    const pending = () => new Promise<never>(() => undefined);
+    const storage = createS3StorageProvider(resolver, { lookupAddresses: async () => ['93.184.216.34'], fetchStorage: pending });
+    const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 20 };
+    const outcomes = await Promise.all([
+      storage.getObject(target, { maxBytes: 10 }),
+      storage.putObject({ ...target, body: new Uint8Array([1]), contentType: 'image/png' }),
+    ]);
+    for (const outcome of outcomes) {
+      expect(outcome).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+    }
+  });
+
+  it('gives up a read whose body stops arriving once its deadline passes', async () => {
+    const { response } = streamedResponse(200, 'endless');
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => ({ ...response, headers: { get: (name: string) => name === 'content-length' ? '64' : null } }),
+    });
+    expect(await storage.getObject({ url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', deadlineMs: 20 }, { maxBytes: 64 }))
+      .toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+  });
+
+  it('bounds a request that names a deadline by it, endpoint lookup included, and starts the default deadline once the endpoint resolved', async () => {
+    vi.useFakeTimers();
+    try {
+      const storage = createS3StorageProvider(resolver, {
+        lookupAddresses: () => new Promise((resolve) => { setTimeout(() => { resolve(['93.184.216.34']); }, 4_000); }),
+        fetchStorage: async () => storageResponse(200, 'abc', { 'content-length': '3' }),
+      });
+      const target = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1' };
+      const bounded = { ...target, deadlineMs: 3_000 };
+      const outcomes = Promise.all([
+        storage.head(target),
+        storage.delete(target),
+        storage.head(bounded),
+        storage.delete(bounded),
+        storage.getObject(bounded, { maxBytes: 3 }),
+        storage.putObject({ ...bounded, body: new Uint8Array([1]), contentType: 'image/png' }),
+      ]);
+      await vi.advanceTimersByTimeAsync(4_000);
+      const [head, deleted, ...late] = await outcomes;
+      expect(head).toEqual({ ok: true, value: { sizeBytes: 3 } });
+      expect(deleted).toEqual({ ok: true, value: { deleted: true } });
+      expect(late).toHaveLength(4);
+      for (const outcome of late) {
+        expect(outcome).toMatchObject({ ok: false, error: { code: 'integration_unavailable', message: expect.stringContaining('deadline passed') } });
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers a refused write of a published image as definite and a server error as unknown', async () => {
+    const answer = { status: 403 };
+    const storage = createS3StorageProvider(resolver, {
+      lookupAddresses: async () => ['93.184.216.34'],
+      fetchStorage: async () => storageResponse(answer.status, ''),
+    });
+    const write = { url: 'https://storage.example.test/bucket/file', accessKeyId: 'k', secretAccessKey: 's', region: 'us-east-1', body: new Uint8Array([1]), contentType: 'image/png' };
+    const refused = await storage.putObject(write);
+    answer.status = 503;
+    const unknown = await storage.putObject(write);
+    if (refused.ok || unknown.ok) throw new Error('A failed write answered ok');
+    expect(storageFailureIsDefinite(refused.error)).toBe(true);
+    expect(storageFailureIsDefinite(unknown.error)).toBe(false);
+  });
+});
+
+describe('the signed download override probe', () => {
+  it('signs a read with a type and a file name override and reports a provider that answers them', async () => {
+    const bucket = fakeBucket();
+    const storage = createS3StorageProvider(resolver, { fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true, probeKey: () => 'probe-id' });
+    expect(await storage.probe(MINIO_CONFIGURATION)).toMatchObject({ ok: true, value: { signedResponseOverrides: 'honoured' } });
+    const override = new URL(bucket.requests[2]?.url ?? 'http://missing.invalid');
+    expect(override.searchParams.get('response-content-type')).toBe('application/x-together-probe');
+    expect(override.searchParams.get('response-content-disposition')).toBe('attachment; filename="together-probe-override.txt"');
+    expect(override.searchParams.get('X-Amz-Signature')).toMatch(/^[a-f0-9]{64}$/u);
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('reports a provider that returns the right body but ignores both overrides, without failing the configuration', async () => {
+    const bucket = fakeBucket(undefined, undefined, { ignoresResponseOverrides: true });
+    const storage = createS3StorageProvider(resolver, { fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true, probeKey: () => 'probe-id' });
+    expect(await storage.probe(MINIO_CONFIGURATION)).toEqual({
+      ok: true,
+      value: {
+        code: 'storage.available',
+        message: expect.stringContaining('application/octet-stream download named after its stored object'),
+        signedResponseOverrides: 'ignored',
+      },
+    });
+    expect(bucket.requests.map((request) => request.method)).toEqual(['PUT', 'GET', 'GET', 'DELETE', 'OPTIONS']);
+    expect(bucket.objects.size).toBe(0);
+  });
+
+  it('warns that buyer download links carry the overrides when a provider refuses a signed read that asks for them', async () => {
+    const bucket = fakeBucket(undefined, undefined, { refusesResponseOverrides: true });
+    const storage = createS3StorageProvider(resolver, { fetchStorage: bucket.fetchStorage, allowPrivateEndpoints: true, probeKey: () => 'probe-id' });
+    expect(await storage.probe(MINIO_CONFIGURATION)).toEqual({
+      ok: true,
+      value: {
+        code: 'storage.available',
+        message: expect.stringMatching(/^Warning: .*Buyer download links carry these overrides/u),
+        signedResponseOverrides: 'refused',
+      },
+    });
+    expect(bucket.objects.size).toBe(0);
   });
 });

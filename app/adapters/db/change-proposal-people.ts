@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 
 import { notificationSchema, type Notification, type StaffRole } from '#core/domain/index.js';
 import type { ChangeProposalOwnerNotice, ChangeProposalOwnerNotifier, ChangeProposalPeopleReader, ChangeProposalWrite } from '#core/server/index.js';
@@ -29,13 +29,11 @@ export const createChangeProposalPeopleReader = (db: Db): ChangeProposalPeopleRe
       .leftJoin(tenants, eq(tenants.id, tenantId))
       .leftJoin(organizations, activeOrganizationOf(tenantId))
       .leftJoin(organizationMembers, and(eq(organizationMembers.organizationId, organizations.id), eq(organizationMembers.userId, user.id)))
-      .where(inArray(user.id, [...userIds]));
-    return rows.map((row) => ({
-      userId: row.userId,
-      email: row.email,
-      emailVerified: row.emailVerified,
-      staffRole: effectiveRole(row.directRole, row.organizationRole),
-    }));
+      .where(and(inArray(user.id, [...userIds]), or(isNotNull(tenantAdmins.role), isNotNull(organizationMembers.role))));
+    return rows.flatMap((row) => {
+      const staffRole = effectiveRole(row.directRole, row.organizationRole);
+      return staffRole === null ? [] : [{ userId: row.userId, email: row.email, emailVerified: row.emailVerified, staffRole }];
+    });
   },
 });
 

@@ -43,7 +43,7 @@ import type {
 import { renderPostContent } from '../post-content.js';
 import { avatarUrlForAuthor } from './avatar.js';
 import { tenantEmailLanguage } from './email-language.js';
-import { fanoutCanAccessSpace, fanoutCanAccessThread, fanoutRecipient } from './fanout-eligibility.js';
+import { fanoutCanAccessSpace, fanoutRecipient, fanoutThreadReach } from './fanout-eligibility.js';
 import { threadContextInfo } from './thread-context.js';
 
 const JOBS_PER_RUN = 10;
@@ -114,6 +114,7 @@ interface Recipient {
   userId: string;
   email: string | null;
   language: Language | null;
+  courseId?: string | null;
 }
 
 interface RecipientPage {
@@ -127,6 +128,7 @@ interface FanoutPlan {
   payload: Notification['payload'];
   contextName: string;
   contextUrl: string;
+  courseContextUrl?: (courseId: string) => Promise<string>;
   listRecipients: (afterUserId: string | null, limit: number) => Promise<RecipientPage>;
 }
 
@@ -233,6 +235,17 @@ const postPlan = async (
     };
   }
   const context = await threadContextInfo(job.tenantId, post, deps, job.payload.tenantSlug);
+  const courseUrls = new Map<string, Promise<string>>();
+  const courseContextUrl = (courseId: string): Promise<string> => {
+    if (courseId === context.courseId) return Promise.resolve(context.contextUrl);
+    const known = courseUrls.get(courseId);
+    if (known !== undefined) return known;
+    const url = deps.links.lessonDiscussionUrl({
+      tenantId: job.tenantId, tenantSlug: job.payload.tenantSlug, courseId, lessonId: post.contextId,
+    });
+    courseUrls.set(courseId, url);
+    return url;
+  };
   return {
     notificationKind: job.kind === 'lesson-question' ? 'lesson-question' : 'thread-reply',
     payload: {
@@ -250,6 +263,7 @@ const postPlan = async (
     },
     contextName: context.contextName,
     contextUrl: context.contextUrl,
+    courseContextUrl,
     listRecipients: async (afterUserId, limit) => {
       if (job.kind === 'lesson-question') {
         const staff = await deps.fanoutBatches.listStaffPage(job.tenantId, { afterUserId, limit });
@@ -278,8 +292,14 @@ const postPlan = async (
       const candidates: Recipient[] = [];
       for (const access of accessRows) {
         const recipient = fanoutRecipient(access);
-        if (recipient === null || (!recipient.isStaff && !fanoutCanAccessThread(access, context))) continue;
-        candidates.push({ userId: access.userId, email: recipient.email, language: recipient.language });
+        if (recipient === null) continue;
+        if (recipient.isStaff) {
+          candidates.push({ userId: access.userId, email: recipient.email, language: recipient.language });
+          continue;
+        }
+        const reach = fanoutThreadReach(access, context);
+        if (reach === null) continue;
+        candidates.push({ userId: access.userId, email: recipient.email, language: recipient.language, courseId: reach.courseId });
       }
       return {
         recipients: await withoutAuthorBlockers(job.tenantId, post.authorUserId, candidates, deps),
@@ -429,7 +449,7 @@ const runFanout = async (
       tenantId: job.tenantId,
       recipientUserId: recipient.userId,
       kind: resolved.notificationKind,
-      payload: resolved.payload,
+      payload: recipient.courseId === undefined ? resolved.payload : { ...resolved.payload, courseId: recipient.courseId },
       sourceKey: job.sourceKey,
       readAt: null,
       createdAt: now,
@@ -446,12 +466,16 @@ const runFanout = async (
       const pending = await deps.fanoutBatches.listNotificationsForSource(job.tenantId, job.sourceKey, [...byUserId.keys()]);
       for (const notification of pending) {
         const recipient = byUserId.get(notification.recipientUserId);
+        const courseId = recipient?.courseId ?? resolved.payload.courseId;
+        const contextUrl = resolved.courseContextUrl === undefined || courseId === null
+          ? resolved.contextUrl
+          : await resolved.courseContextUrl(courseId);
         for (const channel of deps.notificationChannels) {
           const delivered = await channel.deliver(notification, {
             recipientEmail: recipient?.email ?? null,
             tenantName: job.payload.tenantName,
             contextName: resolved.contextName,
-            contextUrl: resolved.contextUrl,
+            contextUrl,
             language: recipient?.language ?? tenantLanguage,
           });
           if (!delivered.ok) return abandon(delivered.error);

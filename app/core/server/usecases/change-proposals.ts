@@ -1,4 +1,7 @@
 import {
+  changeProposalFileMissingNote,
+  changeProposalFileUnavailable,
+  changeProposalImageMissingNote,
   changeProposalCapExceeded,
   changeProposalExpired,
   changeProposalExpiresAt,
@@ -33,6 +36,7 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import {
+  type ApprovalOutcome,
   bothAuthorized,
   invalid,
   keyNamed,
@@ -44,6 +48,7 @@ import {
 import { notifyOwnersOfProposal, type ChangeProposalNotifyDeps } from '../change-proposal-notifications.js';
 import { changeProposalOwnerFacts, type ChangeProposalOwnerViewDeps } from '../change-proposal-owner-facts.js';
 import type { Ctx } from '../context.js';
+import type { KeyDownloadFileRepository } from '../key-download-ports.js';
 import type {
   ChangeProposalDecision,
   ChangeProposalEventDraft,
@@ -54,12 +59,36 @@ import type {
   ChangeProposalTransition,
   Clock,
   IdGenerator,
+  QuarantinedImageRepository,
   ShopManagementKeyRepository,
 } from '../ports.js';
 import { applyLockedProposal, previewChangeProposal } from './change-proposal-apply.js';
+import {
+  checkApprovalFiles,
+  checkProposedFiles,
+  fileRefusalAfterDryRun,
+  prepareApprovalFiles,
+  releaseFilesOfProposals,
+  type ChangeProposalFileApprovalDeps,
+  type ChangeProposalFileReleaseDeps,
+  type ProposedFileCheckDeps,
+} from './change-proposal-files.js';
+import {
+  changeProposalImageGone,
+  checkProposedImages,
+  prepareApprovalImages,
+  noApprovalImageWrites,
+  publishApprovalImages,
+  recordApprovalPublications,
+  releaseImagesOfProposals,
+  withdrawPublishedImages,
+  type ChangeProposalImagePublishDeps,
+  type ChangeProposalImageReleaseDeps,
+  type ProposedImageCheckDeps,
+} from './change-proposal-images.js';
 import { CHANGE_PROPOSAL_OPERATIONS, type ChangeProposalRunDeps } from './change-proposal-operations.js';
 
-export interface ChangeProposalSubmitDeps extends ChangeProposalRunDeps, ChangeProposalNotifyDeps {
+export interface ChangeProposalSubmitDeps extends ChangeProposalRunDeps, ChangeProposalNotifyDeps, ProposedImageCheckDeps, ProposedFileCheckDeps {
   changeProposalTransaction: ChangeProposalTransaction;
   changeProposals: Pick<ChangeProposalRepository, 'create' | 'countCapReached'>;
   shopManagementKeys: Pick<ShopManagementKeyRepository, 'listByTenant'>;
@@ -71,20 +100,27 @@ export interface ChangeProposalKeyDeps {
   clock: Clock;
 }
 
+export type ChangeProposalWithdrawDeps = ChangeProposalKeyDeps & ChangeProposalImageReleaseDeps & ChangeProposalFileReleaseDeps;
+
 export interface ChangeProposalOwnerReadDeps extends ChangeProposalOwnerViewDeps {
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'list'>;
   changeProposalEvents: ChangeProposalEventRepository;
   clock: Clock;
 }
 
-export interface ChangeProposalDecisionDeps extends ChangeProposalOwnerViewDeps {
+export interface ChangeProposalDecisionDeps extends ChangeProposalOwnerViewDeps, ChangeProposalImageReleaseDeps, ChangeProposalFileReleaseDeps {
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'release' | 'finishDeletion'>;
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'decide'>;
   ids: IdGenerator;
   clock: Clock;
 }
 
-export interface ChangeProposalApprovalDeps extends ChangeProposalRunDeps, ChangeProposalOwnerViewDeps {
+export interface ChangeProposalApprovalDeps
+  extends ChangeProposalRunDeps, ChangeProposalOwnerViewDeps, ChangeProposalImageReleaseDeps, ChangeProposalImagePublishDeps,
+  ChangeProposalFileApprovalDeps, ChangeProposalFileReleaseDeps {
   changeProposalTransaction: ChangeProposalTransaction;
+  keyDownloadFiles: Pick<KeyDownloadFileRepository, 'listProposed' | 'findStaged' | 'release' | 'finishDeletion'>;
+  quarantinedImages: Pick<QuarantinedImageRepository, 'release' | 'finishRelease' | 'markReleaseAttempted' | 'recordPublications'>;
   changeProposals: Pick<ChangeProposalRepository, 'findById' | 'recordExpiry'>;
 }
 
@@ -145,11 +181,17 @@ export const submitChangeProposal = async (
   if (reachedCap !== null) return err(changeProposalCapExceeded(reachedCap));
   const ownerEquivalent: Ctx = { identity: ctx.identity };
 
-  const dryRun = await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
-    const effect = await previewChangeProposal(prepared.value, tenantId, ownerEquivalent, scope, deps, null);
+  const checkFiles = () => checkProposedFiles(tenantId, keyId, parsedRequest.data.operation, input, operation.invalidInputMessage, deps);
+  const files = await checkFiles();
+  if (!files.ok) return files;
+
+  const dryRun = await fileRefusalAfterDryRun(await deps.changeProposalTransaction.dryRun<DryRunOutcome>(tenantId, async (scope) => {
+    const effect = await previewChangeProposal(prepared.value, tenantId, ownerEquivalent, scope, deps, null, { keyId, stage: 'submission' });
     return effect.ok ? ok({ effect: effect.value }) : effect;
-  });
+  }), files.value, checkFiles);
   if (!dryRun.ok) return dryRun;
+  const images = await checkProposedImages(tenantId, keyId, parsedRequest.data.operation, dryRun.value.effect, operation.invalidInputMessage, deps);
+  if (!images.ok) return images;
 
   const now = deps.clock.nowIso();
   const proposal: ChangeProposal = {
@@ -175,9 +217,11 @@ export const submitChangeProposal = async (
     failureMessage: null,
   };
   const event: ChangeProposalEventDraft = { id: deps.ids.nextId(), actorUserId: null, apiKeyId: keyId, note: null, at: now };
-  const created = await deps.changeProposals.create(tenantId, proposal, event, now);
+  const created = await deps.changeProposals.create(tenantId, proposal, event, now, images.value, files.value);
   if (created.kind === 'cap_exceeded') return err(changeProposalCapExceeded(created.cap));
   if (created.kind === 'key_inactive') return err(forbidden('This shop management key can no longer propose changes'));
+  if (created.kind === 'image_missing') return err(changeProposalImageGone(operation.invalidInputMessage));
+  if (created.kind === 'file_unavailable') return err(changeProposalFileUnavailable(operation.invalidInputMessage));
   if (created.kind === 'busy') return err(changeProposalsBusy());
   await notifyOwnersOfProposal(deps, { tenantId, keyId, keyName: proposingKeyRow.name, group: null, notice: 'raise' });
   return ok(toChangeProposalKeyReceipt(created.proposal, now));
@@ -217,7 +261,7 @@ export const getOwnChangeProposal = async (
 export const withdrawOwnChangeProposal = async (
   ctx: Ctx,
   input: ChangeProposalIdInput,
-  deps: ChangeProposalKeyDeps,
+  deps: ChangeProposalWithdrawDeps,
 ): Promise<Result<ChangeProposalKeyReceipt, AppError>> => {
   const key = proposingKey(ctx, authorizeTenant(ctx, 'proposal:own:manage'));
   if (!key.ok) return key;
@@ -244,6 +288,10 @@ export const withdrawOwnChangeProposal = async (
   if (decided.kind === 'busy') return err(changeProposalsBusy());
   if (decided.kind === 'not_found') return err(missing);
   const { decision, proposal: current } = decided;
+  if (decision.kind !== 'refuse') {
+    await releaseImagesOfProposals(tenantId, [current], deps);
+    await releaseFilesOfProposals(tenantId, [current], deps);
+  }
   if (decision.kind === 'move') return ok(toChangeProposalKeyReceipt(current, decision.at));
   return err(refusedDecision(current, decision.at));
 };
@@ -329,6 +377,10 @@ export const rejectChangeProposal = async (
   if (decided.kind === 'busy') return err(changeProposalsBusy());
   if (decided.kind === 'not_found') return err(missing);
   const { decision, proposal: current } = decided;
+  if (decision.kind !== 'refuse') {
+    await releaseImagesOfProposals(tenant.value, [current], deps);
+    await releaseFilesOfProposals(tenant.value, [current], deps);
+  }
   if (decision.kind !== 'move') return err(refusedDecision(current, decision.at));
   return ok(await ownerViewOf(tenant.value, current, deps, decision.at));
 };
@@ -357,9 +409,18 @@ export const approveChangeProposal = async (
   if (proposal.status !== 'pending') return err(settledConflict(proposal, now));
   if (changeProposalExpired(proposal, now)) {
     const recorded = await deps.changeProposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: now });
+    if (recorded.kind !== 'busy') {
+      await releaseImagesOfProposals(tenantId, [proposal], deps);
+      await releaseFilesOfProposals(tenantId, [proposal], deps);
+    }
     return err(recorded.kind === 'busy' ? changeProposalsBusy() : settledConflict(proposal, now));
   }
-  const decided = await deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<ApprovalDecision, AppError>> => {
+  const fileChecks = await checkApprovalFiles(tenantId, [proposal], deps);
+  if (!fileChecks.ok) return fileChecks;
+  const publication = await recordApprovalPublications(tenantId, [proposal], deps);
+  if (!publication.ok) return publication;
+  const writes = noApprovalImageWrites();
+  const approve = () => deps.changeProposalTransaction.run(tenantId, async (scope): Promise<Result<ApprovalDecision, AppError>> => {
     const proposals = scope.repositories.changeProposals;
     const locked = await proposals.lockPending(tenantId, id, { unexpiredAt: now });
     if (locked === null) {
@@ -367,12 +428,28 @@ export const approveChangeProposal = async (
       return err(current === null ? missing : settledConflict(current, deps.clock.nowIso()));
     }
     if (locked.groupId !== null) return err(groupedChangeProposalDecisionRefused(locked));
-    const outcome = await applyLockedProposal(locked, ctx, scope, deps);
+    const expired = changeProposalExpired(locked, deps.clock.nowIso());
+    const images = expired
+      ? { kind: 'ready' as const, images: [], configuration: null }
+      : await prepareApprovalImages(tenantId, [locked], publication.value, scope, deps);
+    if (images.kind === 'failed') return err(images.error);
+    const files = expired || images.kind === 'missing'
+      ? { kind: 'ready' as const }
+      : await prepareApprovalFiles(tenantId, [locked], fileChecks.value, scope);
+    const outcome: ApprovalOutcome = images.kind === 'missing'
+      ? { status: 'stale', note: changeProposalImageMissingNote(images.image), at: deps.clock.nowIso() }
+      : files.kind === 'missing'
+        ? { status: 'stale', note: changeProposalFileMissingNote(files.fileId), at: deps.clock.nowIso() }
+        : await applyLockedProposal(locked, ctx, scope, deps);
     if (outcome.status === 'aborted') return err(outcome.error);
     if (outcome.status === 'expired') {
       const recorded = await proposals.recordExpiry(tenantId, id, { id: deps.ids.nextId(), actorUserId: owner, apiKeyId: null, note: null, at: outcome.at });
       if (recorded.kind === 'busy') return err(changeProposalsBusy());
       return ok({ kind: 'expired', proposal: locked, at: outcome.at });
+    }
+    if (outcome.status === 'applied' && images.kind === 'ready') {
+      const published = await publishApprovalImages(tenantId, images, publication.value, scope, deps, writes);
+      if (!published.ok) return published;
     }
     const transitioned = await proposals.transition(tenantId, id, {
       ...outcomeFields(outcome),
@@ -385,7 +462,16 @@ export const approveChangeProposal = async (
     if (transitioned.value === null) throw new Error(`Change proposal ${id} left pending while its row was locked`);
     return ok({ kind: 'decided', proposal: transitioned.value, at: outcome.at });
   });
+  const decided = await approve().catch(async (cause: unknown) => {
+    await withdrawPublishedImages(tenantId, publication.value, writes, deps);
+    throw cause;
+  });
+  if (!decided.ok || decided.value.kind !== 'decided' || decided.value.proposal.status !== 'applied') {
+    await withdrawPublishedImages(tenantId, publication.value, writes, deps);
+  }
   if (!decided.ok) return decided;
+  await releaseImagesOfProposals(tenantId, [decided.value.proposal], deps);
+  await releaseFilesOfProposals(tenantId, [decided.value.proposal], deps);
   if (decided.value.kind === 'expired') return err(settledConflict(decided.value.proposal, decided.value.at));
   const { proposal: decidedProposal, at } = decided.value;
   return ok(await ownerViewOf(tenantId, decidedProposal, deps, at));

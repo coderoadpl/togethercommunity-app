@@ -1,10 +1,10 @@
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 
 import {
   DELIVERY_METHODS,
-  knownChangeProposalOperation,
   PARCEL_TEMPLATES,
   PRODUCT_TYPES,
+  registeredChangeProposalOperation,
   type ChangeProposalTargetKind,
   type ChangeProposalTargetPrice,
 } from '#core/domain/index.js';
@@ -34,8 +34,36 @@ export const Isolated = ({ sentence, value }: { sentence: (slot: string) => stri
   );
 };
 
+const FIRST_SLOT = 0xe000;
+
+export const Sentence = ({ text, parts }: { text: (...slots: string[]) => string; parts: readonly ReactNode[] }) => {
+  const slots = parts.map((_part, index) => String.fromCodePoint(FIRST_SLOT + index));
+  const pieces = text(...slots).split(new RegExp(`([${slots.join('')}])`, 'u'));
+  return (
+    <>
+      {pieces.map((piece, index) => {
+        const slot = slots.indexOf(piece);
+        return <Fragment key={index}>{slot === -1 ? piece : parts[slot]}</Fragment>;
+      })}
+    </>
+  );
+};
+
+const FILE_TYPE_NAMES: Readonly<Record<string, string>> = {
+  'application/pdf': 'PDF',
+  'application/epub+zip': 'EPUB',
+  'application/zip': 'ZIP',
+  'audio/mpeg': 'MP3',
+  'audio/mp4': 'M4A',
+  'video/mp4': 'MP4',
+  'image/png': 'PNG',
+  'image/jpeg': 'JPEG',
+};
+
+export const fileTypeLabel = (contentType: string): string => FILE_TYPE_NAMES[contentType] ?? contentType;
+
 export const operationTitle = (t: Translations, operation: string): string => {
-  const known = knownChangeProposalOperation(operation);
+  const known = registeredChangeProposalOperation(operation);
   return known === null ? t.unknownOperation : t.operation[known];
 };
 

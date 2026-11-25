@@ -524,7 +524,9 @@ export const searchPosts = async (
   if (!tenant.ok) return tenant;
   const parsed = searchPostsInputSchema.safeParse(input);
   if (!parsed.success) return err(validation('Invalid post search payload', parsed.error.flatten()));
-  const accessible = await accessibleLessonIds(ctx, deps);
+  const onlyLessonsRequested = parsed.data.lessonIds !== undefined && parsed.data.spaceIds === undefined;
+  const onlySpacesRequested = parsed.data.spaceIds !== undefined && parsed.data.lessonIds === undefined;
+  const accessible = onlySpacesRequested ? ok(new Set<string>()) : await accessibleLessonIds(ctx, deps);
   if (!accessible.ok) return accessible;
   const visibleSpaces = await listAccessibleSpaces(ctx, deps);
   if (!visibleSpaces.ok) return visibleSpaces;
@@ -533,8 +535,6 @@ export const searchPosts = async (
   const requestedSpaces = parsed.data.spaceIds ?? [...accessibleSpaceIds];
   const lessonIds = requestedLessons.filter((lessonId) => accessible.value.has(lessonId));
   const spaceIds = requestedSpaces.filter((spaceId) => accessibleSpaceIds.has(spaceId));
-  const onlyLessonsRequested = parsed.data.lessonIds !== undefined && parsed.data.spaceIds === undefined;
-  const onlySpacesRequested = parsed.data.spaceIds !== undefined && parsed.data.lessonIds === undefined;
   const rows = await deps.posts.search(tenant.value.tenantId, {
     query: parsed.data.query,
     lessonIds: onlySpacesRequested ? [] : lessonIds,

@@ -5,6 +5,7 @@ import Stripe from 'stripe';
 import { err, ok, refundFailureOf, validation, type RefundFailureKind } from '#core/domain/index.js';
 import { createFakePaymentProvider } from './fake.js';
 import { createStripePaymentProvider } from './stripe.js';
+import { withWorkspaceOnlyResolver } from '#core/server/testing/payment-source-fake.js';
 
 const stripeJson = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', 'request-id': 'req_refund' } });
@@ -21,7 +22,7 @@ const refundObject = (overrides: Record<string, unknown> = {}) => ({
 const providerOverFetch = (respond: (request: Request) => Response) => {
   const requests: Request[] = [];
   const keys: string[] = [];
-  const provider = createStripePaymentProvider({
+  const provider = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async (_tenantId, key) => {
       keys.push(key);
       return ok(key === 'stripe.testRestrictedKey' ? 'rk_test_refund' : 'rk_live_refund');
@@ -34,7 +35,7 @@ const providerOverFetch = (respond: (request: Request) => Response) => {
         return respond(request);
       }),
     }),
-  });
+  }));
   const { createRefund, getRefund, listRefunds, probeStripePermissions } = provider;
   if (createRefund === undefined || getRefund === undefined || listRefunds === undefined || probeStripePermissions === undefined) {
     throw new Error('Refund methods missing');
@@ -113,10 +114,10 @@ describe('Stripe createRefund', () => {
   });
 
   it('reports missing credentials as credentials_unavailable', async () => {
-    const provider = createStripePaymentProvider({
+    const provider = createStripePaymentProvider(withWorkspaceOnlyResolver({
       resolver: { resolve: async () => err(validation('Stripe is not configured')) },
       clientFactory: () => { throw new Error('Must not construct a client'); },
-    });
+    }));
     const result = await provider.createRefund?.(refundInput);
     if (result === undefined || result.ok) throw new Error('Expected a refusal');
     expect(refundFailureOf(result.error)?.kind).toBe('credentials_unavailable');
@@ -203,7 +204,7 @@ describe('refund request deadline', () => {
 
   const providerOverHangingFetch = () => {
     const requests: string[] = [];
-    const provider = createStripePaymentProvider({
+    const provider = createStripePaymentProvider(withWorkspaceOnlyResolver({
       resolver: { resolve: async () => ok('rk_live_refund') },
       clientFactory: (key) => new Stripe(key, {
         httpClient: Stripe.createFetchHttpClient(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
@@ -213,7 +214,7 @@ describe('refund request deadline', () => {
           });
         }),
       }),
-    });
+    }));
     const requestCount = async (count: number) => {
       const giveUpAt = Date.now() + 5_000;
       while (requests.length < count) {

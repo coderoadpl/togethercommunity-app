@@ -55,6 +55,7 @@ export * from './usecases/provider-diagnostics.js';
 export * from './usecases/storage-configuration.js';
 export * from './usecases/configure-stripe.js';
 export * from './usecases/bunny-videos.js';
+export * from './usecases/payment-source.js';
 export * from './usecases/checkout.js';
 export { validateCartCoupon, validateCartSelection } from './usecases/checkout-cart.js';
 export * from './usecases/checkout-session-status.js';

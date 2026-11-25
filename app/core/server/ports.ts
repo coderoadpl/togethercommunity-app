@@ -1153,6 +1153,10 @@ export interface TenantSecretResolver {
   resolve(tenantId: string, key: TenantSecretKey): Promise<Result<string, AppError>>;
 }
 
+export interface WorkspaceTenantSecretResolver extends TenantSecretResolver {
+  readonly scope: 'workspace';
+}
+
 export interface PaymentWebhookEvent {
   foreignTenant?: true;
   tenantIds?: string[];
@@ -2900,6 +2904,19 @@ type InheritedConfig<Value> = { source: 'workspace' } | { source: 'organization'
 export interface EffectiveTenantConfigReader {
   findInheritedSecret(tenantId: string, key: OrganizationSecretKey): Promise<InheritedConfig<OrganizationSecret>>;
   findInheritedSettings(tenantId: string, group: ConfigGroup): Promise<InheritedConfig<OrganizationSettings>>;
+}
+
+export interface OrganizationPaymentConfig {
+  source: 'organization';
+  keyPresent: boolean;
+  webhookReady: boolean;
+  keyMode: StripeMode | null;
+}
+
+export type PaymentSource = { source: 'workspace' } | OrganizationPaymentConfig;
+
+export interface PaymentSourceReader {
+  read(tenantId: string, mode: StripeMode): Promise<PaymentSource>;
 }
 
 type OrganizationMemberAuditInput = Omit<OrganizationAuditEvent, 'organizationId' | 'data'>;

@@ -12,7 +12,9 @@ import {
 import type { Ctx } from '../context.js';
 import { authorizeTenant } from '../authorize.js';
 import { tenantLegalUrls } from './terms-consent.js';
+import { organizationPaymentsReady } from './payment-source.js';
 import type {
+  PaymentSourceReader,
   SpaceRepository,
   TenantRepository,
   TenantSecretRepository,
@@ -22,6 +24,7 @@ import type {
 export interface TenantSetupReadinessDeps {
   tenants: Pick<TenantRepository, 'findSettings'>;
   tenantSecrets: Pick<TenantSecretRepository, 'listByTenant'>;
+  paymentSource: PaymentSourceReader;
   spaces: Pick<SpaceRepository, 'list'>;
   sesSettings: Pick<TenantSesSettingsRepository, 'findByTenant'> | null;
 }
@@ -48,9 +51,10 @@ export const getTenantSetupReadiness = async (
   if (!tenant.ok) return tenant;
   const tenantId = tenant.value;
 
-  const [settings, secrets, spaces, senderSettings] = await Promise.all([
+  const [settings, secrets, livePaymentSource, spaces, senderSettings] = await Promise.all([
     deps.tenants.findSettings(tenantId),
     deps.tenantSecrets.listByTenant(tenantId),
+    deps.paymentSource.read(tenantId, 'live'),
     deps.spaces.list(tenantId),
     deps.sesSettings === null ? Promise.resolve(null) : deps.sesSettings.findByTenant(tenantId),
   ]);
@@ -71,7 +75,9 @@ export const getTenantSetupReadiness = async (
 
   return ok(
     computeTenantSetupReadiness({
-      stripeConfigured: has('stripe.restrictedKey') && has('stripe.webhookSecret'),
+      stripeConfigured: livePaymentSource.source === 'workspace'
+        ? has('stripe.restrictedKey') && has('stripe.webhookSecret')
+        : organizationPaymentsReady(livePaymentSource),
       emailSendingConfigured:
         senderIdentityConfigured
         && (sesTransportConfigured || smtpTransportConfigured || resendTransportConfigured),

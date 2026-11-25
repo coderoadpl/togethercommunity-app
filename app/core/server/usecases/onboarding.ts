@@ -14,10 +14,12 @@ import type {
   CourseRepository,
   MemberRepository,
   OnboardingStateRepository,
+  PaymentSourceReader,
   ProductPriceRepository,
   ProductRepository,
   TenantSecretRepository,
 } from '../ports.js';
+import { organizationPaymentsReady } from './payment-source.js';
 
 export interface OnboardingDeps {
   products: Pick<ProductRepository, 'listByTenant'>;
@@ -26,6 +28,7 @@ export interface OnboardingDeps {
   lessons: Pick<CourseLessonRepository, 'list'>;
   members: Pick<MemberRepository, 'listWithProductIds'>;
   tenantSecrets: Pick<TenantSecretRepository, 'findByKey'>;
+  paymentSource: PaymentSourceReader;
   onboardingState: OnboardingStateRepository;
   devEndpoints: { simulatedPayments: boolean };
   clock: Clock;
@@ -39,12 +42,13 @@ export const getCreatorOnboarding = async (
   if (!tenant.ok) return tenant;
   const tenantId = tenant.value;
 
-  const [products, courses, lessons, members, stripeKey, dismissedAt] = await Promise.all([
+  const [products, courses, lessons, members, stripeKey, livePaymentSource, dismissedAt] = await Promise.all([
     deps.products.listByTenant(tenantId),
     deps.courses.list(tenantId),
     deps.lessons.list(tenantId),
     deps.members.listWithProductIds(tenantId, deps.clock.nowIso()),
     deps.tenantSecrets.findByKey(tenantId, 'stripe.restrictedKey'),
+    deps.paymentSource.read(tenantId, 'live'),
     deps.onboardingState.findDismissedAt(tenantId),
   ]);
   const activePrices =
@@ -62,7 +66,9 @@ export const getCreatorOnboarding = async (
         hasProductWithActivePrice: activePrices.length > 0,
         hasPublishedProduct: products.some((product) => product.published),
         hasMember: members.length > 0,
-        paymentsConfigured: deps.devEndpoints.simulatedPayments || stripeKey !== null,
+        paymentsConfigured: livePaymentSource.source === 'workspace'
+          ? deps.devEndpoints.simulatedPayments || stripeKey !== null
+          : organizationPaymentsReady(livePaymentSource),
       },
       dismissedAt !== null,
     ),

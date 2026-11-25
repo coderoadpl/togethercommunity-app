@@ -21,6 +21,7 @@ import type {
   Clock,
   IdGenerator,
   MarketingSesCredentialResolver,
+  PaymentSourceReader,
   SecretCrypto,
   SesOnboardingControlPlane,
   TenantSecretRepository,
@@ -142,17 +143,22 @@ export const stripeWebhookUrl = (
   deps: TenantUrlDeps,
 ): string => tenantUrl(tenantSlug, `/api/webhooks/stripe/${encodeURIComponent(tenantId)}`, deps);
 
+export type TenantSecretsViewDeps = TenantSecretDeps & TenantUrlDeps & { paymentSource: PaymentSourceReader };
+
 export const getTenantSecretsMasked = async (
   ctx: Ctx,
-  deps: TenantSecretDeps & TenantUrlDeps,
+  deps: TenantSecretsViewDeps,
 ): Promise<Result<TenantSecretsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;
-  const rows = await deps.tenantSecrets.listByTenant(tenant.value);
+  const [rows, livePaymentSource] = await Promise.all([
+    deps.tenantSecrets.listByTenant(tenant.value),
+    deps.paymentSource.read(tenant.value, 'live'),
+  ]);
   return ok({
     secrets: rows.map(masked),
     stripeTestLastEventAt: rows.find((row) => row.key === 'stripe.testLastEventAt')?.updatedAt ?? null,
-    stripeMode: readStripeMode(rows, deps.secretCrypto),
+    stripeMode: livePaymentSource.source === 'workspace' ? readStripeMode(rows, deps.secretCrypto) : livePaymentSource.keyMode,
     stripeWebhookUrl: stripeWebhookUrl(ctx.identity.tenantSlug, tenant.value, deps),
   });
 };

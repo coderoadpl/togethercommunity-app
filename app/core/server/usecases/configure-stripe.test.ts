@@ -17,6 +17,7 @@ import { operatorCtx } from '../testing/operator-tenant-fakes.js';
 import { createTenantSecretRepositoryFake } from '../testing/tenant-secret-fake.js';
 import { configureStripe, type ConfigureStripeDeps } from './configure-stripe.js';
 import { getOperatorTenantReadiness } from './operator-tenant-readiness.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 const identity = (staffRole: Identity['staffRole']): Identity => ({
   userId: 'owner-1',
@@ -237,6 +238,7 @@ describe('configureStripe', () => {
       expect(deleted).toEqual(['we_created']);
       expect(h.rows).toEqual(previous);
       const readiness = await getOperatorTenantReadiness(operatorCtx, { slug: 'acme' }, {
+        paymentSource: workspaceOnlyPaymentSource,
         tenants: {
           findBySlug: async () => ({
             id: 'tenant-1', slug: 'acme', name: 'Acme', status: 'active',

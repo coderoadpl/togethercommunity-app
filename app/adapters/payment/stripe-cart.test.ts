@@ -7,6 +7,7 @@ import { createLegacyCheckoutHarness, legacyBaseUrl, legacyNow, legacyTenant } f
 
 import { checkoutProductIdsMetadata } from './metadata.js';
 import { createStripePaymentProvider, stripeCheckoutSessionParams } from './stripe.js';
+import { withWorkspaceOnlyResolver } from '#core/server/testing/payment-source-fake.js';
 
 type PortInput = Parameters<PaymentProvider['createCheckoutSession']>[0];
 
@@ -46,10 +47,10 @@ const createCartHarness = () => {
       status: 200, headers: { 'content-type': 'application/json', 'request-id': 'req_cart' },
     });
   };
-  const provider = createStripePaymentProvider({
+  const provider = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_cart') },
     clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
-  });
+  }));
   h.checkoutDeps.payment = {
     ...provider,
     createCheckoutSession: async (input) => {

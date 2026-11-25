@@ -22,6 +22,7 @@ import { createStockRepositoryFake } from '../testing/stock-fake.js';
 import { captureCheckoutSelection } from './checkout-lines.js';
 import { createDirectSalesLinkCheckout } from './direct-sales-link-checkout.js';
 import { PICKUP_POINT_LOOKUP_BUDGET_SCOPE, withPickupPointLookupBudget } from './pickup-points.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 const now = '2026-11-05T12:00:00.000Z';
 const tenant: Tenant = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', status: 'active', plan: 'hosted', contentVersion: 1 };
@@ -61,6 +62,7 @@ const harness = (catalog: Product[] = [accessory, course], productIds: string[] 
     productIds, active: true, listed: false, validFrom: null, validTo: null, createdAt: now, updatedAt: now, revision: 1,
   };
   const deps: CheckoutDeps = {
+    paymentSource: workspaceOnlyPaymentSource,
     products: {
       listByTenant: async () => catalog, listPublishedByTenant: async () => catalog,
       findById: async (_tenantId, id) => catalog.find((item) => item.id === id) ?? null,

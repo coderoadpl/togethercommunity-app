@@ -13,18 +13,18 @@ import {
 
 import { authorizeTenant } from '../authorize.js';
 import type { Ctx } from '../context.js';
-import type { TenantUrlDeps } from '../tenant-url.js';
 import {
   deleteTenantSecret,
   getTenantSecretsMasked,
   setTenantSecret,
   type TenantSecretDeps,
   type TenantSecretsView,
+  type TenantSecretsViewDeps,
 } from './tenant-secrets.js';
 
 export const getShopIntegrationSecrets = async (
   ctx: Ctx,
-  deps: TenantSecretDeps & TenantUrlDeps,
+  deps: TenantSecretsViewDeps,
 ): Promise<Result<TenantSecretsView, AppError>> => {
   const tenant = authorizeTenant(ctx, 'tenant:secret:read');
   if (!tenant.ok) return tenant;

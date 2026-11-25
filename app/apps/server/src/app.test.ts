@@ -149,6 +149,7 @@ import {
   InMemoryTenantSesSettingsRepository,
   InMemoryUnsubscribeTokenRepository,
 } from '#core/server/testing/marketing-fakes.js';
+import { withWorkspaceOnlyResolver, workspaceOnlyPaymentSource } from '#core/server/testing/payment-source-fake.js';
 
 const parseCsp = (response: Response): Map<string, Set<string>> => {
   const directives = new Map<string, Set<string>>();
@@ -253,6 +254,7 @@ const deps = (input: {
   let nextId = 0;
   const changeProposalStore = createChangeProposalStoreFake();
   const appDeps: AppDeps = {
+    paymentSource: workspaceOnlyPaymentSource,
     telemetry: { recordAppError: vi.fn() },
     auth: {
       handler: async () => new Response(null, { status: 404 }),
@@ -9211,10 +9213,10 @@ describe('checkout consent ordering', () => {
       if (secret === undefined) throw new Error('Unknown workspace');
       return ok(secret);
     };
-    base.payment = createStripePaymentProvider({
+    base.payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
       resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
       clientFactory: () => { throw new Error('Unexpected Stripe API client'); },
-    });
+    }));
     base.orders.create = async (_tenantId, order) => { orders.push(order); };
     base.processedPaymentEvents = {
       claim: async (tenantId, event) => {
@@ -9341,10 +9343,10 @@ describe('checkout consent ordering', () => {
         .mockImplementation(async (_tenantId, ids) => ids.subscription === 'sub-foreign');
       const resolve = vi.fn(async () => { throw new Error('Unexpected Stripe API credentials lookup'); });
       const clientFactory = vi.fn(() => { throw new Error('Unexpected Stripe API client'); });
-      const payment = createStripePaymentProvider({
+      const payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
         resolver: { resolve },
         clientFactory,
-      });
+      }));
       const payload = JSON.stringify({
         id: 'evt-signed-initial', type: 'invoice.paid', livemode: true,
         data: { object: {
@@ -9457,10 +9459,10 @@ describe('checkout consent ordering', () => {
     };
     const deliver = async (signatureHeader: string | undefined, configure: (base: AppDeps) => void = () => undefined) => {
       const base = deps({ tenants: [acme] });
-      base.payment = createStripePaymentProvider({
+      base.payment = createStripePaymentProvider(withWorkspaceOnlyResolver({
         resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
         clientFactory: () => { throw new Error('Unexpected Stripe API client'); },
-      });
+      }));
       base.tenantAccess = {
         ...base.tenantAccess,
         listStaffForTenant: async () => [{ userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: 'en' }],

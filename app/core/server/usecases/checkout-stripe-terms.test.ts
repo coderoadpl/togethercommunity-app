@@ -4,6 +4,7 @@ import { checkoutSessionInputSchema, ok, type CheckoutSessionInput, type Coupon,
 
 import type { PaymentProvider } from '../ports.js';
 import { startCheckoutSession, validateCheckoutSelection, type CheckoutDeps } from './checkout.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 type PortInput = Parameters<PaymentProvider['createCheckoutSession']>[0];
 
@@ -37,6 +38,7 @@ const harness = (options: { coupon?: Coupon; priceCents?: number } = {}) => {
   const couponSessions: CouponCheckoutSession[] = [];
   let ids = 0;
   const deps: CheckoutDeps = {
+    paymentSource: workspaceOnlyPaymentSource,
     products: {
       listByTenant: async () => [], listPublishedByTenant: async () => [],
       findById: async (_tenantId, id) => id === course.id ? { ...course, priceCents: options.priceCents ?? course.priceCents } : null,

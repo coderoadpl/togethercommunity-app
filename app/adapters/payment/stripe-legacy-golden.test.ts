@@ -6,6 +6,7 @@ import { createDirectSalesLinkCheckout, fulfillStripeWebhook, startCheckoutSessi
 import { createLegacyCheckoutHarness, legacyBaseUrl, legacyNow, legacyTenant } from '#core/server/testing/legacy-checkout-harness.js';
 
 import { createStripePaymentProvider, stripeCheckoutSessionParams } from './stripe.js';
+import { withWorkspaceOnlyResolver } from '#core/server/testing/payment-source-fake.js';
 
 type PortInput = Parameters<PaymentProvider['createCheckoutSession']>[0];
 type Harness = ReturnType<typeof createLegacyCheckoutHarness>;
@@ -22,10 +23,10 @@ const withStripeAdapter = (h: Harness) => {
       status: 200, headers: { 'content-type': 'application/json', 'request-id': 'req_golden' },
     });
   };
-  const provider = createStripePaymentProvider({
+  const provider = createStripePaymentProvider(withWorkspaceOnlyResolver({
     resolver: { resolve: async () => ok('rk_live_golden') },
     clientFactory: (key) => new Stripe(key, { maxNetworkRetries: 0, httpClient: Stripe.createFetchHttpClient(fetchImpl) }),
-  });
+  }));
   h.checkoutDeps.payment = {
     ...provider,
     createCheckoutSession: async (input) => {

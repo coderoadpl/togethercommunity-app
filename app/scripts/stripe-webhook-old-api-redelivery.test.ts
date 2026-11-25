@@ -13,7 +13,7 @@ import { API_PATHS, API_ROUTES, apiKeysShopManagementCreateOutputSchema, type Ch
 import { ok, type AppError, type Result } from '#core/domain/index.js';
 
 import { buildApp } from '../apps/server/src/app.js';
-import { createDeps } from '../apps/server/src/composition.js';
+import { createDeps, createPaymentSecretResolvers, stripePaymentProviderConfig } from '../apps/server/src/composition.js';
 import { envSchema } from '../apps/server/src/env.js';
 
 const baseUrl = 'http://localhost:48730';
@@ -102,7 +102,7 @@ beforeAll(async () => {
     APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost',
     BETTER_AUTH_SECRET: 'stripe-webhook-old-api-test-secret-at-least-32-characters',
   }), { db: database.db, clock: { nowIso: () => clockNow } });
-  const stripe = createStripePaymentProvider({ resolver: deps.secretResolver });
+  const stripe = createStripePaymentProvider(stripePaymentProviderConfig(createPaymentSecretResolvers(deps.tenantSecrets, database.db, deps.secretCrypto)));
   app = buildApp({
     ...deps,
     dispatchEmail: () => undefined,

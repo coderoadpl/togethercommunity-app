@@ -3,6 +3,7 @@ import { capabilitiesForPrincipal, tenantSettingsSchema, type Identity, type Pro
 import type { Ctx } from '../context.js';
 import type { ProvisionTenantDeps } from '../usecases/provision-tenant.js';
 import { inMemoryChangeSettings } from './tenant-settings-fake.js';
+import { workspaceOnlyPaymentSource } from './payment-source-fake.js';
 
 export const operatorIdentity: Identity = {
   userId: 'operator-secret', email: 'operator@together.invalid', name: 'Instance operator',
@@ -36,6 +37,7 @@ export const operatorTenantHarness = () => {
   };
   let nextId = 0;
   const deps: ProvisionTenantDeps = {
+    paymentSource: workspaceOnlyPaymentSource,
     ids: { nextId: () => `id-${++nextId}` },
     clock: { nowIso: () => '2026-10-01T12:00:00.000Z' },
     authPort: { findUserByEmail: async (email) => {

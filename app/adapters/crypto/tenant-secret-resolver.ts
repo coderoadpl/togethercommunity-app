@@ -7,7 +7,7 @@ import {
   type Result,
   type TenantSecretKey,
 } from '#core/domain/index.js';
-import type { SecretCrypto, TenantSecretRepository, TenantSecretResolver } from '#core/server/index.js';
+import type { SecretCrypto, TenantSecretRepository, WorkspaceTenantSecretResolver } from '#core/server/index.js';
 
 /**
  * Reads a tenant's encrypted secret and decrypts it on demand — the seam a
@@ -17,7 +17,8 @@ import type { SecretCrypto, TenantSecretRepository, TenantSecretResolver } from 
 export const createTenantSecretResolver = (
   secrets: TenantSecretRepository,
   crypto: SecretCrypto,
-): TenantSecretResolver => ({
+): WorkspaceTenantSecretResolver => ({
+  scope: 'workspace',
   resolve: async (tenantId, key): Promise<Result<string, AppError>> => {
     if (key !== 's3.accessKeyId' && key !== 's3.secretAccessKey') {
       const stored = await secrets.findByKey(tenantId, key);

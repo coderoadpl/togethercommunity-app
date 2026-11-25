@@ -28,6 +28,7 @@ import {
   setProductStockThreshold,
   type CommitCheckoutStockDeps,
 } from './stock.js';
+import { workspaceOnlyPaymentSource } from '../testing/payment-source-fake.js';
 
 const now = '2026-11-05T10:00:00.000Z';
 const tenant = { id: 'tenant-a', slug: 'alpha', name: 'Alpha', status: 'active' as const, plan: 'hosted' as const, contentVersion: 1 };
@@ -71,6 +72,7 @@ const checkoutHarness = (items: Product[] = [poster]) => {
   let sequence = 0;
   const createSession = vi.fn<PaymentProvider['createCheckoutSession']>(async () => ok({ url: 'https://checkout.stripe.test/session', sessionId: 'cs-1' }));
   const deps: CheckoutDeps = {
+    paymentSource: workspaceOnlyPaymentSource,
     products: productRepository(items),
     prices: { listByProduct: async () => [], listActiveByProducts: async () => [], findById: async () => null, create: async () => undefined, setActive: async () => null },
     tenantSecrets: { listByTenant: async () => [], findByKey: async (_tenantId, key) => secret(key), upsert: async (_tenantId, value) => value, upsertMany: async (_tenantId, values) => [...values], delete: async () => false },

@@ -555,6 +555,96 @@ not mark fulfillment complete; a later delivery can process after checkout has
 created the subscription. Checkout completion remains responsible for the initial
 order and enrollment.
 
+## Workspaces linked to an organization
+
+A workspace linked to an organization takes the payment configuration of a mode
+from the organization only while a configuration source row names the
+organization for that mode's group (`payments_live` or `payments_test`); see
+`org workspace sources` in the [CLI reference](cli.md). No route, CLI command
+or Studio screen creates such a row, so without one every payment answer is
+the workspace's own, exactly as for an unlinked workspace.
+
+The server readers below first look up which source is in force for the
+workspace and mode. That lookup reads the source row, joined to the workspace's
+linked organization, and, for the organization source, the organization's key;
+it never reads the workspace's own secrets.
+
+- Checkout: public product and cart checkout, sales-link checkout, direct sales
+  links and staff test checkout.
+- The public payment configuration.
+- The creator onboarding step, the setup checklist and the operator readiness
+  answer.
+- The Stripe mode of the masked secrets list, which Studio → Integrations and
+  the shop management secrets view show.
+
+**Workspace source** (no row): each reader applies its own rule to the
+workspace's stored rows, as before, and the payment fields of the setup
+checklist, the operator readiness answer and the masked list come from the one
+list of rows that answer loaded.
+
+**Organization source**: the payment provider would use the organization's key
+for that mode, but no organization webhook endpoint exists yet, so no checkout
+can be started for the mode. Checkout, the public payment configuration, the
+onboarding step and the setup checklist report the mode as not configured, also
+when the workspace still holds its own key and signing secret. Operator
+readiness does not count the inherited slot; when only one group is inherited
+it can still be ready through the other slot. The masked list answers a key
+mode, not a configured flag: while the live group is inherited, its Stripe mode
+is the mode of the organization's key. Local simulated payments mark the
+onboarding step done only for the workspace source. A suspended organization
+changes nothing in these answers.
+
+The public checkout route looks the source up once the request's selection and
+the buyer's identity are resolved, because the mode depends on a verified staff
+test session. An inherited mode that is not ready is then refused with
+`Stripe is not configured for this tenant`, free orders and coupon checkouts
+included. The refusal comes before every checkout record (the consent capture,
+the staff test member that the route ensures, the checkout snapshot, a stock
+hold and a coupon checkout session) and before any call to the payment
+provider. What comes before it is unchanged and the same for every workspace:
+request accounting (rate limits), for a parcel-locker selection the pickup-point
+lookup, and the identity resolution of a signed-in buyer, which can ensure that
+user's member row or refresh a member's e-mail address. An invalid selection or
+a product out of stock is answered first, with its own error. A direct sales
+link checks its link, products and legal settings first and refuses at its
+readiness check, before any checkout record or provider call.
+`startCheckoutSession` refuses an inherited mode at its own start as well.
+
+The changed payment answers gain no field: none of them carries the source, the
+organization's key, its preview or an organization identifier. There is no
+explicit source field, but staff and keys that can read the masked list can
+still infer inheritance by comparing its Stripe mode with the stored key
+previews.
+
+Events delivered to `/api/webhooks/stripe/<tenantId>` are verified with the
+workspace's own signing secret, also while the group is inherited. When
+verifying an `invoice.paid` or `invoice.payment_failed` event needs the
+invoice's payments from the Stripe API, the lookup uses the workspace's own
+restricted key, because that endpoint receives events from the workspace's own
+Stripe account. The stored key and signing secret must therefore belong to the
+same Stripe account; `stripe configure` writes them together.
+
+Known limitations until a product flow can create a source row:
+
+- The Studio Stripe card's configured chip, its webhook hint and whether its
+  connection-test button is enabled, `stripe test-mode status` in the CLI and
+  the shop manifest plan read the workspace's own stored rows. They describe
+  the stored workspace credentials, not the configuration in force. The card's
+  mode and its warning that the live slot holds a test key follow the masked
+  list's Stripe mode, which for an inherited live group is the mode of the
+  organization's key.
+- The connection test, the permission check and Studio coupon promotions use
+  the key in force, which for an inherited group is the organization's key;
+  the connection test and the permission check need no earlier payment of the
+  workspace to reach the organization's account.
+- Refunds, subscription cancellations (in webhook payment adjustments and in
+  member removal) and subscription adoption also use the key in force, and a
+  subscription the provider does not know counts as already cancelled. These
+  act on existing payment objects, so they matter only for an inheriting
+  workspace that still has payments on its own Stripe account.
+- The source is read on each call, so a source that changes while a checkout
+  is being started is not coordinated with that checkout.
+
 ## Payments that could not be recorded
 
 A signature-verified live `checkout.session.completed` or

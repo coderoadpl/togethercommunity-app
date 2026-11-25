@@ -474,19 +474,27 @@ user it can create workspaces of its own when `TENANT_CREATION` is `open`
 Worst case for a holder of `SMOKE_PURCHASE_PASSWORD` on production, within
 `tenant-acme`: edit what acme's public pages show; read, export, ban and remove
 the synthetic members and impersonate them read-only; make test purchases and
-staff refunds. No live money moves: the reseed wipes the payment secrets and an
-admin cannot write them. No outgoing e-mail leaves production for acme.
+staff refunds. An admin cannot write payment keys and the reseed wipes them, so
+no live charge or refund is possible while the live slot is empty;
+`order:refund` itself is not limited to test mode. No outgoing e-mail leaves
+production for acme.
 Whatever the holder changes in `tenant-acme` is undone by the next deploy's
 reseed.
 
 The account has the fixed user id `user-acme-purchase`, and a reseed refuses
-when another identity holds its e-mail, so it never adopts a foreign account.
-Every reseed, and so every production deploy, ends all sessions, passkeys and
-two-factor enrolments of the account and every sign-in method other than the
-password, in a transaction that commits before the reseed guard runs, so a
-guard refusal still revokes it. Rotating `SMOKE_PURCHASE_PASSWORD` and
-deploying therefore takes every access back. Before rolling back to a release
-without the account, follow
+when another identity holds its e-mail or its id, so it never adopts a foreign
+account. Every reseed, and so every production deploy, first commits the
+revocation (sessions, passkeys, two-factor, provider logins, password login,
+password-reset tokens and the `admin` row), then runs the guard, then wipes and
+re-seeds. A guard refusal leaves the account without a role and without a
+working password, but leaves the workspace content and the account's member
+row until a reseed succeeds. With `SMOKE_PURCHASE_PASSWORD` unset the account
+gets no grant and no working password; its `user` row stays. Rotating
+`SMOKE_PURCHASE_PASSWORD` and deploying therefore takes every access back.
+
+When storing the test slot fails, the reseed attempts to remove the webhook
+endpoint it just registered and logs a failed removal; the removal is not
+guaranteed. Before rolling back to a release without the account, follow
 [the rollback steps](observability.md#rolling-back-past-the-purchase-account).
 
 ## Accepted dependency advisories

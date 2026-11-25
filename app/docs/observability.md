@@ -488,9 +488,11 @@ The purchase account holds the full `admin` role of `tenant-acme`, listed in
 `tenant-acme`: it can edit what acme's public pages show; read, export, ban and
 remove the synthetic members and impersonate them read-only; make test
 purchases and staff refunds. It cannot write any payment secret (live or test),
-workspace settings, API keys or shop management keys, so no live money moves:
-the reseed wipes the payment secrets and an admin cannot write them. On
-production acme sends no outgoing e-mail (see [What is hidden](#what-is-hidden)).
+workspace settings, API keys or shop management keys. An admin cannot write
+payment keys and the reseed wipes them, so no live charge or refund is possible
+while the live slot is empty; `order:refund` itself is not limited to test
+mode. On production acme sends no outgoing e-mail (see
+[What is hidden](#what-is-hidden)).
 
 It reaches no other existing workspace. It is a verified user, though, so like
 any verified user it can create workspaces of its own when `TENANT_CREATION` is
@@ -570,8 +572,9 @@ With both set, after a successful wipe and re-seed the route configures the
 Stripe **test** slot of `tenant-acme` exactly as a workspace owner's test-mode
 configuration does: it registers the `?mode=test` webhook endpoint pinned to the
 library's API version, stores the test restricted key, the webhook signing
-secret and the endpoint id together, and removes the new endpoint again when
-storing them fails. The live slot is never written. The response carries
+secret and the endpoint id together. When storing them fails it attempts to
+remove the new endpoint again and logs a failed removal; the removal is not
+guaranteed. The live slot is never written. The response carries
 `testPayments`: `configured`, `not-configured` (no key or no purchase account)
 or `failed`. A failure there never fails the reseed — the route still answers
 200 with the wipe summary — and the `reseed-acme` audit row records only the
@@ -581,18 +584,29 @@ neither returned nor logged, because it may echo the webhook URL.
 The purchase account always has the fixed user id `user-acme-purchase`. When a
 `user` row holds `kontakt+smoke-purchase@togethercommunity.app` under any other
 id, a reseed with `SMOKE_PURCHASE_PASSWORD` set refuses with `the purchase
-account email belongs to another identity` before it writes anything, so it
-never adopts an identity someone else registered.
+account email belongs to another identity` before it writes anything. When the
+`user` row `user-acme-purchase` carries another e-mail, every reseed refuses
+with `the purchase account id belongs to another identity` and changes nothing.
+The reseed never adopts an identity someone else registered.
 
-Every reseed, and so every production deploy, first ends the purchase account's
-access in a transaction of its own: it deletes all its sessions, passkeys,
-two-factor enrolments and every sign-in method other than the password, turns
-two-factor off and removes its `admin` row. That step commits before the guard
-runs, so a guard refusal still revokes the account, and it also runs when
-`SMOKE_PURCHASE_PASSWORD` is unset. The re-seed then writes the account back
-with the current `SMOKE_PURCHASE_PASSWORD`. Rotating `SMOKE_PURCHASE_PASSWORD`
-in the deployment and in CI and deploying therefore takes every access back.
-No other user's rows are touched.
+Every reseed, and so every production deploy, runs in this order:
+
+1. **Revocation**, committed in a transaction of its own: it deletes the
+   purchase account's sessions, passkeys, two-factor enrolments, provider
+   sign-ins, password login and pending password-reset tokens, turns two-factor
+   off and removes its `admin` row in `tenant-acme`. No other user's rows are
+   touched.
+2. **Guard**: the reseed guard described above.
+3. **Wipe and re-seed**: it deletes the account's sessions once more, then
+   writes the password login with the current `SMOKE_PURCHASE_PASSWORD` and the
+   `admin` row back.
+
+A guard refusal therefore leaves the account without a role and without a
+working password, but leaves the workspace content and the account's member
+row in place until a reseed succeeds. With `SMOKE_PURCHASE_PASSWORD` unset the
+account gets no grant and no working password; its `user` row stays. Rotating
+`SMOKE_PURCHASE_PASSWORD` in the deployment and in CI and deploying therefore
+takes every access back.
 
 Staging and production must use separate Stripe sandboxes for
 `SMOKE_PURCHASE_STRIPE_TEST_KEY`: replacing an earlier test endpoint matches
@@ -611,7 +625,20 @@ a release:
    deployment.
 2. Run one reseed on the current release. It wipes the purchase member rows and
    revokes the account.
-3. Roll back.
+3. Roll back, only after the reseed of step 2 succeeded and this check returns
+   `0` for both counts:
+
+   ```sql
+   SELECT
+     (SELECT count(*) FROM members
+       WHERE tenant_id = 'tenant-acme'
+         AND lower(email) = 'kontakt+smoke-purchase@togethercommunity.app') AS purchase_members,
+     (SELECT count(*) FROM tenant_admins
+       WHERE user_id = 'user-acme-purchase') AS purchase_grants;
+   ```
+
+When the reseed of step 2 refuses, stop and resolve the refusal first; do not
+roll back.
 
 Manually, against any database:
 

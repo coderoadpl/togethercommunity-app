@@ -78,7 +78,7 @@ export const OrderShipment = ({ order, canShip, pending, error, onShip }: OrderS
           value={shipmentTracking}
           disabled={label != null}
           onChange={(event) => setTrackingNumber(event.target.value)}
-          helperText={t.shipping.shipTrackingHint}
+          helperText={label == null ? t.shipping.shipTrackingHint : undefined}
           error={trackingNumber.length > 0 && !tracking.success}
           sx={{ flex: 1 }}
           slotProps={{ htmlInput: { maxLength: 80, 'data-testid': 'order-ship-tracking' } }}

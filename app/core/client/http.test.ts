@@ -834,3 +834,20 @@ it('sends source filters for order listing and export and parses tenant source o
     'https://api.example.test/api/orders/export?format=csv&fulfilmentStatus=to_pack',
   ]);
 });
+
+it('sends the invoice, billing and sort parameters to the order list and the export alike', async () => {
+  const urls: string[] = [];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {
+    urls.push(String(input));
+    return String(input).includes('/export')
+      ? jsonResponse({ ok: true, data: { filename: 'orders.csv', mimeType: 'text/csv', content: '' } })
+      : jsonResponse({ ok: true, data: { orders: [], total: 0, page: 1, pageSize: 20, sources: [] } });
+  } });
+  const filters = { invoice: 'without', billing: 'company', sortBy: 'amountCents', sortDirection: 'asc' } as const;
+  await client.listOrders(filters);
+  await client.exportOrders({ ...filters, format: 'csv' });
+  expect(urls).toEqual([
+    'https://api.example.test/api/orders?invoice=without&billing=company&sortBy=amountCents&sortDirection=asc',
+    'https://api.example.test/api/orders/export?format=csv&invoice=without&billing=company&sortBy=amountCents&sortDirection=asc',
+  ]);
+});

@@ -185,6 +185,10 @@ import type {
   WipedTable,
   CollectedShipping,
   FulfilmentStatus,
+  OrderBillingFilter,
+  OrderInvoiceFilter,
+  OrderSortDirection,
+  OrderSortField,
 } from '#core/domain/index.js';
 import type { ChangeProposalProductFiles, KeyDownloadAttachRepository } from './key-download-ports.js';
 import type { ProductDraftRepository } from './product-draft-ports.js';
@@ -1869,6 +1873,10 @@ export interface OrderListQuery {
   couponId?: string;
   fulfilmentStatus?: FulfilmentStatus;
   search?: string;
+  invoice?: OrderInvoiceFilter;
+  billing?: OrderBillingFilter;
+  sortBy?: OrderSortField;
+  sortDirection?: OrderSortDirection;
   page: number;
   pageSize: number;
 }

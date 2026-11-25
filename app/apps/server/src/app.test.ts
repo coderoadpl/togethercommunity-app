@@ -1283,6 +1283,18 @@ describe('order list payment mode', () => {
     expect(h.list).toHaveBeenCalledExactlyOnceWith(acme.id, { page: 1, pageSize: 20 });
   });
 
+  it('passes the invoice, billing and sort parameters of the list and the export to the repository', async () => {
+    const h = harness();
+    const search = 'invoice=without&billing=company&sortBy=amountCents&sortDirection=asc';
+    expect((await h.app.request(`/api/orders?${search}`, { headers: { host: 'acme.localhost' } })).status).toBe(200);
+    expect((await h.app.request(`/api/orders/export?format=csv&${search}`, { headers: { host: 'acme.localhost' } })).status).toBe(200);
+    const filters = { invoice: 'without', billing: 'company', sortBy: 'amountCents', sortDirection: 'asc' };
+    expect(h.list.mock.calls).toEqual([
+      [acme.id, { ...filters, page: 1, pageSize: 20 }],
+      [acme.id, { ...filters, mode: 'live', page: 1, pageSize: 100 }],
+    ]);
+  });
+
   it.each(['staging', ''])('rejects invalid mode=%s before reading orders', async (mode) => {
     const h = harness();
     const response = await h.app.request(`/api/orders?mode=${mode}`, { headers: { host: 'acme.localhost' } });

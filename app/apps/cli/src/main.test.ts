@@ -2366,6 +2366,20 @@ it('distinguishes the campaign source none from missing attribution in CLI lists
   expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'json', source: 'none', sourceMatch: 'exact' });
 });
 
+it('passes the invoice, billing and sort flags to the order list and the export', async () => {
+  h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
+  h.exportOrders.mockReset().mockResolvedValue(ok({ filename: 'orders.csv', mimeType: 'text/csv', content: '' }));
+  const flags = ['--invoice', 'without', '--billing', 'company', '--sort-by', 'amountCents', '--sort-direction', 'asc'];
+  const filters = { invoice: 'without', billing: 'company', sortBy: 'amountCents', sortDirection: 'asc' };
+  await run('--json', 'orders', 'list', ...flags);
+  expect(h.listOrders).toHaveBeenCalledExactlyOnceWith(filters);
+  await run('--json', 'orders', 'export', '--format', 'csv', ...flags);
+  expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'csv', ...filters });
+  await run('--json', 'orders', 'list', '--billing', 'business');
+  expect(h.listOrders).toHaveBeenCalledTimes(1);
+  expect(process.exitCode).toBe(2);
+});
+
 describe('shipping CLI', () => {
   it('creates and updates a shipped product with --delivery-method', async () => {
     await run('--json', 'product', 'create', '--title', 'Printed accessory', '--type', 'physical', '--price-cents', '4900', '--delivery-method', 'shipping');

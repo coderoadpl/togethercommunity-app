@@ -1452,6 +1452,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
+    if (input.invoice !== undefined) params.set('invoice', input.invoice);
+    if (input.billing !== undefined) params.set('billing', input.billing);
+    if (input.sortBy !== undefined) params.set('sortBy', input.sortBy);
+    if (input.sortDirection !== undefined) params.set('sortDirection', input.sortDirection);
     if (input.page !== undefined) params.set('page', String(input.page));
     if (input.pageSize !== undefined) params.set('pageSize', String(input.pageSize));
     const suffix = params.toString();
@@ -1555,6 +1559,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
+    if (input.invoice !== undefined) params.set('invoice', input.invoice);
+    if (input.billing !== undefined) params.set('billing', input.billing);
+    if (input.sortBy !== undefined) params.set('sortBy', input.sortBy);
+    if (input.sortDirection !== undefined) params.set('sortDirection', input.sortDirection);
     return request(
       options,
       API_ROUTES.ordersExport.method,

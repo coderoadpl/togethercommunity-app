@@ -79,8 +79,8 @@ created again without a database edit.
 **Acceptance Criteria:**
 - [ ] "Correct delivery details" on the Delivery card, gated by the permission that marks an order as shipped (`order:write`).
 - [ ] Also offered from the shipment error when InPost refuses the receiver.
-- [ ] Refused once the order is shipped or a shipment is bought; the card then explains that the receiver is changed in InPost Manager or the shipment is cancelled.
-- [ ] A correction is refused once any shipment has a provider id, a create attempt or an active operation lease; staff change the receiver in InPost Manager instead.
+- [ ] Refused once the order is shipped or a non-canceled shipment is bought.
+- [ ] A non-canceled shipment with a provider id, a create attempt or an active operation lease blocks corrections; staff change the receiver in InPost Manager instead. A known canceled label does not block corrections, and saving does not recreate it.
 - [ ] Each changed field is kept as an audit entry (who, when, old, new) and listed under the card.
 - [ ] The locker code is verified the same way as at checkout; every InPost order's phone follows US-001's rule.
 - [ ] The project's own checks pass.

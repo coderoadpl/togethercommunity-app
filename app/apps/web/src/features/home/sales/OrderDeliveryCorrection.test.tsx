@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#core/client/index.js';
-import type { OrderShipping, ShipxOrderView } from '#core/domain/index.js';
+import { SHIPX_STATUS_CANCELED, type OrderShipping, type ShipxOrderView } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
@@ -40,6 +40,13 @@ describe('delivery correction UI', () => {
     expect(save.mock.calls[0]?.[0]).toEqual({ orderId: order.id, expected: { recipientName: 'Example Buyer' }, recipientName: 'Corrected Buyer' });
     expect(invalidate).toHaveBeenCalledWith(actions.ordersInvalidates());
     expect(discard).not.toHaveBeenCalled();
+  });
+  it('offers delivery correction after a canceled InPost label', async () => {
+    const order = { ...sampleBundleOrder, shipping, fulfilmentStatus: 'to_pack' as const };
+    const canceled = { shipxShipmentId: 'shipment', status: SHIPX_STATUS_CANCELED, trackingNumber: 'TRACK001', environment: 'production' as const, createAttemptedAt: '2026-11-25T09:00:00.000Z', boughtAt: '2026-11-25T09:01:00.000Z', labelFetchedAt: null, createdAt: '2026-11-25T09:00:00.000Z', updatedAt: '2026-11-25T09:02:00.000Z' };
+    renderWithProviders(<OrderDeliveryCorrection order={order} view={{ ...ready, shipment: canceled }} canCorrect>{() => null}</OrderDeliveryCorrection>);
+    await userEvent.click(screen.getByTestId('order-delivery-correct'));
+    expect(screen.getByRole('dialog', { name: 'Correct delivery details' })).toBeVisible();
   });
   it('keeps the country read-only and refuses a foreign locker phone inline', async () => {
     const h = dialog();

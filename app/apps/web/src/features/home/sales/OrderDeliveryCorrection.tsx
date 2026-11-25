@@ -2,7 +2,7 @@ import { Alert, Button, Stack, TextField } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { z } from 'zod';
-import { deliveryCorrectionInputSchema, deliveryCorrectionReasonSchema, normalizeLockerPhone, rateNeedsPolishMobile, orderShipmentAllowed, shipxShipmentBought, type DeliveryCorrectionInput, type OrderListItem, type OrderShipping, type ShipxOrderView } from '#core/domain/index.js';
+import { deliveryCorrectionInputSchema, deliveryCorrectionReasonSchema, normalizeLockerPhone, rateNeedsPolishMobile, orderShipmentAllowed, SHIPX_STATUS_CANCELED, shipxLabelUsable, type DeliveryCorrectionInput, type OrderListItem, type OrderShipping, type ShipxOrderView } from '#core/domain/index.js';
 import { actions } from '../../../api.js';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog.js';
 import { errorCodeOf, errorDetailsOf, localizePanelError, useTranslations, type Messages } from '../../../i18n/index.js';
@@ -100,9 +100,9 @@ export const OrderDeliveryCorrection = ({ order, view, canCorrect, children }: {
     },
   });
   if (order.shipping == null) return children(undefined);
-  const shipment = view?.shipment;
+  const shipment = view?.shipment?.status === SHIPX_STATUS_CANCELED ? null : view?.shipment;
   const refused = errorCodeOf(correction.error);
-  const bought = (shipment != null && (shipxShipmentBought(shipment) || shipment.boughtAt !== null)) || refused === 'delivery_correction_shipment_bought';
+  const bought = (shipment != null && (shipxLabelUsable(shipment) || shipment.boughtAt !== null)) || refused === 'delivery_correction_shipment_bought';
   const shipped = order.fulfilmentStatus === 'shipped' || refused === 'delivery_correction_shipped';
   const exists = (shipment != null && (shipment.shipxShipmentId !== null || shipment.createAttemptedAt !== null)) || refused === 'delivery_correction_shipment_exists';
   const allowed = canCorrect && !bought && !shipped && !exists && orderShipmentAllowed(order).ok && (order.shipping.carrier !== 'inpost' || view !== undefined);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { correctedOrderShipping, deliveryCorrectionAllowed, deliveryCorrectionInputSchema, type DeliveryCorrectionInput } from './delivery-correction.js';
 import { orderShippingSchema, type OrderShipping } from './shipping.js';
+import { SHIPX_STATUS_CANCELED } from './shipx.js';
 
 const shipping: OrderShipping = {
   rateId: 'locker', label: 'Locker', amountCents: 1200, vatRatePercent: 23, carrier: 'inpost',
@@ -78,6 +79,13 @@ describe('delivery correction', () => {
     if (!result.ok) throw new Error('Correction failed');
     expect(orderShippingSchema.omit({ corrections: true }).parse(result.value)).toEqual({ ...shipping, phone: '+48500000000' });
     expect(orderShippingSchema.parse({ ...result.value, futureKey: true })).toEqual(result.value);
+  });
+  it.each(['TRACK001', null])('ignores canceled labels with tracking %s but still refuses a live draft', (trackingNumber) => {
+    const ready = { status: 'paid', fulfilmentStatus: 'to_pack' as const };
+    const canceled = { status: SHIPX_STATUS_CANCELED, trackingNumber, boughtAt: '2026-11-25T09:00:00.000Z', operationToken: null, providerShipmentId: 'canceled', createAttemptedAt: '2026-11-25T09:00:00.000Z' };
+    const draft = { ...canceled, status: 'offers_prepared', trackingNumber: null, boughtAt: null, providerShipmentId: 'draft' };
+    expect(deliveryCorrectionAllowed(ready, [canceled])).toEqual({ ok: true, value: undefined });
+    expect(deliveryCorrectionAllowed(ready, [canceled, draft])).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
   });
   it('checks paid to-pack status, bought shipments and active operations', () => {
     const ready = { status: 'paid', fulfilmentStatus: 'to_pack' as const };

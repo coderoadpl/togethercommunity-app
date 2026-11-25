@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DELETED_MEMBER_DISPLAY, memberTombstone, orderSchema, type DeliveryCorrectionCommand } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, memberTombstone, orderSchema, SHIPX_STATUS_CANCELED, type DeliveryCorrectionCommand } from '#core/domain/index.js';
 import { createOrderDeliveryRepository } from './order-delivery.js';
 import { createMemberErasureRepository, createOrderRepository } from './repositories.js';
 import { createShipxShipmentRepository } from './shipx.js';
@@ -73,6 +73,15 @@ describe('delivery correction persistence', () => {
     expect(await repo.correctDelivery('workspace', command('draft'))).toMatchObject({ ok: false, error: { code: 'delivery_correction_shipment_exists' } });
     expect((await createOrderRepository(database.db).findById('workspace', 'bought'))?.shipping?.corrections).toBeUndefined();
     expect((await database.db.select().from(orderShipments)).filter((row) => row.orderId === 'draft')).toHaveLength(1);
+  });
+  it('persists a correction without replacing the canceled InPost label', async () => {
+    await createOrderRepository(database.db).create('workspace', order('canceled-label'));
+    await seedShipment('canceled-label', { status: SHIPX_STATUS_CANCELED, trackingNumber: 'TRACK001', boughtAt: now, createAttemptedAt: now });
+    expect(await createOrderDeliveryRepository(database.db).correctDelivery('workspace', command('canceled-label'))).toMatchObject({
+      ok: true, value: { order: { shipping: { phone: '+48500000000' } }, recreateShipment: false },
+    });
+    const [shipment] = await database.db.select().from(orderShipments).where(and(eq(orderShipments.tenantId, 'workspace'), eq(orderShipments.orderId, 'canceled-label')));
+    expect(shipment).toMatchObject({ status: SHIPX_STATUS_CANCELED, trackingNumber: 'TRACK001', providerShipmentId: 'draft' });
   });
   it('allows only one concurrent edit of the same field', async () => {
     await createOrderRepository(database.db).create('workspace', order('conflict'));

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { appError, validation, type AppError } from './errors.js';
 import { orderShipmentAllowed } from './fulfilment.js';
 import { err, ok, type Result } from './result.js';
-import { shipxShipmentBought } from './shipx.js';
+import { SHIPX_STATUS_CANCELED, shipxLabelUsable } from './shipx.js';
 import { normalizeLockerPhone, rateNeedsPolishMobile, pickupPointCodeSchema, SHIPPING_ALLOWED_COUNTRIES, SHIPPING_FIELD_MAX_LENGTH, storableText, type OrderShipping, type FulfilmentStatus } from './shipping.js';
 
 const text = (max: number) => z.string().trim().min(1).max(max).refine(storableText);
@@ -62,10 +62,11 @@ export const deliveryCorrectionAllowed = (order: { status: string; fulfilmentSta
   if (order.fulfilmentStatus === 'shipped') return err(appError('delivery_correction_shipped', 'The order has already been shipped'));
   const allowed = orderShipmentAllowed(order);
   if (!allowed.ok) return allowed;
-  if (shipments.some((shipment) => shipxShipmentBought(shipment) || shipment.boughtAt !== null)) {
+  const nonCanceled = shipments.filter((shipment) => shipment.status !== SHIPX_STATUS_CANCELED);
+  if (nonCanceled.some((shipment) => shipxLabelUsable(shipment) || shipment.boughtAt !== null)) {
     return err(appError('delivery_correction_shipment_bought', 'The shipment has already been bought'));
   }
-  if (shipments.some((shipment) => shipment.operationToken !== null || shipment.providerShipmentId !== null || shipment.createAttemptedAt !== null)) return err(appError('delivery_correction_shipment_exists', 'An InPost shipment already exists'));
+  if (nonCanceled.some((shipment) => shipment.operationToken !== null || shipment.providerShipmentId !== null || shipment.createAttemptedAt !== null)) return err(appError('delivery_correction_shipment_exists', 'An InPost shipment already exists'));
   return ok(undefined);
 };
 

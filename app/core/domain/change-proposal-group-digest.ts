@@ -54,8 +54,8 @@ const compress = (state: number[], schedule: readonly number[]): void => {
   [a, b, c, d, e, f, g, h].forEach((value, index) => { state[index] = (word(state, index) + value) >>> 0; });
 };
 
-const sha256Hex = (text: string): string => {
-  const message = utf8(text);
+const sha256Hex = (bytes: readonly number[]): string => {
+  const message = [...bytes];
   const bitLength = message.length * 8;
   message.push(0x80);
   while (message.length % 64 !== 56) message.push(0);
@@ -82,4 +82,8 @@ const sha256Hex = (text: string): string => {
 const ITEMS_DIGEST_LENGTH = 16;
 
 export const changeProposalGroupItemsDigest = (itemIds: readonly string[]): string =>
-  sha256Hex(itemIds.join('\n')).slice(0, ITEMS_DIGEST_LENGTH);
+  sha256Hex(utf8(itemIds.join('\n'))).slice(0, ITEMS_DIGEST_LENGTH);
+
+export const sha256HexOfBytes = (bytes: Uint8Array): string => sha256Hex([...bytes]);
+
+export const sha256HexOfText = (text: string): string => sha256Hex(utf8(text));

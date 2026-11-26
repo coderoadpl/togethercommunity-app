@@ -1,8 +1,8 @@
 import type {
   ChangeProposalDisplayStatus,
   ChangeProposalEventKind,
-  ChangeProposalOperation,
   ChangeProposalReferenceKind,
+  ChangeProposalRefusal,
   ChangeProposalTargetKind,
   ImportAuditAction,
   ImportAuditResourceType,
@@ -10,6 +10,7 @@ import type {
   MemberDownloadFailureCode,
   MemberEventType,
   OrderRefundJobView,
+  RegisteredChangeProposalOperation,
   ShipxRejectionError,
   SnsWebhookDeliveryOutcome,
   StaffRefundReason,
@@ -643,7 +644,7 @@ export interface Messages {
     loadMore: string;
     loadMoreFailed: string;
     navBadge: (params: { count: number }) => string;
-    operation: Record<ChangeProposalOperation, string>;
+    operation: Record<RegisteredChangeProposalOperation, string>;
     unknownOperation: string;
     unknownOperationName: (params: { operation: string }) => string;
     unknownOperationNotApprovable: string;
@@ -671,6 +672,30 @@ export interface Messages {
     columnRemoved: string;
     newRecordCaption: string;
     imageNotShown: string;
+    proposedImageAlt: string;
+    proposedImageLoading: string;
+    proposedImageFailed: string;
+    proposedImageFacts: (params: { format: string; fingerprint: string }) => string;
+    proposedImageOwnerPreview: string;
+    proposedImageSvgReason: string;
+    proposedImageSvgDownload: string;
+    fileAdded: (params: { name: string }) => string;
+    fileReplaced: (params: { name: string; from: number; to: number }) => string;
+    fileRemoved: (params: { name: string; version: number }) => string;
+    fileFingerprint: string;
+    fileNewName: (params: { name: string }) => string;
+    fileVersionNote: (params: { note: string }) => string;
+    fileCopiedFrom: (params: { version: number; product: string }) => string;
+    fileCopiedFromGone: (params: { version: number }) => string;
+    fileBecomesCurrent: (params: { version: number }) => string;
+    fileStaysCurrent: (params: { version: number }) => string;
+    fileNoVersionLeft: string;
+    fileDownload: string;
+    fileDownloadPreparing: string;
+    fileDownloadFailed: string;
+    fileUnavailable: string;
+    fileFacts: (params: { type: string; size: string }) => string;
+    fileFactsWithFingerprint: (params: { type: string; size: string; fingerprint: string }) => string;
     emptyValue: string;
     yes: string;
     no: string;
@@ -719,6 +744,41 @@ export interface Messages {
     approveOtherFields: (params: { count: number }) => string;
     approveGroupTitle: (params: { count: number }) => string;
     approveGroupBody: (params: { count: number }) => string;
+    approveImagesPublic: (params: { count: number }) => string;
+    approveGroupImagesPublic: (params: { count: number }) => string;
+    approveFileAdd: (params: { file: string; facts: string; target: string }) => string;
+    approveFileAddToNewProduct: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileNotKept: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileKeptAsPrevious: (params: { file: string; facts: string; target: string }) => string;
+    approveGroupFileRemoveUnreleased: (params: { file: string; version: number; target: string }) => string;
+    approveFileCopiedFrom: (params: { version: number; product: string }) => string;
+    approveFileCopiedFromGone: (params: { version: number }) => string;
+    approveFileNewVersion: (params: { file: string; facts: string; version: number; target: string }) => string;
+    approveFileReplace: (params: { file: string; facts: string; version: number; previous: string; target: string }) => string;
+    approveFileRemove: (params: { file: string; version: number; target: string }) => string;
+    fileRemoveOnlyFile: string;
+    approveFileMissing: string;
+    approveGroupFilesMissing: (params: { count: number }) => string;
+    accessWholeCourse: (params: { course: string }) => string;
+    accessCourseWithout: (params: { course: string; modules: string; count: number }) => string;
+    accessModules: (params: { course: string; modules: string; count: number }) => string;
+    accessLessons: (params: { course: string; lessons: string; count: number }) => string;
+    accessNothing: string;
+    accessName: (params: { name: string }) => string;
+    accessGone: (params: { id: string }) => string;
+    accessArchived: (params: { name: string }) => string;
+    accessNameWithId: (params: { name: string; id: string }) => string;
+    accessArchivedWithId: (params: { name: string; id: string }) => string;
+    accessListRefused: string;
+    approveProductSetAccess: (params: { target: string; access: string }) => string;
+    approveProductSetAccessNothing: (params: { target: string }) => string;
+    approveProductSetAccessNewProduct: (params: { target: string; access: string }) => string;
+    approveProductSetAccessNothingNewProduct: (params: { target: string }) => string;
+    approveProductSetAccessRefused: (params: { target: string }) => string;
+    approveGroupProductSetAccessRefused: (params: { target: string }) => string;
+    approveGroupProductSetAccessRefusedDeleted: (params: { target: string }) => string;
+    approveProductSetAccessUnchanged: (params: { target: string; access: string }) => string;
+    approveProductSetAccessUnchangedNothing: (params: { target: string }) => string;
     approveConfirm: string;
     rejectTitle: string;
     rejectGroupTitle: string;
@@ -733,7 +793,11 @@ export interface Messages {
     outcomeRejected: string;
     outcomeGroupRejected: string;
     outcomeStale: string;
+    outcomeImageUnavailable: string;
+    outcomeStaleUnconfirmed: string;
+    outcomeFileUnavailable: string;
     outcomeFailed: (params: { reason: string }) => string;
+    refusal: Record<ChangeProposalRefusal, string>;
     outcomeFailedUnknown: string;
     outcomeExpired: string;
     dismiss: string;
@@ -750,12 +814,19 @@ export interface Messages {
     event: Record<ChangeProposalEventKind, string>;
     eventNoteKeyRevoked: string;
     eventNoteKeyPurged: string;
+    statusStaleImageUnavailable: string;
+    eventStaleImageUnavailable: string;
+    statusStaleFileUnavailable: string;
+    eventStaleFileUnavailable: string;
     fields: {
       type: string;
       slug: string;
       title: string;
       description: string;
       coverUrl: string;
+      images: string;
+      galleryImage: string;
+      galleryImageAlt: string;
       priceCents: string;
       currency: string;
       published: string;
@@ -773,6 +844,7 @@ export interface Messages {
       activePrices: string;
       prices: string;
       downloads: string;
+      files: string;
       stock: string;
       kind: string;
       interval: string;
@@ -1187,6 +1259,14 @@ export interface Messages {
     reconciliationHint: string;
     reconciliationEmpty: string;
     reconciliationAge: (params: { date: string }) => string;
+    rejectedPaymentsHeading: string;
+    rejectedPaymentsHint: string;
+    rejectedPaymentsReason: string;
+    rejectedPaymentsFirstSeen: string;
+    rejectedPaymentsLastSeen: string;
+    rejectedPaymentsAttempts: string;
+    rejectedPaymentsEvent: string;
+    rejectedPaymentsSession: string;
     orderTitle: (params: { id: string }) => string;
     allOrders: string;
     provider: string;
@@ -1840,9 +1920,13 @@ export interface Messages {
     storageProbeDescription: string;
     storageProbeStart: string;
     storageProbeSuccess: string;
+    storageDownloadOverridesRefused: string;
+    storageDownloadOverridesIgnored: string;
     storageSave: string;
     storageSaving: string;
     storageSaved: string;
+    storageSavedOverridesRefused: string;
+    storageSavedOverridesIgnored: string;
     storageProbeWrongRegion: string;
     storageProbeCredentials: string;
     storageProbeBucket: string;

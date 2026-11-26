@@ -44,6 +44,29 @@ export const productCoverUrlSchema = z.union([
   z.string().trim().regex(/^\/\S+$/),
 ]);
 
+export const PRODUCT_IMAGES_MAX = 12;
+const PRODUCT_IMAGE_ALT_MAX_LENGTH = 250;
+
+export const productImageSchema = z.object({
+  url: productCoverUrlSchema,
+  alt: z.string().trim().max(PRODUCT_IMAGE_ALT_MAX_LENGTH, 'Image alt text too long').default(''),
+});
+
+export type ProductImage = z.infer<typeof productImageSchema>;
+
+export const productImagesSchema = z
+  .array(productImageSchema)
+  .max(PRODUCT_IMAGES_MAX, `A product holds at most ${String(PRODUCT_IMAGES_MAX)} images`)
+  .superRefine((images, ctx) => {
+    const seen = new Set<string>();
+    images.forEach((image, index) => {
+      if (seen.has(image.url)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, 'url'], message: 'Each product image URL may appear only once' });
+      }
+      seen.add(image.url);
+    });
+  });
+
 export const productSlugFromTitle = (title: string): string => slugify(title, { maxLength: 100 });
 
 const PRICE_MAJOR_PATTERN = /^\d+([.,]\d{1,2})?$/;
@@ -95,6 +118,60 @@ export const accessItemSchema = z.discriminatedUnion('level', [
 
 export type AccessItem = z.infer<typeof accessItemSchema>;
 
+const sortedUnique = (values: readonly string[]): string[] => [...new Set(values)].sort();
+
+const canonicalAccessItem = (item: AccessItem): string => {
+  switch (item.level) {
+    case 'course': {
+      const excluded = sortedUnique(item.excludedModuleIds ?? []);
+      return JSON.stringify(excluded.length === 0 ? [item.level, item.courseId] : [item.level, item.courseId, excluded]);
+    }
+    case 'modules':
+      return JSON.stringify([item.level, item.courseId, sortedUnique(item.moduleIds)]);
+    case 'lessons':
+      return JSON.stringify([item.level, item.courseId, sortedUnique(item.lessonIds)]);
+  }
+};
+
+const canonicalAccessItems = (items: readonly AccessItem[]): string[] => sortedUnique(items.map(canonicalAccessItem));
+
+export const sameAccessItems = (left: readonly AccessItem[], right: readonly AccessItem[]): boolean =>
+  JSON.stringify(canonicalAccessItems(left)) === JSON.stringify(canonicalAccessItems(right));
+
+const storedAccessListSchema = z.array(accessItemSchema);
+
+export const comparableAccessList = (value: unknown): unknown => {
+  const parsed = storedAccessListSchema.safeParse(value);
+  return parsed.success ? canonicalAccessItems(parsed.data) : value;
+};
+
+const accessItemIdList = (item: AccessItem): readonly string[] => {
+  switch (item.level) {
+    case 'course':
+      return item.excludedModuleIds ?? [];
+    case 'modules':
+      return item.moduleIds;
+    case 'lessons':
+      return item.lessonIds;
+  }
+};
+
+const accessItemIdField = (item: AccessItem): string =>
+  item.level === 'course' ? 'excludedModuleIds' : item.level === 'modules' ? 'moduleIds' : 'lessonIds';
+
+const refuseRepeatedAccess = (items: readonly AccessItem[], ctx: z.RefinementCtx): void => {
+  const seen = new Set<string>();
+  for (const [index, item] of items.entries()) {
+    const ids = accessItemIdList(item);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index, accessItemIdField(item)], message: 'An access item must not repeat an id' });
+    }
+    const canonical = canonicalAccessItem(item);
+    if (seen.has(canonical)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [index], message: 'An access list must not repeat an item' });
+    seen.add(canonical);
+  }
+};
+
 export const productAccessIssuesSchema = z.object({
   productId: z.string(),
   productTitle: z.string(),
@@ -116,6 +193,7 @@ export const productContentSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string(),
   coverUrl: productCoverUrlSchema.nullable(),
+  images: productImagesSchema.optional(),
   priceCents: z.number().int().nonnegative(),
   currency: currencySchema,
   published: z.boolean(),
@@ -164,6 +242,7 @@ export const newProductSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long'),
   description: newProductDescriptionSchema.default(''),
   coverUrl: productCoverUrlSchema.nullable().default(null),
+  images: productImagesSchema.optional(),
   priceCents: z.number().int('Price must be a whole number of cents').nonnegative('Price must not be negative'),
   currency: currencySchema.default('PLN'),
   accessItems: z.array(accessItemSchema).default([]),
@@ -185,6 +264,7 @@ export const updateProductInputSchema = z.object({
   title: z.string().trim().min(1, 'Title must not be empty').max(200, 'Title too long').optional(),
   description: newProductDescriptionSchema.optional(),
   coverUrl: productCoverUrlSchema.nullable().optional(),
+  images: productImagesSchema.optional(),
 });
 
 export type UpdateProductInput = z.input<typeof updateProductInputSchema>;
@@ -196,3 +276,10 @@ export const updateProductAccessItemsInputSchema = z.object({
 });
 
 export type UpdateProductAccessItemsInput = z.input<typeof updateProductAccessItemsInputSchema>;
+
+export const uniqueAccessItemsSchema = z.array(accessItemSchema).superRefine(refuseRepeatedAccess);
+
+export const setProductAccessInputSchema = z.object({
+  id: z.string().min(1),
+  accessItems: uniqueAccessItemsSchema,
+});

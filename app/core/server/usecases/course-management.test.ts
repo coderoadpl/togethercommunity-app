@@ -15,6 +15,7 @@ import {
 } from '#core/domain/index.js';
 
 import type {
+  CourseLessonIdLookup,
   CourseLessonRepository,
   CourseModuleRepository,
   CourseRepository,
@@ -182,13 +183,15 @@ const moduleRepo = (store: CourseModule[], versions: EntityVersionRecord[] = [])
   },
 });
 
-const lessonRepo = (store: CourseLesson[], versions: EntityVersionRecord[] = []): CourseLessonRepository => ({
+const lessonRepo = (store: CourseLesson[], versions: EntityVersionRecord[] = []): CourseLessonRepository & CourseLessonIdLookup => ({
   list: async (tenantId) => store.filter((item) => item.tenantId === tenantId),
   listPreviews: async () => [],
   findById: async (tenantId, id) =>
     store.find((item) => item.tenantId === tenantId && item.id === id) ?? null,
   findByIds: async (tenantId, ids) =>
     store.filter((item) => item.tenantId === tenantId && ids.includes(item.id)),
+  existingIds: async (tenantId, ids) =>
+    store.filter((item) => item.tenantId === tenantId && ids.includes(item.id)).map((item) => item.id),
   create: async (_tenantId, item) => {
     store.push(item);
   },
@@ -221,11 +224,12 @@ const productRepo = (
     store.push(item);
     return 'created';
   },
-  updateAccessItems: async (tenantId, id, accessItems, version) => {
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) => {
     const found = store.find((item) => item.tenantId === tenantId && item.id === id);
     if (!found) return null;
     if (version) versions.push(version);
-    found.accessItems = accessItems;
+    if (accessItems !== null) found.accessItems = accessItems;
+    if (checkoutConsentDefinitionIds !== undefined) found.checkoutConsentDefinitionIds = checkoutConsentDefinitionIds;
     return found;
   },
   setPublished: async (tenantId, id, published) => {
@@ -241,14 +245,13 @@ const progressRepo = (store: MemberCourseProgress[] = []): MemberCourseProgressR
   findByMemberAndCourse: async () => null,
   listByMember: async (tenantId, memberId) =>
     store.filter((progress) => progress.tenantId === tenantId && progress.memberId === memberId),
-  findOrCreate: async (_tenantId, { id, memberId, courseId, now: createdAt }) => ({
-    id,
-    tenantId: _tenantId,
-    memberId,
-    courseId,
-    completedLessonIds: [],
-    updatedAt: createdAt,
-  }),
+  addCompletedLesson: async () => {
+    throw new Error('not used');
+  },
+  removeCompletedLesson: async () => [],
+  setLastViewed: async () => {
+    throw new Error('not used');
+  },
   update: async (_tenantId, progress) => progress,
   countReferencingLesson: async (tenantId, lessonId) =>
     store.filter(
@@ -271,7 +274,7 @@ const deps = (input: {
   removedObjects?: string[];
   storageDeleteFails?: boolean;
   errors?: string[];
-} = {}): CourseManagementDeps & { courses: CourseRepository & CourseArchiveRepository } => {
+} = {}): CourseManagementDeps & { courses: CourseRepository & CourseArchiveRepository; lessons: CourseLessonRepository & CourseLessonIdLookup } => {
   const ids = input.ids ?? ['generated-id'];
   const versions = input.versions ?? [];
   const attachments = input.attachments ?? [];
@@ -304,6 +307,8 @@ const deps = (input: {
       objectUrl: (configuration, key) =>
         new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (request) => ok(request.url),
       presignGet: (request) => ok(request.url),
@@ -490,10 +495,10 @@ describe('course management use-cases', () => {
 
     await updateModule(ctx, { id: 'm1', title: 'New title' }, d);
     await updateLesson(ctx, { id: 'l1', name: 'New lesson name' }, d);
-    await updateProductAccessItems(ctx, { id: 'p1', accessItems: [] }, d);
+    await updateProductAccessItems(ctx, { id: 'p1', accessItems: [{ level: 'course', courseId: 'c1' }] }, d);
 
     expect(versions.map((v) => v.entityKind)).toEqual(['course_module', 'course_lesson', 'product']);
-    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 7, 11]);
+    expect(versions.map((v) => v.schemaVersion)).toEqual([1, 7, 12]);
     expect(versions[0]?.payload).toMatchObject({ id: 'm1', title: 'Module m1' });
     expect(versions[1]?.payload).toMatchObject({ id: 'l1', name: 'Lesson l1' });
     expect(versions[2]?.payload).toMatchObject({ id: 'p1', title: 'Product p1' });
@@ -590,7 +595,7 @@ describe('course management use-cases', () => {
     const products = [product('p1', 't-acme')];
     const d = deps({
       courses: [course('c1', 't-acme'), course('c2', 't-acme')],
-      modules: [module('m1', 't-acme', ['c2'])],
+      modules: [{ ...module('m1', 't-acme', ['c2']), chapters: [{ id: 'ch1', name: 'Chapter 1', contents: [{ id: 'content-l1', lessonId: 'l1', name: 'Lesson l1' }] }] }],
       lessons: [lesson('l1', 't-acme')],
       products,
     });
@@ -643,6 +648,34 @@ describe('course management use-cases', () => {
 
     expect(result).toMatchObject({ ok: true });
     expect(contentVersionBumps).toEqual(['t-acme']);
+  });
+
+  it('refuses a lesson that exists but sits in no module of the item course', async () => {
+    const products = [product('p1', 't-acme')];
+    const inCourse = (id: string, courseId: string, lessonId: string): CourseModule => ({
+      ...module(id, 't-acme', [courseId]),
+      chapters: [{ id: `${id}-chapter`, name: 'Chapter', contents: [{ id: `${id}-content`, lessonId, name: 'Lesson' }] }],
+    });
+    const d = deps({
+      courses: [course('c1', 't-acme'), course('c2', 't-acme')],
+      modules: [inCourse('m1', 'c1', 'l1'), inCourse('m2', 'c2', 'l2')],
+      lessons: [lesson('l1', 't-acme'), lesson('l2', 't-acme'), lesson('l-loose', 't-acme')],
+      products,
+    });
+    const refusal = { ok: false, error: { code: 'validation', message: 'Product access lessonIds must belong to the item courseId through its modules and chapters' } };
+    for (const lessonIds of [['l2'], ['l1', 'l2'], ['l-loose']]) {
+      expect(await updateProductAccessItems(
+        { identity: identity('t-acme', 'owner') },
+        { id: 'p1', accessItems: [{ level: 'lessons', courseId: 'c1', lessonIds }] },
+        d,
+      )).toMatchObject(refusal);
+    }
+    expect(products[0]?.accessItems).toEqual([]);
+    expect(await updateProductAccessItems(
+      { identity: identity('t-acme', 'owner') },
+      { id: 'p1', accessItems: [{ level: 'lessons', courseId: 'c1', lessonIds: ['l1'] }] },
+      d,
+    )).toMatchObject({ ok: true });
   });
 
   it('rejects a course item whose excludedModuleIds do not belong to the course', async () => {
@@ -874,6 +907,80 @@ describe('course management use-cases', () => {
     expect(errors).toEqual([expect.stringContaining('tenant "t-acme" could not delete storage object "lesson-attachments/l1/attachment-1/handout.pdf"')]);
   });
 
+  it('retries a busy product cleanup and reports a cleanup that stays busy, after the lesson is gone', async () => {
+    const setup = () => {
+      const lessons = [lesson('l1', 't-acme')];
+      const products = [{ ...product('p1', 't-acme'), accessItems: [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }] }];
+      const d = deps({ lessons, products, ids: ['snap-p1-1', 'snap-p1-2', 'snap-p1-3'] });
+      const write = d.products.updateAccessItems;
+      let calls = 0;
+      return { lessons, products, d, write, calls: () => calls, count: () => { calls += 1; } };
+    };
+
+    const once = setup();
+    once.d.products.updateAccessItems = async (...args) => { once.count(); return once.calls() === 1 ? 'busy' : once.write(...args); };
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, once.d)).toMatchObject({ ok: true, value: { lessonId: 'l1' } });
+    expect(once.calls()).toBe(2);
+    expect(once.products[0]?.accessItems).toEqual([]);
+
+    const stuck = setup();
+    stuck.d.products.updateAccessItems = async () => { stuck.count(); return 'busy'; };
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, stuck.d)).toMatchObject({
+      ok: false,
+      error: {
+        code: 'unavailable',
+        message: 'The lesson was deleted, but products that granted it were busy and still name it in their access lists; remove it from their lists',
+        details: { productIds: ['p1'] },
+      },
+    });
+    expect(stuck.calls()).toBe(3);
+    expect(stuck.lessons).toHaveLength(0);
+  });
+
+  it('retries a busy product cleanup from the list an editor committed meanwhile, not from the list read before', async () => {
+    const lessons = [lesson('l1', 't-acme')];
+    const products = [{
+      ...product('p1', 't-acme'),
+      accessItems: [
+        { level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] },
+        { level: 'course' as const, courseId: 'c2' },
+      ],
+    }];
+    const versions: EntityVersionRecord[] = [];
+    const d = deps({ lessons, products, versions, ids: ['snap-1', 'snap-2', 'snap-3'] });
+    const write = d.products.updateAccessItems;
+    let calls = 0;
+    d.products.updateAccessItems = async (...args) => {
+      calls += 1;
+      if (calls > 1) return write(...args);
+      const stored = products[0];
+      if (stored) stored.accessItems = [{ level: 'lessons', courseId: 'c1', lessonIds: ['l1'] }];
+      return 'busy';
+    };
+
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d)).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual([]);
+    expect(versions.at(-1)).toMatchObject({ id: 'snap-2', payload: expect.objectContaining({ accessItems: [{ level: 'lessons', courseId: 'c1', lessonIds: ['l1'] }] }) });
+  });
+
+  it('cleans every later product when one stays busy and names the busy ones at the end', async () => {
+    const lessons = [lesson('l1', 't-acme')];
+    const grant = [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }];
+    const products = [
+      { ...product('p1', 't-acme'), accessItems: grant },
+      { ...product('p2', 't-acme'), accessItems: grant },
+    ];
+    const d = deps({ lessons, products, ids: ['s1', 's2', 's3', 's4'] });
+    const write = d.products.updateAccessItems;
+    d.products.updateAccessItems = async (tenantId, id, ...rest) => (id === 'p1' ? 'busy' : write(tenantId, id, ...rest));
+
+    expect(await deleteLesson({ identity: identity('t-acme', 'owner') }, { id: 'l1' }, d)).toMatchObject({
+      ok: false, error: { code: 'unavailable', details: { productIds: ['p1'] } },
+    });
+    expect(products[0]?.accessItems).toEqual(grant);
+    expect(products[1]?.accessItems).toEqual([]);
+  });
+
   it('reports not found when deleting a missing lesson', async () => {
     const result = await deleteLesson(
       { identity: identity('t-acme', 'owner') },
@@ -1027,5 +1134,87 @@ describe('archived product access', () => {
     const d = deps({ courses: [course('c1', 't1')], products: [product('p1', 't1')] });
     d.products.updateAccessItems = async () => 'course_unavailable';
     expect(await updateProductAccessItems(ctx, input, d)).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('saving a product whose stored access list the check refuses', () => {
+  const ctx = { identity: identity('t1', 'owner') };
+  const inCourse = (id: string, courseId: string, lessonId: string): CourseModule => ({
+    ...module(id, 't1', [courseId]),
+    chapters: [{ id: `${id}-chapter`, name: 'Chapter', contents: [{ id: `${id}-content`, lessonId, name: 'Lesson' }] }],
+  });
+  const stored = [
+    { level: 'lessons' as const, courseId: 'c1', lessonIds: ['l2'] },
+    { level: 'course' as const, courseId: 'c2' },
+  ];
+  const setup = () => {
+    const products = [{ ...product('p1', 't1'), accessItems: structuredClone(stored) }];
+    const d = deps({
+      courses: [course('c1', 't1'), course('c2', 't1')],
+      modules: [inCourse('m1', 'c1', 'l1'), inCourse('m2', 'c2', 'l2')],
+      lessons: [lesson('l1', 't1'), lesson('l2', 't1')],
+      products,
+      ids: ['snapshot-1', 'snapshot-2'],
+    });
+    return { products, d };
+  };
+
+  it('saves the checkout consents with the stored list resent, in any order and with repeats, and leaves the stored list as it is', async () => {
+    const { products, d } = setup();
+    const resent = [{ level: 'course' as const, courseId: 'c2' }, { level: 'lessons' as const, courseId: 'c1', lessonIds: ['l2', 'l2'] }];
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: resent, checkoutConsentDefinitionIds: ['consent-1'] }, d)).toMatchObject({ ok: true });
+    expect(products[0]).toMatchObject({ accessItems: stored, checkoutConsentDefinitionIds: ['consent-1'] });
+  });
+
+  it('never restores the list it read once another editor removed a grant before its write', async () => {
+    const { products, d } = setup();
+    const narrowed = [{ level: 'course' as const, courseId: 'c2' }];
+    const read = d.products.findById;
+    d.products.findById = async (tenantId, id) => {
+      const found = structuredClone(await read(tenantId, id));
+      const live = products[0];
+      if (live !== undefined) live.accessItems = structuredClone(narrowed);
+      return found;
+    };
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: stored, checkoutConsentDefinitionIds: ['consent-1'] }, d)).toMatchObject({ ok: true });
+    expect(products[0]).toMatchObject({ accessItems: narrowed, checkoutConsentDefinitionIds: ['consent-1'] });
+  });
+
+  it('refuses the list itself until the item is corrected', async () => {
+    const { products, d } = setup();
+    const refusal = { ok: false, error: { code: 'validation', message: 'Product access lessonIds must belong to the item courseId through its modules and chapters' } };
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: [...stored, { level: 'course', courseId: 'c1' }] }, d)).toMatchObject(refusal);
+    expect(products[0]?.accessItems).toEqual(stored);
+    const corrected = [{ level: 'lessons' as const, courseId: 'c2', lessonIds: ['l2'] }, { level: 'course' as const, courseId: 'c2' }];
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: corrected }, d)).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual(corrected);
+  });
+});
+
+describe('excluding a module that other courses also use', () => {
+  const ctx = { identity: identity('t1', 'owner') };
+  const excluding = [{ level: 'course' as const, courseId: 'c1', excludedModuleIds: ['m-shared'] }];
+  const setup = () => {
+    const products = [product('p1', 't1')];
+    const d = deps({ courses: [course('c1', 't1'), course('c2', 't1')], modules: [module('m-shared', 't1', ['c1', 'c2'])], products });
+    return { products, d };
+  };
+
+  it('is saved by the owner editor', async () => {
+    const { products, d } = setup();
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: excluding }, d)).toMatchObject({ ok: true });
+    expect(products[0]?.accessItems).toEqual(excluding);
+  });
+});
+
+describe('a product access write that the database aborts', () => {
+  it('answers busy and changes nothing', async () => {
+    const ctx = { identity: identity('t1', 'owner') };
+    const d = deps({ courses: [course('c1', 't1')], products: [product('p1', 't1')] });
+    d.products.updateAccessItems = async () => 'busy';
+    expect(await updateProductAccessItems(ctx, { id: 'p1', accessItems: [{ level: 'course', courseId: 'c1' }] }, d)).toEqual({
+      ok: false,
+      error: { code: 'unavailable', message: 'The product is busy; nothing was changed, retry the request', details: { retryAfterSeconds: 1 } },
+    });
   });
 });

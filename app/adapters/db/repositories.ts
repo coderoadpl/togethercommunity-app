@@ -103,6 +103,7 @@ import type {
   AccountAvatarRepository,
   AccountAvatarTenantReader,
   AvatarSourceReader,
+  CourseLessonIdLookup,
   CourseLessonRepository,
   LessonAttachmentRepository,
   CourseModuleRepository,
@@ -168,6 +169,8 @@ import type {
   PublicRateLimitRepository,
 } from '#core/server/index.js';
 
+import { oweKeyFileDeletions } from './key-download-files.js';
+import { busyAfterRollback } from './change-proposal-bounds.js';
 import type { Db } from './client.js';
 import { insertEntityVersion } from './entity-versions.js';
 import { undefinedRelation, uniqueViolation } from './pg-errors.js';
@@ -422,12 +425,11 @@ export const createProductRepository = (
         .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
     ).map(parseProduct);
   },
-  create: async (tenantId, product) => {
+  create: async (tenantId, product, options = {}) => {
     try {
       return await db.transaction(async (tx) => {
-        if (!await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId))) {
-          return 'course_unavailable';
-        }
+        const active = await lockActiveCourses(tx, tenantId, product.accessItems.map((item) => item.courseId));
+        if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
         await tx.insert(products).values({
           id: product.id,
           tenantId,
@@ -436,6 +438,7 @@ export const createProductRepository = (
           title: product.title,
           description: product.description,
           coverUrl: product.coverUrl,
+          images: product.images ?? [],
           visibility: product.visibility,
           salesChannel: product.salesChannel,
           deliveryMethod: product.deliveryMethod,
@@ -469,6 +472,7 @@ export const createProductRepository = (
         title: product.title,
         description: product.description,
         coverUrl: product.coverUrl,
+        ...(product.images === undefined ? {} : { images: product.images }),
         visibility: product.visibility,
         ...(product.salesChannel === undefined ? {} : { salesChannel: product.salesChannel }),
         deliveryMethod: product.deliveryMethod,
@@ -485,15 +489,15 @@ export const createProductRepository = (
     const row = rows[0];
     return row ? parseProduct(row) : null;
   }),
-  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds) =>
-    db.transaction(async (tx) => {
-      if (!await lockActiveCourses(tx, tenantId, accessItems.map((item) => item.courseId))) {
-        return 'course_unavailable';
-      }
+  updateAccessItems: async (tenantId, id, accessItems, version, checkoutConsentDefinitionIds, options = {}) =>
+    busyAfterRollback(() => db.transaction(async (tx) => {
+      const active = await lockActiveCourses(tx, tenantId, (accessItems ?? []).map((item) => item.courseId));
+      if (!active && options.archivedCourses !== 'write') return 'course_unavailable';
       if (version) await insertEntityVersion(tx, tenantId, version);
-      const changes = checkoutConsentDefinitionIds === undefined
-        ? { accessItems }
-        : { accessItems, checkoutConsentDefinitionIds };
+      const changes = {
+        ...(accessItems === null ? {} : { accessItems }),
+        ...(checkoutConsentDefinitionIds === undefined ? {} : { checkoutConsentDefinitionIds }),
+      };
       const rows = await tx
         .update(products)
         .set(changes)
@@ -501,7 +505,7 @@ export const createProductRepository = (
         .returning();
       const row = rows[0];
       return row ? parseProduct(row) : null;
-    }),
+    }), 'busy' as const),
   setPublished: async (tenantId, id, published) => {
     await db
       .update(products)
@@ -662,7 +666,7 @@ export const createCourseModuleRepository = (db: Db): CourseModuleRepository => 
   },
 });
 
-export const createCourseLessonRepository = (db: Db): CourseLessonRepository => ({
+export const createCourseLessonRepository = (db: Db): CourseLessonRepository & CourseLessonIdLookup => ({
   list: async (tenantId) =>
     (
       await db
@@ -720,6 +724,15 @@ export const createCourseLessonRepository = (db: Db): CourseLessonRepository => 
         .from(courseLessons)
         .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
     ).map(parseLesson);
+  },
+  existingIds: async (tenantId, ids) => {
+    if (ids.length === 0) return [];
+    return (
+      await db
+        .select({ id: courseLessons.id })
+        .from(courseLessons)
+        .where(and(eq(courseLessons.tenantId, tenantId), inArray(courseLessons.id, ids)))
+    ).map((row) => row.id);
   },
   create: async (tenantId, lesson) => {
     await db.insert(courseLessons).values({ ...lesson, tenantId });
@@ -892,6 +905,7 @@ export const createProductDownloadAssetRepository = (db: Db): ProductDownloadAss
       .where(and(eq(products.tenantId, tenantId), eq(products.id, initial.productId))).for('update');
     const [deleted] = await tx.delete(productDownloadAssets).where(scope).returning();
     if (!deleted) return false;
+    await oweKeyFileDeletions(tx, tenantId, [deleted], new Date().toISOString());
     if (deleted.status === 'ready' && deleted.supersededAt === null) {
       const [latest] = await tx.select().from(productDownloadAssets).where(and(
         eq(productDownloadAssets.tenantId, tenantId),
@@ -1128,29 +1142,37 @@ export const createAccountAvatarTenantReader = (db: Db): AccountAvatarTenantRead
   },
 });
 
+const progressFromRow = (row: typeof memberCourseProgress.$inferSelect): MemberCourseProgress => parseProgress({
+  ...row,
+  lastViewedLessonId: row.lastViewedLessonId ?? undefined,
+  lastViewedModuleId: row.lastViewedModuleId ?? undefined,
+  lastViewedChapterId: row.lastViewedChapterId ?? undefined,
+});
+
+const progressOfPair = (tenantId: string, input: { memberId: string; courseId: string }) => and(
+  eq(memberCourseProgress.tenantId, tenantId),
+  eq(memberCourseProgress.memberId, input.memberId),
+  eq(memberCourseProgress.courseId, input.courseId),
+);
+
+const progressPairTarget = [
+  memberCourseProgress.tenantId,
+  memberCourseProgress.memberId,
+  memberCourseProgress.courseId,
+];
+
+const findProgressOfPair = async (
+  db: Db,
+  tenantId: string,
+  input: { memberId: string; courseId: string },
+): Promise<MemberCourseProgress | null> => {
+  const rows = await db.select().from(memberCourseProgress).where(progressOfPair(tenantId, input)).limit(1);
+  const row = rows[0];
+  return row ? progressFromRow(row) : null;
+};
+
 export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgressRepository => ({
-  findByMemberAndCourse: async (tenantId, input) => {
-    const rows = await db
-      .select()
-      .from(memberCourseProgress)
-      .where(
-        and(
-          eq(memberCourseProgress.tenantId, tenantId),
-          eq(memberCourseProgress.memberId, input.memberId),
-          eq(memberCourseProgress.courseId, input.courseId),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
-    return row
-      ? parseProgress({
-          ...row,
-          lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-          lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-          lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-        })
-      : null;
-  },
+  findByMemberAndCourse: async (tenantId, input) => findProgressOfPair(db, tenantId, input),
   listByMember: async (tenantId, memberId) => {
     const rows = await db
       .select()
@@ -1161,17 +1183,10 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
           eq(memberCourseProgress.memberId, memberId),
         ),
       );
-    return rows.map((row) =>
-      parseProgress({
-        ...row,
-        lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-        lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-        lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-      }),
-    );
+    return rows.map(progressFromRow);
   },
-  findOrCreate: async (tenantId, input) => {
-    await db
+  addCompletedLesson: async (tenantId, input) => db.transaction(async (tx) => {
+    await tx
       .insert(memberCourseProgress)
       .values({
         id: input.id,
@@ -1181,32 +1196,52 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
         completedLessonIds: [],
         updatedAt: input.now,
       })
-      .onConflictDoNothing({
-        target: [
-          memberCourseProgress.tenantId,
-          memberCourseProgress.memberId,
-          memberCourseProgress.courseId,
-        ],
-      });
-    const rows = await db
+      .onConflictDoNothing({ target: progressPairTarget });
+    const [locked] = await tx
       .select()
       .from(memberCourseProgress)
-      .where(
-        and(
-          eq(memberCourseProgress.tenantId, tenantId),
-          eq(memberCourseProgress.memberId, input.memberId),
-          eq(memberCourseProgress.courseId, input.courseId),
-        ),
-      )
-      .limit(1);
-    const row = rows[0];
-    if (!row) throw new Error('Progress create/read failed inside repository');
-    return parseProgress({
-      ...row,
-      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-    });
+      .where(progressOfPair(tenantId, input))
+      .limit(1)
+      .for('update');
+    if (locked === undefined) throw new Error('Progress create/read failed inside repository');
+    if (locked.completedLessonIds.includes(input.lessonId)) return progressFromRow(locked);
+    const [changed] = await tx
+      .update(memberCourseProgress)
+      .set({ completedLessonIds: [...locked.completedLessonIds, input.lessonId], updatedAt: input.now })
+      .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, locked.id)))
+      .returning();
+    if (changed === undefined) throw new Error('Locked progress row vanished inside repository');
+    await appendMemberEvent(tx, memberEventSchema.parse({
+      id: `lesson-completion:${input.id}`,
+      tenantId,
+      memberId: changed.memberId,
+      type: 'lesson-completion',
+      payload: { courseId: changed.courseId, lessonId: input.lessonId },
+      occurredAt: input.now,
+    }));
+    return progressFromRow(changed);
+  }),
+  setLastViewed: async (tenantId, input) => {
+    const pointers = {
+      ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
+      ...(input.moduleId === undefined ? {} : { lastViewedModuleId: input.moduleId }),
+      ...(input.chapterId === undefined ? {} : { lastViewedChapterId: input.chapterId }),
+    };
+    const [row] = await db
+      .insert(memberCourseProgress)
+      .values({
+        id: input.id,
+        tenantId,
+        memberId: input.memberId,
+        courseId: input.courseId,
+        ...pointers,
+        completedLessonIds: [],
+        updatedAt: input.now,
+      })
+      .onConflictDoUpdate({ target: progressPairTarget, set: { ...pointers, updatedAt: input.now } })
+      .returning();
+    if (row === undefined) throw new Error('Progress upsert returned no row inside repository');
+    return progressFromRow(row);
   },
   update: async (tenantId, progress) => db.transaction(async (tx) => {
     const [current] = await tx
@@ -1239,12 +1274,37 @@ export const createMemberCourseProgressRepository = (db: Db): MemberCourseProgre
         occurredAt: progress.updatedAt,
       }));
     }
-    return parseProgress({
-      ...row,
-      lastViewedLessonId: row.lastViewedLessonId ?? undefined,
-      lastViewedModuleId: row.lastViewedModuleId ?? undefined,
-      lastViewedChapterId: row.lastViewedChapterId ?? undefined,
-    });
+    return progressFromRow(row);
+  }),
+  removeCompletedLesson: async (tenantId, input) => db.transaction(async (tx) => {
+    if (input.courseIds.length === 0) return [];
+    const locked = await tx
+      .select()
+      .from(memberCourseProgress)
+      .where(and(
+        eq(memberCourseProgress.tenantId, tenantId),
+        eq(memberCourseProgress.memberId, input.memberId),
+        inArray(memberCourseProgress.courseId, input.courseIds),
+      ))
+      .orderBy(asc(memberCourseProgress.courseId))
+      .for('update');
+    const saved = [];
+    for (const row of locked) {
+      if (!row.completedLessonIds.includes(input.lessonId)) {
+        saved.push(row);
+        continue;
+      }
+      const [updated] = await tx
+        .update(memberCourseProgress)
+        .set({
+          completedLessonIds: sql`${memberCourseProgress.completedLessonIds} - ${input.lessonId}::text`,
+          updatedAt: input.now,
+        })
+        .where(and(eq(memberCourseProgress.tenantId, tenantId), eq(memberCourseProgress.id, row.id)))
+        .returning();
+      if (updated !== undefined) saved.push(updated);
+    }
+    return saved.map(progressFromRow);
   }),
   countReferencingLesson: async (tenantId, lessonId) => {
     const rows = await db
@@ -3333,6 +3393,7 @@ export const createProductGrantRepository = (db: Db): ProductGrantRepository => 
           title: products.title,
           description: products.description,
           coverUrl: products.coverUrl,
+          images: products.images,
           priceCents: products.priceCents,
           vatRate: products.vatRate,
           vatExemptionBasis: products.vatExemptionBasis,

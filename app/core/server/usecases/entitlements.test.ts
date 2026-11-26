@@ -238,14 +238,13 @@ const progressRepo = (rows: MemberCourseProgress[]): MemberCourseProgressReposit
     ) ?? null,
   listByMember: async (tenantId, memberId) =>
     rows.filter((r) => r.tenantId === tenantId && r.memberId === memberId),
-  findOrCreate: async (tenantId, input) => ({
-    id: input.id,
-    tenantId,
-    memberId: input.memberId,
-    courseId: input.courseId,
-    completedLessonIds: [],
-    updatedAt: input.now,
-  }),
+  addCompletedLesson: async () => {
+    throw new Error('not used');
+  },
+  removeCompletedLesson: async () => [],
+  setLastViewed: async () => {
+    throw new Error('not used');
+  },
   update: async (_t, progress) => progress,
   countReferencingLesson: async (tenantId, lessonId) =>
     rows.filter(
@@ -437,6 +436,61 @@ describe('isLessonAccessible — course-level exclusions', () => {
       ok: false,
       error: { code: 'forbidden' },
     });
+  });
+});
+
+describe('exclusions of a module that two courses share', () => {
+  const active = (productId: string, id: string): ProductGrant =>
+    grant(id, productId, '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z');
+  const shared = { ...m2, courseIds: ['c1', 'c2'] };
+  const c1WithoutM2 = { level: 'course' as const, courseId: 'c1', excludedModuleIds: ['m2'] };
+  const sharedDeps = (products: Product[]) =>
+    deps(products.map((row, index) => active(row.id, `g${String(index)}`)), products, [c1, c2], [m1, shared]);
+  const moduleStatus = async (d: CourseAccessDeps, courseId: string, moduleId: string) => {
+    const result = await getCourseStructureWithAccess(ctx({}), courseId, d);
+    if (!result.ok) throw new Error('expected ok');
+    return result.value.modules.find((row) => row.id === moduleId)?.accessStatus;
+  };
+  const expectOpensOnlyInC2 = async (d: CourseAccessDeps) => {
+    expect(await isLessonAccessible(ctx({}), 'l4', d)).toMatchObject({ ok: true });
+    expect(await moduleStatus(d, 'c2', 'm2')).toBe('fully-accessible');
+    expect(await moduleStatus(d, 'c1', 'm2')).toBe('not-accessible');
+    expect(await moduleStatus(d, 'c1', 'm1')).toBe('fully-accessible');
+  };
+
+  it('opens the module in a course another product grants whole, and not in the course whose item excludes it', async () => {
+    await expectOpensOnlyInC2(sharedDeps([product('p-c2', [{ level: 'course', courseId: 'c2' }]), product('p-c1-without-m2', [c1WithoutM2])]));
+  });
+
+  it('opens it in the other course when one product names both courses', async () => {
+    await expectOpensOnlyInC2(sharedDeps([product('p-both', [c1WithoutM2, { level: 'course', courseId: 'c2' }])]));
+  });
+
+  it('opens it in the excluding course when another product grants that course without the exclusion', async () => {
+    const d = sharedDeps([product('p-c1-without-m2', [c1WithoutM2]), product('p-c1', [{ level: 'course', courseId: 'c1' }])]);
+    expect(await isLessonAccessible(ctx({}), 'l4', d)).toMatchObject({ ok: true });
+    expect(await moduleStatus(d, 'c1', 'm2')).toBe('fully-accessible');
+  });
+
+  it('opens it in both courses when a modules item names it', async () => {
+    const d = sharedDeps([product('p-c1-without-m2', [c1WithoutM2]), product('p-m2', [{ level: 'modules', courseId: 'c2', moduleIds: ['m2'] }])]);
+    expect(await moduleStatus(d, 'c1', 'm2')).toBe('fully-accessible');
+    expect(await moduleStatus(d, 'c2', 'm2')).toBe('fully-accessible');
+  });
+
+  it('keeps it closed everywhere for a member who has only the course without it', async () => {
+    const d = sharedDeps([product('p-c1-without-m2', [c1WithoutM2])]);
+    expect(await isLessonAccessible(ctx({}), 'l4', d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await moduleStatus(d, 'c2', 'm2')).toBe('not-accessible');
+  });
+
+  it('plays a lesson of the module for a member who has only the second course it is attached to', async () => {
+    const d = sharedDeps([product('p-c2', [{ level: 'course', courseId: 'c2' }])]);
+    expect(await getAccessibleLesson(ctx({}), 'l4', d)).toMatchObject({ ok: true, value: { id: 'l4' } });
+    expect(await isLessonAccessible(ctx({}), 'l1', d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    const listed = await listMyCourses(ctx({}), d);
+    if (!listed.ok) throw new Error('expected ok');
+    expect(listed.value.map((row) => row.id)).toEqual(['c2']);
   });
 });
 
@@ -798,6 +852,64 @@ describe('getNextLesson', () => {
 
   it('returns null at the very end of the course', async () => {
     expect(await getNextLesson(ctx({}), 'l6', d)).toEqual({ ok: true, value: null });
+  });
+
+  describe('for a lesson whose module two courses share', () => {
+    const m3 = module('m3', '1998-03-01T00:00:00.000Z', [
+      { id: 'ch5', name: 'Chapter 5', contents: [{ id: 'c-l7', name: 'C L7', lessonId: 'l7' }] },
+    ], ['c2']);
+    const shared = { ...m2, courseIds: ['c1', 'c2'] };
+    const withGrants = (accessItems: Product['accessItems']) => deps(
+      [grant('g1', 'p-shared', '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z')],
+      [product('p-shared', accessItems)],
+      [c1, course('c2', ['m2', 'm3'])],
+      [m1, shared, m3],
+      [],
+      [...lessons, lesson('l7')],
+    );
+
+    it('walks the course that opens the lesson for a member who holds only the second course', async () => {
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([{ level: 'course', courseId: 'c2' }]))).toEqual({ ok: true, value: { id: 'l7', name: 'Lesson l7' } });
+    });
+
+    it('walks the course that opens it when the item of the first course excludes the module', async () => {
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([
+        { level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] },
+        { level: 'course', courseId: 'c2' },
+      ]))).toEqual({ ok: true, value: { id: 'l7', name: 'Lesson l7' } });
+    });
+
+    it('walks the first course for a member whose items open no course holding the lesson', async () => {
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([
+        { level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] },
+      ]))).toEqual({ ok: true, value: null });
+      expect(await getNextLesson(ctx({}), 'l6', withGrants([]))).toEqual({ ok: true, value: null });
+    });
+
+    it('keeps walking the first course for a member it opens the lesson for, and for staff', async () => {
+      const both = withGrants([{ level: 'course', courseId: 'c2' }, { level: 'course', courseId: 'c1' }]);
+      expect(await getNextLesson(ctx({}), 'l6', both)).toEqual({ ok: true, value: null });
+      expect(await getNextLesson(ctx({ staffRole: 'owner', memberId: null }), 'l6', withGrants([]))).toEqual({ ok: true, value: null });
+    });
+  });
+
+  it('walks on from the occurrence that opens the lesson when one course holds it in two modules', async () => {
+    const closedFirst = module('m-closed', '1998-03-01T00:00:00.000Z', [
+      { id: 'ch-closed', name: 'Closed', contents: [{ id: 'c-twice-1', name: 'Twice', lessonId: 'l-twice' }, { id: 'c-after-closed', name: 'After closed', lessonId: 'l-after-closed' }] },
+    ], ['c-dup']);
+    const openSecond = module('m-open', '1998-03-02T00:00:00.000Z', [
+      { id: 'ch-open', name: 'Open', contents: [{ id: 'c-twice-2', name: 'Twice', lessonId: 'l-twice' }, { id: 'c-after-open', name: 'After open', lessonId: 'l-after-open' }] },
+    ], ['c-dup']);
+    const d = deps(
+      [grant('g1', 'p-open', '1998-05-01T00:00:00.000Z', '1998-07-01T00:00:00.000Z')],
+      [product('p-open', [{ level: 'modules', courseId: 'c-dup', moduleIds: ['m-open'] }])],
+      [course('c-dup', ['m-closed', 'm-open'])],
+      [closedFirst, openSecond],
+      [],
+      [lesson('l-twice'), lesson('l-after-closed'), lesson('l-after-open')],
+    );
+    expect(await getNextLesson(ctx({}), 'l-twice', d)).toEqual({ ok: true, value: { id: 'l-after-open', name: 'Lesson l-after-open' } });
+    expect(await getNextLesson(ctx({ staffRole: 'owner', memberId: null }), 'l-twice', d)).toEqual({ ok: true, value: { id: 'l-after-closed', name: 'Lesson l-after-closed' } });
   });
 
   it('unknown lesson is not found', async () => {

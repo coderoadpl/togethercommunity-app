@@ -1,0 +1,798 @@
+import { and, asc, count, desc, eq, inArray, isNull, lt, lte, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
+
+import {
+  KEY_DOWNLOAD_FILE_LIMITS,
+  keyDownloadDestinationForFile,
+  keyDownloadObjectOwner,
+  keyDownloadPendingDeletionSchema,
+  keyDownloadRecordEventSchema,
+  keyDownloadStagedFileSchema,
+  keyDownloadStagedKey,
+  keyDownloadUploadRecordSchema,
+  productDownloadAssetSchema,
+  type KeyDownloadFileCap,
+  type KeyDownloadPendingDeletion,
+  type KeyDownloadRecordEvent,
+  type KeyDownloadStagedFile,
+  type KeyDownloadUploadRecord,
+} from '#core/domain/index.js';
+import type {
+  ChangeProposalProductFiles,
+  KeyDownloadAttachment,
+  KeyDownloadAttachRepository,
+  KeyDownloadClaim,
+  KeyDownloadCompletion,
+  KeyDownloadFileRepository,
+  KeyDownloadInterruption,
+  KeyDownloadObjectRemoval,
+  KeyDownloadRelease,
+  KeyDownloadReservation,
+  KeyDownloadStagedSweep,
+  KeyDownloadSweepCutoffs,
+  KeyDownloadSweepRow,
+} from '#core/server/index.js';
+
+import { boundedAdvisoryLock, lockWaitMs } from './bounded-advisory-lock.js';
+import { boundLockWait, boundStatementTime, busyAfterRollback, changeProposalBounds, type ChangeProposalBoundOptions } from './change-proposal-bounds.js';
+import type { Db } from './client.js';
+import {
+  changeProposalDownloadDeletions as deletions,
+  changeProposalDownloadFiles as stagedFiles,
+  changeProposalDownloadUploadEvents as recordEvents,
+  changeProposalDownloadUploads as records,
+  changeProposals,
+  productDownloadAssets,
+  products,
+  productStock,
+  shopManagementKeys,
+} from './schema.js';
+
+type StagedRow = typeof stagedFiles.$inferSelect;
+type RecordRow = typeof records.$inferSelect;
+
+const copiedFromOf = (row: { copiedFromProductId: string | null; copiedFromAssetId: string | null; copiedFromVersion: number | null }) =>
+  row.copiedFromProductId === null || row.copiedFromAssetId === null || row.copiedFromVersion === null
+    ? null
+    : { productId: row.copiedFromProductId, assetId: row.copiedFromAssetId, versionNumber: row.copiedFromVersion };
+
+const copiedFromColumns = (source: KeyDownloadStagedFile['copiedFrom']) => ({
+  copiedFromProductId: source?.productId ?? null,
+  copiedFromAssetId: source?.assetId ?? null,
+  copiedFromVersion: source?.versionNumber ?? null,
+});
+
+const parseStaged = (row: StagedRow): KeyDownloadStagedFile => keyDownloadStagedFileSchema.parse({
+  tenantId: row.tenantId,
+  id: row.id,
+  apiKeyId: row.apiKeyId,
+  fileName: row.fileName,
+  contentType: row.contentType,
+  sizeBytes: row.sizeBytes,
+  sha256: row.sha256,
+  objectKey: row.objectKey,
+  copiedFrom: copiedFromOf(row),
+  proposalId: row.proposalId,
+  createdAt: row.createdAt,
+});
+
+const parseRecord = (row: RecordRow): KeyDownloadUploadRecord => keyDownloadUploadRecordSchema.parse({
+  tenantId: row.tenantId,
+  id: row.id,
+  apiKeyId: row.apiKeyId,
+  kind: row.kind,
+  state: row.state,
+  fileId: row.fileId,
+  fileName: row.fileName,
+  contentType: row.contentType,
+  declaredBytes: row.declaredBytes,
+  candidateKey: row.candidateKey,
+  stagedKey: row.stagedKey,
+  copiedFrom: copiedFromOf(row),
+  attemptId: row.attemptId,
+  attemptAt: row.attemptAt,
+  createdAt: row.createdAt,
+  completedAt: row.completedAt,
+});
+
+const parseEvent = (row: typeof recordEvents.$inferSelect): KeyDownloadRecordEvent => keyDownloadRecordEventSchema.parse({
+  tenantId: row.tenantId,
+  recordId: row.recordId,
+  apiKeyId: row.apiKeyId,
+  kind: row.kind,
+  attemptId: row.attemptId,
+  reason: row.reason,
+  at: row.at,
+});
+
+const parseDeletion = (row: typeof deletions.$inferSelect): KeyDownloadPendingDeletion => keyDownloadPendingDeletionSchema.parse({
+  tenantId: row.tenantId,
+  apiKeyId: row.apiKeyId,
+  objectKey: row.objectKey,
+  sizeBytes: row.sizeBytes,
+  createdAt: row.createdAt,
+  notBefore: row.notBefore,
+});
+
+/** The second delete of an upload object is due when the daily limit stops counting the upload's bytes; until then that limit counts them. */
+const UPLOAD_OBJECT_PATTERN = '%/product-downloads/key-uploads/%';
+
+const workspaceLock = (tenantId: string): string => `key-download-files:${tenantId}`;
+
+const keyLock = (tenantId: string, apiKeyId: string): string => `key-download-files:${tenantId}:${apiKeyId}`;
+
+const before = (now: string, ms: number): string => new Date(Date.parse(now) - ms).toISOString();
+
+interface Usage {
+  keyFiles: number;
+  keyBytes: number;
+  workspaceBytes: number;
+  keyStarts: number;
+  keyDailyBytes: number;
+}
+
+const wholeNumberOf = (row: unknown, column: string): number => {
+  const value = Number(typeof row === 'object' && row !== null ? Reflect.get(row, column) : undefined);
+  if (!Number.isSafeInteger(value)) throw new Error(`Staging usage column ${column} is not a whole number`);
+  return value;
+};
+
+const firstRowOf = (result: unknown): unknown =>
+  typeof result === 'object' && result !== null && 'rows' in result && Array.isArray(result.rows) ? result.rows[0] : undefined;
+
+/**
+ * One statement, so every count reads one snapshot: an object whose ownership moves from an upload record to a staged
+ * row while it runs is counted exactly once. A completed upload's file is counted through its staged row or its owed
+ * deletion, never again through its record; a file attached to a product has left the staging budget.
+ */
+const usageOf = async (tx: Db, tenantId: string, apiKeyId: string, now: string): Promise<Usage> => {
+  const result = await tx.execute(sql`
+    with staged as (
+      select ${stagedFiles.apiKeyId} as api_key_id, ${stagedFiles.sizeBytes}::bigint as bytes
+      from ${stagedFiles} where ${stagedFiles.tenantId} = ${tenantId}
+    ), owed as (
+      select ${deletions.apiKeyId} as api_key_id, ${deletions.sizeBytes}::bigint as bytes
+      from ${deletions} where ${deletions.tenantId} = ${tenantId}
+        and not (${deletions.objectKey} like ${UPLOAD_OBJECT_PATTERN} and ${deletions.notBefore} > ${now})
+    ), open as (
+      select ${records.apiKeyId} as api_key_id, ${records.createdAt} as created_at, ${records.declaredBytes}::bigint as declared,
+        ${records.declaredBytes}::bigint * ((${records.candidateKey} is not null)::int + (${records.stagedKey} is not null)::int) as bytes,
+        ${records.state} in ('started', 'completing', 'interrupted', 'failed')
+          and (${records.candidateKey} is not null or ${records.stagedKey} is not null) as holds_file
+      from ${records} where ${records.tenantId} = ${tenantId} and ${records.state} <> 'settled'
+    ), started as (
+      select ${records.createdAt} as created_at, ${records.declaredBytes}::bigint as declared
+      from ${records} where ${records.tenantId} = ${tenantId} and ${records.apiKeyId} = ${apiKeyId}
+    )
+    select
+      (select count(*) from staged where api_key_id = ${apiKeyId})
+        + (select count(*) from owed where api_key_id = ${apiKeyId})
+        + (select count(*) from open where api_key_id = ${apiKeyId} and holds_file) as key_files,
+      (select coalesce(sum(bytes), 0) from staged where api_key_id = ${apiKeyId})
+        + (select coalesce(sum(bytes), 0) from owed where api_key_id = ${apiKeyId})
+        + (select coalesce(sum(bytes), 0) from open where api_key_id = ${apiKeyId}) as key_bytes,
+      (select coalesce(sum(bytes), 0) from staged) + (select coalesce(sum(bytes), 0) from owed)
+        + (select coalesce(sum(bytes), 0) from open) as workspace_bytes,
+      (select count(*) from started where created_at > ${before(now, KEY_DOWNLOAD_FILE_LIMITS.startsWindowMs)}) as key_starts,
+      (select coalesce(sum(declared), 0) from started where created_at > ${before(now, KEY_DOWNLOAD_FILE_LIMITS.dailyWindowMs)}) as key_daily_bytes
+  `);
+  const row = firstRowOf(result);
+  return {
+    keyFiles: wholeNumberOf(row, 'key_files'),
+    keyBytes: wholeNumberOf(row, 'key_bytes'),
+    workspaceBytes: wholeNumberOf(row, 'workspace_bytes'),
+    keyStarts: wholeNumberOf(row, 'key_starts'),
+    keyDailyBytes: wholeNumberOf(row, 'key_daily_bytes'),
+  };
+};
+
+const capReached = (usage: Usage, record: KeyDownloadUploadRecord): KeyDownloadFileCap | null => {
+  const limits = KEY_DOWNLOAD_FILE_LIMITS;
+  const objectBytes = record.declaredBytes * ((record.candidateKey === null ? 0 : 1) + (record.stagedKey === null ? 0 : 1));
+  if (usage.keyStarts >= limits.startsPerKey) return 'key_file_uploads';
+  if (usage.keyDailyBytes + record.declaredBytes > limits.declaredBytesPerKeyDaily) return 'key_file_bytes_daily';
+  if (usage.keyFiles >= limits.stagedFilesPerKey) return 'key_staged_files';
+  if (usage.keyBytes + objectBytes > limits.stagedBytesPerKey) return 'key_staged_bytes';
+  if (usage.workspaceBytes + objectBytes > limits.stagedBytesPerWorkspace) return 'workspace_staged_bytes';
+  return null;
+};
+
+/** A takeover keeps the record's two objects and owes the superseded destination, so it adds one file and its bytes. */
+const takeoverCapReached = (usage: Usage, declaredBytes: number): KeyDownloadFileCap | null => {
+  const limits = KEY_DOWNLOAD_FILE_LIMITS;
+  if (usage.keyFiles >= limits.stagedFilesPerKey) return 'key_staged_files';
+  if (usage.keyBytes + declaredBytes > limits.stagedBytesPerKey) return 'key_staged_bytes';
+  if (usage.workspaceBytes + declaredBytes > limits.stagedBytesPerWorkspace) return 'workspace_staged_bytes';
+  return null;
+};
+
+const recordValues = (record: KeyDownloadUploadRecord) => ({
+  tenantId: record.tenantId,
+  id: record.id,
+  apiKeyId: record.apiKeyId,
+  kind: record.kind,
+  state: record.state,
+  fileId: record.fileId,
+  fileName: record.fileName,
+  contentType: record.contentType,
+  declaredBytes: record.declaredBytes,
+  candidateKey: record.candidateKey,
+  stagedKey: record.stagedKey,
+  ...copiedFromColumns(record.copiedFrom),
+  attemptId: record.attemptId,
+  attemptAt: record.attemptAt,
+  createdAt: record.createdAt,
+  completedAt: record.completedAt,
+});
+
+const recordOf = (tenantId: string, id: string): SQL | undefined => and(eq(records.tenantId, tenantId), eq(records.id, id));
+
+const stagedOf = (tenantId: string, id: string): SQL | undefined => and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.id, id));
+
+const deletionOf = (tenantId: string, objectKey: string): SQL | undefined =>
+  and(eq(deletions.tenantId, tenantId), eq(deletions.objectKey, objectKey));
+
+const objectOwned = async (tx: Db, tenantId: string, objectKey: string): Promise<boolean> => {
+  const [staged] = await tx.select({ id: stagedFiles.id }).from(stagedFiles)
+    .where(and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.objectKey, objectKey))).limit(1);
+  if (staged !== undefined) return true;
+  const [asset] = await tx.select({ id: productDownloadAssets.id }).from(productDownloadAssets)
+    .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.storageKey, objectKey))).limit(1);
+  return asset !== undefined;
+};
+
+const recordSweepable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined => and(
+  ne(records.state, 'settled'),
+  lt(records.createdAt, cutoffs.recordsStartedBefore),
+  or(notInArray(records.state, ['completing', 'interrupted']), lt(records.attemptAt, cutoffs.attemptsStartedBefore)),
+);
+
+const recordPurgeable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined =>
+  and(eq(records.state, 'settled'), lt(records.createdAt, cutoffs.settledStartedBefore));
+
+const keyActive = (now: string): SQL => sql`exists (select 1 from ${shopManagementKeys} where ${shopManagementKeys.tenantId} = ${stagedFiles.tenantId}
+  and ${shopManagementKeys.id} = ${stagedFiles.apiKeyId} and ${shopManagementKeys.revokedAt} is null and ${shopManagementKeys.expiresAt} > ${now})`;
+
+const attachedToPendingProposal = (now: string): SQL => sql`exists (select 1 from ${changeProposals} where ${changeProposals.tenantId} = ${stagedFiles.tenantId}
+  and ${changeProposals.id} = ${stagedFiles.proposalId} and ${changeProposals.status} = 'pending' and ${changeProposals.expiresAt} > ${now})`;
+
+const heldByEndedProposal = (now: string): SQL => sql`exists (select 1 from ${changeProposals} where ${changeProposals.tenantId} = ${stagedFiles.tenantId}
+  and ${changeProposals.id} = ${stagedFiles.proposalId}
+  and (${changeProposals.status} in ('rejected', 'withdrawn') or (${changeProposals.status} = 'pending' and ${changeProposals.expiresAt} <= ${now})))`;
+
+// A rejected, withdrawn or expired holder still owes its release, which runs after its decision commits; until then the
+// row is not the key's to propose again, or that release would find nothing to discard.
+const claimedByAnyProposal = sql`exists (select 1 from ${changeProposals} where ${changeProposals.tenantId} = ${stagedFiles.tenantId}
+  and ${changeProposals.id} = ${stagedFiles.proposalId} and ${changeProposals.status} not in ('stale', 'failed'))`;
+
+const stagedSweepable = (cutoffs: KeyDownloadSweepCutoffs): SQL | undefined => and(
+  or(lt(stagedFiles.createdAt, cutoffs.stagedCreatedBefore), sql`not ${keyActive(cutoffs.now)}`, heldByEndedProposal(cutoffs.now)),
+  sql`not ${attachedToPendingProposal(cutoffs.now)}`,
+);
+
+const distinctIds = (ids: readonly string[]): string[] => [...new Set(ids)].sort();
+
+/**
+ * The caller must already hold the rows. The hold is checked in a statement after the locking one because a check inside
+ * the locking statement would read the snapshot taken before its lock wait, and so miss a proposal that took the file
+ * while it waited.
+ */
+const unheldAmong = async (tx: Db, tenantId: string, ids: readonly string[], now: string): Promise<Set<string>> => {
+  if (ids.length === 0) return new Set();
+  const free = await tx.select({ id: stagedFiles.id }).from(stagedFiles)
+    .where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, [...ids]), sql`not ${attachedToPendingProposal(now)}`));
+  return new Set(free.map((row) => row.id));
+};
+
+export const holdProposedFiles = async (tx: Db, tenantId: string, apiKeyId: string, ids: readonly string[]): Promise<boolean> => {
+  const wanted = distinctIds(ids);
+  if (wanted.length === 0) return true;
+  const locked = await tx.select({ id: stagedFiles.id }).from(stagedFiles)
+    .where(and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.apiKeyId, apiKeyId), inArray(stagedFiles.id, wanted)))
+    .orderBy(asc(stagedFiles.id)).for('update');
+  if (locked.length !== wanted.length) return false;
+  const free = await tx.select({ id: stagedFiles.id }).from(stagedFiles)
+    .where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, wanted), sql`not ${claimedByAnyProposal}`));
+  return free.length === wanted.length;
+};
+
+export const linkProposedFiles = async (tx: Db, tenantId: string, apiKeyId: string, ids: readonly string[], proposalId: string): Promise<void> => {
+  const wanted = distinctIds(ids);
+  if (wanted.length === 0) return;
+  await tx.update(stagedFiles).set({ proposalId })
+    .where(and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.apiKeyId, apiKeyId), inArray(stagedFiles.id, wanted)));
+};
+
+const waitingSince = (table: typeof records | typeof stagedFiles | typeof deletions): SQL<string> =>
+  sql<string>`coalesce(${table.sweepAttemptedAt}, ${table.createdAt})`;
+
+const appendEvent = async (tx: Db, event: KeyDownloadRecordEvent): Promise<void> => {
+  const parsed = keyDownloadRecordEventSchema.parse(event);
+  await tx.insert(recordEvents).values(parsed);
+};
+
+const eventOf = (
+  row: Pick<RecordRow, 'tenantId' | 'id' | 'apiKeyId'>,
+  kind: KeyDownloadRecordEvent['kind'],
+  attemptId: string | null,
+  reason: string | null,
+  at: string,
+): KeyDownloadRecordEvent => ({ tenantId: row.tenantId, recordId: row.id, apiKeyId: row.apiKeyId, kind, attemptId, reason, at });
+
+const after = (at: string, ms: number): string => new Date(Date.parse(at) + ms).toISOString();
+
+const leaseEnd = (attemptAt: string): string => after(attemptAt, KEY_DOWNLOAD_FILE_LIMITS.completionDeadlineMs);
+
+const deletionDue = (now: string): SQL | undefined => or(isNull(deletions.notBefore), lte(deletions.notBefore, now));
+
+/** The debt is the key's whose key-files prefix holds the object, whoever removed the file, so that key's limits carry it. */
+export const oweKeyFileDeletions = async (
+  tx: Db,
+  tenantId: string,
+  assets: ReadonlyArray<{ storageKey: string; sizeBytes: number }>,
+  now: string,
+): Promise<KeyDownloadPendingDeletion[]> => {
+  const owed: KeyDownloadPendingDeletion[] = [];
+  for (const asset of assets) {
+    const apiKeyId = keyDownloadObjectOwner(tenantId, asset.storageKey);
+    if (apiKeyId === null) continue;
+    const deletion = keyDownloadPendingDeletionSchema.parse({
+      tenantId, apiKeyId, objectKey: asset.storageKey, sizeBytes: asset.sizeBytes, createdAt: now, notBefore: null,
+    });
+    await tx.insert(deletions).values({
+      tenantId, objectKey: deletion.objectKey, apiKeyId, sizeBytes: deletion.sizeBytes, createdAt: deletion.createdAt,
+    }).onConflictDoNothing();
+    owed.push(deletion);
+  }
+  return owed;
+};
+
+export const createKeyDownloadFileRepository = (db: Db, options: ChangeProposalBoundOptions = {}): KeyDownloadFileRepository => {
+  const bounds = changeProposalBounds(options);
+  const waits = { lockWaitMs: bounds.lockWaitMs, lockWaitAfterMs: bounds.lockWaitMs };
+  const locked = <T>(work: (tx: Db) => Promise<T>, busy: T, wait?: number): Promise<T> => busyAfterRollback(() => db.transaction(async (tx) => {
+    await boundLockWait(tx, { lockWaitMs: wait === undefined ? bounds.lockWaitMs : Math.min(bounds.lockWaitMs, lockWaitMs(wait)) });
+    return work(tx);
+  }), busy);
+  const within = async <T>(boundMs: number | undefined, run: (executor: Db) => Promise<T>, outOfTime: T): Promise<T> => {
+    if (boundMs === undefined) return run(db);
+    const ms = Math.max(1, Math.floor(boundMs));
+    return busyAfterRollback(() => db.transaction(async (tx) => {
+      await boundStatementTime(tx, ms);
+      await boundLockWait(tx, { lockWaitMs: ms });
+      return run(tx);
+    }), outOfTime);
+  };
+  return {
+    reserve: (tenantId, record, now) => {
+      const parsed = keyDownloadUploadRecordSchema.parse(record);
+      if (parsed.tenantId !== tenantId) throw new Error('An upload record belongs to another tenant');
+      return busyAfterRollback(() => db.transaction(async (tx): Promise<KeyDownloadReservation> => {
+        if (!await boundedAdvisoryLock(tx, workspaceLock(tenantId), waits)) return { kind: 'busy' };
+        if (!await boundedAdvisoryLock(tx, keyLock(tenantId, parsed.apiKeyId), waits)) return { kind: 'busy' };
+        const cap = capReached(await usageOf(tx, tenantId, parsed.apiKeyId, now), parsed);
+        if (cap !== null) return { kind: 'cap_exceeded', cap };
+        await tx.insert(records).values(recordValues(parsed));
+        await appendEvent(tx, eventOf(parsed, 'started', parsed.attemptId, parsed.kind, now));
+        return { kind: 'reserved', record: parsed };
+      }), { kind: 'busy' } as const);
+    },
+    claimCompletion: (tenantId, apiKeyId, uploadId, attemptId, now, nextFileId) => locked(async (tx): Promise<KeyDownloadClaim> => {
+      const ownRecord = and(recordOf(tenantId, uploadId), eq(records.apiKeyId, apiKeyId), eq(records.kind, 'upload'));
+      const [seen] = await tx.select({ attemptAt: records.attemptAt }).from(records)
+        .where(and(ownRecord, inArray(records.state, ['completing', 'interrupted'])));
+      const budgetLocked = seen?.attemptAt !== null && seen?.attemptAt !== undefined && now >= leaseEnd(seen.attemptAt);
+      if (budgetLocked) {
+        if (!await boundedAdvisoryLock(tx, workspaceLock(tenantId), waits)) return { kind: 'busy' };
+        if (!await boundedAdvisoryLock(tx, keyLock(tenantId, apiKeyId), waits)) return { kind: 'busy' };
+      }
+      const [row] = await tx.select().from(records).where(ownRecord).for('update');
+      if (row === undefined) return { kind: 'not_found' };
+      const open = Date.parse(now) - Date.parse(row.createdAt) <= KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000;
+      const claim = async (reason: string | null, destination: { fileId: string; stagedKey: string | null }): Promise<KeyDownloadClaim> => {
+        const [claimed] = await tx.update(records).set({ state: 'completing', attemptId, attemptAt: now, ...destination })
+          .where(recordOf(tenantId, uploadId)).returning();
+        if (claimed === undefined) throw new Error('Upload record claim returned no row');
+        await appendEvent(tx, eventOf(row, 'claimed', attemptId, reason, now));
+        return { kind: 'claimed', record: parseRecord(claimed) };
+      };
+      const takeOver = async (superseded: { stagedKey: string; attemptAt: string }): Promise<KeyDownloadClaim> => {
+        const fileId = nextFileId();
+        const stagedKey = keyDownloadDestinationForFile(superseded.stagedKey, row.apiKeyId, fileId);
+        if (stagedKey === null) return { kind: 'closed' };
+        if (!budgetLocked) return { kind: 'busy' };
+        const cap = takeoverCapReached(await usageOf(tx, tenantId, apiKeyId, now), row.declaredBytes);
+        if (cap !== null) return { kind: 'cap_exceeded', cap };
+        await tx.insert(deletions).values({
+          tenantId,
+          objectKey: superseded.stagedKey,
+          apiKeyId: row.apiKeyId,
+          sizeBytes: row.declaredBytes,
+          createdAt: now,
+          notBefore: after(superseded.attemptAt, KEY_DOWNLOAD_FILE_LIMITS.supersededDestinationDeleteAfterMs),
+        }).onConflictDoNothing();
+        return claim('reclaimed', { fileId, stagedKey });
+      };
+      switch (row.state) {
+        case 'started':
+          return open ? claim(null, { fileId: row.fileId, stagedKey: row.stagedKey }) : { kind: 'expired' };
+        case 'completing':
+        case 'interrupted': {
+          if (row.attemptAt === null) throw new Error('A completing upload record has no attempt');
+          const until = leaseEnd(row.attemptAt);
+          if (now < until) {
+            const reclaimable = row.candidateKey !== null && Date.parse(until) - Date.parse(row.createdAt) <= KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000;
+            return { kind: row.state === 'completing' ? 'in_progress' : 'interrupted', until, reclaimable };
+          }
+          return open && row.candidateKey !== null && row.stagedKey !== null
+            ? takeOver({ stagedKey: row.stagedKey, attemptAt: row.attemptAt })
+            : { kind: 'closed' };
+        }
+        case 'completed': {
+          const [file] = await tx.select().from(stagedFiles).where(and(stagedOf(tenantId, row.fileId), eq(stagedFiles.apiKeyId, apiKeyId)));
+          return { kind: 'completed', record: parseRecord(row), file: file === undefined ? null : parseStaged(file) };
+        }
+        case 'failed':
+        case 'settled':
+          return { kind: 'closed' };
+      }
+    }, { kind: 'busy' }),
+    finishCompletion: (tenantId, uploadId, attemptId, file, now) => {
+      const parsed = keyDownloadStagedFileSchema.parse(file);
+      if (parsed.tenantId !== tenantId) throw new Error('A staged file belongs to another tenant');
+      return locked(async (tx): Promise<KeyDownloadCompletion> => {
+        const [row] = await tx.select().from(records).where(recordOf(tenantId, uploadId)).for('update');
+        if (row?.state !== 'completing' || row.attemptId !== attemptId || row.fileId !== parsed.id || row.stagedKey !== parsed.objectKey) {
+          return { kind: 'lost' };
+        }
+        if (row.attemptAt === null || now >= leaseEnd(row.attemptAt)) {
+          await tx.update(records).set({ state: 'interrupted' }).where(recordOf(tenantId, uploadId));
+          await appendEvent(tx, eventOf(row, 'interrupted', attemptId, 'lease_expired', now));
+          return { kind: 'lease_expired' };
+        }
+        await tx.insert(stagedFiles).values({
+          tenantId,
+          id: parsed.id,
+          apiKeyId: parsed.apiKeyId,
+          fileName: parsed.fileName,
+          contentType: parsed.contentType,
+          sizeBytes: parsed.sizeBytes,
+          sha256: parsed.sha256,
+          objectKey: parsed.objectKey,
+          ...copiedFromColumns(parsed.copiedFrom),
+          proposalId: null,
+          createdAt: parsed.createdAt,
+        });
+        const state = row.kind === 'copy' ? 'settled' : 'completed';
+        await tx.update(records).set({ state, completedAt: now, stagedKey: null }).where(recordOf(tenantId, uploadId));
+        await appendEvent(tx, eventOf(row, 'completed', attemptId, null, now));
+        if (state === 'settled') await appendEvent(tx, eventOf(row, 'settled', attemptId, 'copied', now));
+        return { kind: 'stored', file: parsed };
+      }, { kind: 'busy' });
+    },
+    interruptAttempt: (tenantId, uploadId, attemptId, reason, now) => locked(async (tx): Promise<KeyDownloadInterruption> => {
+      const [row] = await tx.select().from(records).where(recordOf(tenantId, uploadId)).for('update');
+      if (row?.state !== 'completing' || row.attemptId !== attemptId || row.attemptAt === null) return { kind: 'kept' };
+      await tx.update(records).set({ state: 'interrupted' }).where(recordOf(tenantId, uploadId));
+      await appendEvent(tx, eventOf(row, 'interrupted', attemptId, reason, now));
+      return { kind: 'interrupted', until: leaseEnd(row.attemptAt) };
+    }, { kind: 'busy' }),
+    releaseRecord: (tenantId, uploadId, selection, remove, wait) => locked(async (tx): Promise<KeyDownloadObjectRemoval> => {
+      const [row] = await tx.select().from(records).where(recordOf(tenantId, uploadId)).for('update');
+      if (row === undefined) return 'gone';
+      const attempt = selection.kind === 'attempt';
+      if (attempt && row.attemptId !== selection.attemptId) return 'kept';
+      if (!attempt) {
+        const [selected] = await tx.select({ id: records.id }).from(records).where(and(recordOf(tenantId, uploadId), recordSweepable(selection.cutoffs)));
+        if (selected === undefined) return 'kept';
+      }
+      const destination = attempt ? selection.destination : row.stagedKey;
+      const objects = [
+        row.candidateKey,
+        destination !== null && !await objectOwned(tx, tenantId, destination) ? destination : null,
+      ].filter((key): key is string => key !== null);
+      const removed = objects.length === 0 || await remove(objects);
+      const failing = attempt && row.state === 'completing';
+      const now = attempt ? selection.now : selection.cutoffs.now;
+      if (!removed) {
+        if (failing) {
+          await tx.update(records).set({ state: 'failed' }).where(recordOf(tenantId, uploadId));
+          await appendEvent(tx, eventOf(row, 'failed', selection.attemptId, selection.reason, now));
+        } else if (!attempt) {
+          await tx.update(records).set({ sweepAttemptedAt: now }).where(recordOf(tenantId, uploadId));
+        }
+        return 'failed';
+      }
+      if (attempt) {
+        await tx.update(records).set({ state: failing ? 'failed' : row.state, stagedKey: null }).where(recordOf(tenantId, uploadId));
+        if (failing) await appendEvent(tx, eventOf(row, 'failed', selection.attemptId, selection.reason, now));
+        return 'removed';
+      }
+      if (row.candidateKey !== null) {
+        await tx.insert(deletions).values({
+          tenantId,
+          objectKey: row.candidateKey,
+          apiKeyId: row.apiKeyId,
+          sizeBytes: row.declaredBytes,
+          createdAt: now,
+          notBefore: after(row.createdAt, KEY_DOWNLOAD_FILE_LIMITS.uploadTtlSeconds * 1000 + KEY_DOWNLOAD_FILE_LIMITS.uploadObjectDeleteAgainAfterMs),
+        }).onConflictDoNothing();
+      }
+      await tx.update(records).set({ state: 'settled', candidateKey: null, stagedKey: null }).where(recordOf(tenantId, uploadId));
+      await appendEvent(tx, eventOf(row, 'settled', row.attemptId, 'swept', now));
+      return 'removed';
+    }, 'busy', wait),
+    findStaged: async (tenantId, apiKeyId, id) => {
+      const [row] = await db.select().from(stagedFiles).where(and(stagedOf(tenantId, id), eq(stagedFiles.apiKeyId, apiKeyId)));
+      return row === undefined ? null : parseStaged(row);
+    },
+    listStaged: async (tenantId, apiKeyId) => (await db.select().from(stagedFiles)
+      .where(and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.apiKeyId, apiKeyId)))
+      .orderBy(asc(stagedFiles.createdAt), asc(stagedFiles.id))).map(parseStaged),
+    listRecordEvents: async (tenantId, recordId) => (await db.select().from(recordEvents)
+      .where(and(eq(recordEvents.tenantId, tenantId), eq(recordEvents.recordId, recordId)))
+      .orderBy(asc(recordEvents.sequence))).map(parseEvent),
+    discard: (tenantId, apiKeyId, id, now) => db.transaction(async (tx) => {
+      const [row] = await tx.select().from(stagedFiles).where(and(stagedOf(tenantId, id), eq(stagedFiles.apiKeyId, apiKeyId))).for('update');
+      if (row === undefined) return null;
+      const [owed] = await oweKeyFileDeletions(tx, tenantId, [{ storageKey: row.objectKey, sizeBytes: row.sizeBytes }], now);
+      await tx.delete(stagedFiles).where(stagedOf(tenantId, id));
+      return owed ?? null;
+    }),
+    finishDeletion: (tenantId, objectKey, now, remove, wait) => locked(async (tx): Promise<KeyDownloadObjectRemoval> => {
+      const [row] = await tx.select().from(deletions).where(deletionOf(tenantId, objectKey)).for('update');
+      if (row === undefined) return 'gone';
+      if (row.notBefore !== null && now < row.notBefore) return 'kept';
+      if (!await remove()) {
+        await tx.update(deletions).set({ sweepAttemptedAt: now }).where(deletionOf(tenantId, objectKey));
+        return 'failed';
+      }
+      await tx.delete(deletions).where(deletionOf(tenantId, objectKey));
+      return 'removed';
+    }, 'busy', wait),
+    sweepStaged: (tenantId, id, cutoffs, wait) => locked(async (tx): Promise<KeyDownloadStagedSweep> => {
+      const [row] = await tx.select().from(stagedFiles).where(stagedOf(tenantId, id)).for('update');
+      if (row === undefined) return { kind: 'gone' };
+      const [selected] = await tx.select({ id: stagedFiles.id }).from(stagedFiles).where(and(stagedOf(tenantId, id), stagedSweepable(cutoffs)));
+      if (selected === undefined) return { kind: 'kept' };
+      const [owed] = await oweKeyFileDeletions(tx, tenantId, [{ storageKey: row.objectKey, sizeBytes: row.sizeBytes }], cutoffs.now);
+      if (owed === undefined) throw new Error('A staged file is outside the key-files prefix');
+      await tx.delete(stagedFiles).where(stagedOf(tenantId, id));
+      return { kind: 'owed', deletion: owed };
+    }, { kind: 'busy' }, wait),
+    listTenantIdsToSweep: (cutoffs, limit, boundMs) => within(boundMs, async (executor) => {
+      const waiting = new Map<string, string>();
+      const collect = (rows: ReadonlyArray<{ tenantId: string; waiting: string | null }>) => {
+        for (const row of rows) {
+          const known = waiting.get(row.tenantId);
+          if (row.waiting !== null && (known === undefined || row.waiting < known)) waiting.set(row.tenantId, row.waiting);
+        }
+      };
+      collect(await executor.select({ tenantId: records.tenantId, waiting: sql<string | null>`min(${waitingSince(records)})` }).from(records)
+        .where(or(recordSweepable(cutoffs), recordPurgeable(cutoffs))).groupBy(records.tenantId));
+      collect(await executor.select({ tenantId: stagedFiles.tenantId, waiting: sql<string | null>`min(${waitingSince(stagedFiles)})` }).from(stagedFiles)
+        .where(stagedSweepable(cutoffs)).groupBy(stagedFiles.tenantId));
+      collect(await executor.select({ tenantId: deletions.tenantId, waiting: sql<string | null>`min(${waitingSince(deletions)})` }).from(deletions)
+        .where(deletionDue(cutoffs.now)).groupBy(deletions.tenantId));
+      collect(await executor.select({ tenantId: recordEvents.tenantId, waiting: sql<string | null>`min(${recordEvents.at})` }).from(recordEvents)
+        .where(lt(recordEvents.at, cutoffs.eventsBefore)).groupBy(recordEvents.tenantId));
+      return [...waiting.entries()]
+        .sort(([leftId, left], [rightId, right]) => left < right ? -1 : left > right ? 1 : leftId < rightId ? -1 : leftId > rightId ? 1 : 0)
+        .slice(0, limit)
+        .map(([tenantId]) => tenantId);
+    }, []),
+    listToSweep: (tenantId, cutoffs, limit, boundMs) => within(boundMs, async (executor): Promise<{ rows: KeyDownloadSweepRow[] }> => {
+      const recordRows = await executor.select({ row: records, waiting: waitingSince(records) }).from(records).where(and(eq(records.tenantId, tenantId), recordSweepable(cutoffs)))
+        .orderBy(asc(waitingSince(records)), asc(records.id)).limit(limit);
+      const stagedRows = await executor.select({ row: stagedFiles, waiting: waitingSince(stagedFiles) }).from(stagedFiles)
+        .where(and(eq(stagedFiles.tenantId, tenantId), stagedSweepable(cutoffs)))
+        .orderBy(asc(waitingSince(stagedFiles)), asc(stagedFiles.id)).limit(limit);
+      const deletionRows = await executor.select({ row: deletions, waiting: waitingSince(deletions) }).from(deletions)
+        .where(and(eq(deletions.tenantId, tenantId), deletionDue(cutoffs.now)))
+        .orderBy(asc(waitingSince(deletions)), asc(deletions.objectKey)).limit(limit);
+      const queue: Array<{ waiting: string; tie: string; row: KeyDownloadSweepRow }> = [
+        ...recordRows.map(({ row, waiting }) => ({ waiting, tie: `record:${row.id}`, row: { kind: 'record' as const, record: parseRecord(row) } })),
+        ...stagedRows.map(({ row, waiting }) => ({ waiting, tie: `staged:${row.id}`, row: { kind: 'staged' as const, file: parseStaged(row) } })),
+        ...deletionRows.map(({ row, waiting }) => ({ waiting, tie: `deletion:${row.objectKey}`, row: { kind: 'deletion' as const, deletion: parseDeletion(row) } })),
+      ];
+      queue.sort((left, right) => left.waiting < right.waiting ? -1 : left.waiting > right.waiting ? 1 : left.tie < right.tie ? -1 : left.tie > right.tie ? 1 : 0);
+      return { rows: queue.map(({ row }) => row) };
+    }, { rows: [] }),
+    markAttempted: (tenantId, batch, now, boundMs) => within(boundMs, async (executor) => {
+      const ids = (kind: KeyDownloadSweepRow['kind']) => batch.rows.flatMap((row) => row.kind !== kind ? []
+        : [row.kind === 'record' ? row.record.id : row.kind === 'staged' ? row.file.id : row.deletion.objectKey]);
+      const recordIds = ids('record');
+      const stagedIds = ids('staged');
+      const objectKeys = ids('deletion');
+      if (recordIds.length > 0) {
+        await executor.update(records).set({ sweepAttemptedAt: now }).where(and(eq(records.tenantId, tenantId), inArray(records.id, recordIds)));
+      }
+      if (stagedIds.length > 0) {
+        await executor.update(stagedFiles).set({ sweepAttemptedAt: now }).where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, stagedIds)));
+      }
+      if (objectKeys.length > 0) {
+        await executor.update(deletions).set({ sweepAttemptedAt: now }).where(and(eq(deletions.tenantId, tenantId), inArray(deletions.objectKey, objectKeys)));
+      }
+    }, undefined),
+    proposable: async (tenantId, apiKeyId, ids) => {
+      const wanted = distinctIds(ids);
+      if (wanted.length === 0) return true;
+      const rows = await db.select({ id: stagedFiles.id }).from(stagedFiles).where(and(
+        eq(stagedFiles.tenantId, tenantId),
+        eq(stagedFiles.apiKeyId, apiKeyId),
+        inArray(stagedFiles.id, wanted),
+        sql`not ${claimedByAnyProposal}`,
+      ));
+      return rows.length === wanted.length;
+    },
+    release: (tenantId, selection, now) => locked(async (tx): Promise<KeyDownloadRelease> => {
+      const owed: KeyDownloadPendingDeletion[] = [];
+      const discard = async (rows: readonly StagedRow[]) => {
+        if (rows.length === 0) return;
+        owed.push(...await oweKeyFileDeletions(tx, tenantId, rows.map((row) => ({ storageKey: row.objectKey, sizeBytes: row.sizeBytes })), now));
+        await tx.delete(stagedFiles).where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, rows.map((row) => row.id))));
+      };
+      if (selection.kind === 'proposals') {
+        for (const decision of selection.decisions) {
+          const held = and(eq(stagedFiles.tenantId, tenantId), eq(stagedFiles.apiKeyId, decision.apiKeyId), eq(stagedFiles.proposalId, decision.proposalId));
+          const rows = await tx.select().from(stagedFiles).where(held).orderBy(asc(stagedFiles.id)).for('update');
+          if (decision.release) await discard(rows);
+          else if (rows.length > 0) await tx.update(stagedFiles).set({ proposalId: null }).where(held);
+        }
+        return { kind: 'released', owed };
+      }
+      const owner = selection.kind === 'key' ? eq(stagedFiles.apiKeyId, selection.apiKeyId) : heldByEndedProposal(now);
+      const rows = await tx.select().from(stagedFiles).where(and(eq(stagedFiles.tenantId, tenantId), owner))
+        .orderBy(asc(stagedFiles.id)).limit(KEY_DOWNLOAD_FILE_LIMITS.sweepRowsPerTenant).for('update');
+      const free = await unheldAmong(tx, tenantId, rows.map((row) => row.id), now);
+      await discard(rows.filter((row) => free.has(row.id)));
+      return { kind: 'released', owed };
+    }, { kind: 'busy' }),
+    listProposed: async (tenantId, ids) => {
+      const wanted = distinctIds(ids);
+      if (wanted.length === 0) return [];
+      const rows = await db.select({ row: stagedFiles, copiedFromTitle: products.title }).from(stagedFiles)
+        .leftJoin(products, and(eq(products.tenantId, stagedFiles.tenantId), eq(products.id, stagedFiles.copiedFromProductId)))
+        .where(and(eq(stagedFiles.tenantId, tenantId), inArray(stagedFiles.id, wanted)));
+      return rows.map(({ row, copiedFromTitle }) => ({ file: parseStaged(row), copiedFromTitle }));
+    },
+    purgeSettled: (tenantId, cutoffs, limit, wait) => locked(async (tx) => {
+      if (wait !== undefined) await boundStatementTime(tx, Math.max(1, Math.floor(wait)));
+      const oldest = tx.select({ id: records.id }).from(records).where(and(eq(records.tenantId, tenantId), recordPurgeable(cutoffs)))
+        .orderBy(asc(records.createdAt), asc(records.id)).limit(limit);
+      const purged = await tx.delete(records).where(and(eq(records.tenantId, tenantId), inArray(records.id, oldest)))
+        .returning({ tenantId: records.tenantId, id: records.id, apiKeyId: records.apiKeyId });
+      if (purged.length > 0) {
+        await tx.insert(recordEvents).values(purged.map((row) => keyDownloadRecordEventSchema.parse(eventOf(row, 'purged', null, 'retention', cutoffs.now))));
+      }
+      const expired = tx.select({ sequence: recordEvents.sequence }).from(recordEvents)
+        .where(and(eq(recordEvents.tenantId, tenantId), lt(recordEvents.at, cutoffs.eventsBefore)))
+        .orderBy(asc(recordEvents.sequence)).limit(limit);
+      await tx.delete(recordEvents).where(and(eq(recordEvents.tenantId, tenantId), inArray(recordEvents.sequence, expired)));
+      return purged.length;
+    }, 0, wait),
+  };
+};
+
+const parseAsset = (row: typeof productDownloadAssets.$inferSelect) => productDownloadAssetSchema.parse(row);
+
+/** The order a product deletion takes, so a live stock writer holding the stock row and about to key-share the product never deadlocks with it. */
+export const lockProductFiles = async (tx: Db, tenantId: string, productId: string): Promise<{ type: string } | null> => {
+  const product = and(eq(products.tenantId, tenantId), eq(products.id, productId));
+  const [found] = await tx.select({ type: products.type }).from(products).where(product).for('no key update');
+  if (found === undefined) return null;
+  await tx.select({ productId: productStock.productId }).from(productStock)
+    .where(and(eq(productStock.tenantId, tenantId), eq(productStock.productId, productId))).for('update');
+  await tx.select({ id: products.id }).from(products).where(product).for('update');
+  return found;
+};
+
+const assetsOfProduct = (tenantId: string, productId: string): SQL | undefined =>
+  and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.productId, productId));
+
+export const createKeyDownloadAttachRepository = (executor: Db): KeyDownloadAttachRepository => ({
+  attach: (tenantId, input) => executor.transaction(async (tx): Promise<KeyDownloadAttachment> => {
+    const product = await lockProductFiles(tx, tenantId, input.productId);
+    if (product === null) return { kind: 'product_not_found' };
+    if (product.type !== 'digital_download') return { kind: 'not_digital' };
+    const [staged] = await tx.select().from(stagedFiles)
+      .where(and(stagedOf(tenantId, input.stagedFileId), eq(stagedFiles.apiKeyId, input.apiKeyId))).for('update');
+    if (staged === undefined) {
+      const [applied] = await tx.select().from(productDownloadAssets)
+        .where(and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.stagedFileId)));
+      const ownPrefix = keyDownloadStagedKey(tenantId, input.apiKeyId, input.stagedFileId, '');
+      if (applied?.storageKey.startsWith(ownPrefix) !== true) return { kind: 'staged_not_found' };
+      const [replaced] = input.replacesAssetId === undefined ? [] : await tx.select().from(productDownloadAssets)
+        .where(and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.replacesAssetId)));
+      const sameLineage = input.replacesAssetId === undefined
+        ? applied.lineageId === applied.id
+        : replaced === undefined
+          ? applied.replacesAssetId === input.replacesAssetId
+          : replaced.lineageId === applied.lineageId && replaced.versionNumber < applied.versionNumber;
+      return sameLineage && applied.versionNote === input.versionNote ? { kind: 'attached', asset: parseAsset(applied) } : { kind: 'applied_otherwise' };
+    }
+    const [files] = await tx.select({ files: count() }).from(productDownloadAssets).where(assetsOfProduct(tenantId, input.productId));
+    if ((files?.files ?? 0) >= KEY_DOWNLOAD_FILE_LIMITS.filesPerProduct) return { kind: 'cap_exceeded', cap: 'product_files' };
+    let lineageId = staged.id;
+    let versionNumber = 1;
+    if (input.replacesAssetId !== undefined) {
+      const [replacement] = await tx.select().from(productDownloadAssets)
+        .where(and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.replacesAssetId)));
+      if (replacement === undefined) return { kind: 'replacement_not_found' };
+      if (replacement.status !== 'ready') return { kind: 'replacement_not_ready' };
+      lineageId = replacement.lineageId;
+      const [latest] = await tx.select({ versionNumber: productDownloadAssets.versionNumber }).from(productDownloadAssets)
+        .where(and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.lineageId, lineageId)))
+        .orderBy(desc(productDownloadAssets.versionNumber)).limit(1);
+      versionNumber = (latest?.versionNumber ?? 0) + 1;
+      await tx.update(productDownloadAssets).set({ supersededAt: input.now }).where(and(
+        assetsOfProduct(tenantId, input.productId),
+        eq(productDownloadAssets.lineageId, lineageId),
+        eq(productDownloadAssets.status, 'ready'),
+        isNull(productDownloadAssets.supersededAt),
+      ));
+    }
+    const [asset] = await tx.insert(productDownloadAssets).values({
+      id: staged.id,
+      tenantId,
+      productId: input.productId,
+      lineageId,
+      versionNumber,
+      versionNote: input.versionNote,
+      supersededAt: null,
+      replacesAssetId: input.replacesAssetId ?? null,
+      fileName: staged.fileName,
+      contentType: staged.contentType,
+      sizeBytes: staged.sizeBytes,
+      storageKey: staged.objectKey,
+      status: 'ready',
+      createdAt: input.now,
+      sha256: staged.sha256,
+    }).returning();
+    if (asset === undefined) throw new Error('Product file insert returned no row');
+    await tx.delete(stagedFiles).where(stagedOf(tenantId, staged.id));
+    return { kind: 'attached', asset: parseAsset(asset) };
+  }),
+  remove: (tenantId, input) => executor.transaction(async (tx) => {
+    if (await lockProductFiles(tx, tenantId, input.productId) === null) return { kind: 'not_found' };
+    const target = and(assetsOfProduct(tenantId, input.productId), eq(productDownloadAssets.id, input.assetId));
+    const [deleted] = await tx.delete(productDownloadAssets)
+      .where(input.readyOnly ? and(target, eq(productDownloadAssets.status, 'ready')) : target).returning();
+    if (deleted === undefined) {
+      const [kept] = input.readyOnly ? await tx.select({ id: productDownloadAssets.id }).from(productDownloadAssets).where(target) : [];
+      return kept === undefined ? { kind: 'not_found' } : { kind: 'not_ready' };
+    }
+    if (deleted.status === 'ready' && deleted.supersededAt === null) {
+      const [latest] = await tx.select({ id: productDownloadAssets.id }).from(productDownloadAssets).where(and(
+        assetsOfProduct(tenantId, input.productId),
+        eq(productDownloadAssets.lineageId, deleted.lineageId),
+        eq(productDownloadAssets.status, 'ready'),
+      )).orderBy(desc(productDownloadAssets.versionNumber)).limit(1);
+      if (latest !== undefined) {
+        await tx.update(productDownloadAssets).set({ supersededAt: null })
+          .where(and(eq(productDownloadAssets.tenantId, tenantId), eq(productDownloadAssets.id, latest.id)));
+      }
+    }
+    const [owedDeletion] = await oweKeyFileDeletions(tx, tenantId, [deleted], input.now);
+    return { kind: 'removed', asset: parseAsset(deleted), owedDeletion: owedDeletion ?? null };
+  }),
+});
+
+export const createChangeProposalProductFiles = (tx: Db): ChangeProposalProductFiles => ({
+  listReady: async (tenantId, productId) => (await tx.select().from(productDownloadAssets)
+    .where(and(assetsOfProduct(tenantId, productId), eq(productDownloadAssets.status, 'ready')))
+    .orderBy(asc(productDownloadAssets.id))).map((row) => ({
+    id: row.id,
+    lineageId: row.lineageId,
+    versionNumber: row.versionNumber,
+    latest: row.supersededAt === null,
+    fileName: row.fileName,
+    contentType: row.contentType,
+    sizeBytes: row.sizeBytes,
+    fingerprint: row.sha256,
+    versionNote: row.versionNote,
+  })),
+  lockStaged: async (tenantId, apiKeyId, id) => {
+    const [row] = await tx.select().from(stagedFiles).where(and(stagedOf(tenantId, id), eq(stagedFiles.apiKeyId, apiKeyId))).for('update');
+    return row === undefined ? null : parseStaged(row);
+  },
+});

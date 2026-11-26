@@ -4,6 +4,9 @@ import { tenantSettingsSchema, updateProductInputSchema } from '#core/domain/ind
 import { diffManifestProduct, productMetadata, productVatConvergenceError, shopManifestProductSchema } from '#core/domain/shop-manifest.js';
 
 import type {
+  Course,
+  CourseLesson,
+  CourseModule,
   Identity,
   Product,
   ProductDownloadAsset,
@@ -13,6 +16,7 @@ import type {
 } from '#core/domain/index.js';
 
 import type { EntityVersionRecord, ProductMetadataRepository, ProductRepository } from '../ports.js';
+import { PRODUCT_ACCESS_KEY_REFUSAL } from './product-access-items.js';
 import { createProduct, listProducts, publishProduct, unpublishProduct, updateProduct } from './products.js';
 
 const identity = (tenantId: string | null, staffRole: StaffRole | null): Identity => ({
@@ -63,7 +67,7 @@ const fakeRepo = (initial: Product[] = []) => {
     updateAccessItems: async (tenantId, id, accessItems) => {
       const product = store.find((p) => p.tenantId === tenantId && p.id === id);
       if (!product) return null;
-      product.accessItems = accessItems;
+      if (accessItems !== null) product.accessItems = accessItems;
       return product;
     },
     setPublished: async (tenantId, id, published) => {
@@ -77,7 +81,23 @@ const fakeRepo = (initial: Product[] = []) => {
   return { repo, store, versions, entityVersions };
 };
 
-const deps = <T extends ProductRepository>(repo: T, ids: string[] = ['product-1']) => ({
+interface AccessCatalogRows {
+  courses?: Course[];
+  modules?: CourseModule[];
+  lessons?: CourseLesson[];
+}
+
+const accessCatalog = ({ courses = [], modules = [], lessons = [] }: AccessCatalogRows = {}) => ({
+  courses: { findByIds: async (tenantId: string, ids: string[]) => courses.filter((row) => row.tenantId === tenantId && ids.includes(row.id)) },
+  modules: {
+    findByIds: async (tenantId: string, ids: string[]) => modules.filter((row) => row.tenantId === tenantId && ids.includes(row.id)),
+    list: async (tenantId: string) => modules.filter((row) => row.tenantId === tenantId),
+  },
+  lessons: { existingIds: async (tenantId: string, ids: string[]) => lessons.filter((row) => row.tenantId === tenantId && ids.includes(row.id)).map((row) => row.id) },
+});
+
+const deps = <T extends ProductRepository>(repo: T, ids: string[] = ['product-1'], catalog: AccessCatalogRows = {}) => ({
+  ...accessCatalog(catalog),
   products: repo,
   ids: {
     nextId: () => {
@@ -230,6 +250,22 @@ describe('products use-cases', () => {
     expect(await updateProduct(ctx, { id: 'club', personalization: setting }, deps(repo, ['version-4']))).toEqual(membershipRefusal);
     expect(await updateProduct(ctx, { id: 'club', title: 'Club renamed' }, deps(repo, ['version-5']))).toMatchObject({ ok: true });
     expect(await updateProduct(ctx, { id: 'p1', personalization: { ...setting, maxLength: 501 } }, deps(repo, ['version-6']))).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('stores an ordered gallery, keeps it across unrelated edits, snapshots it and clears it with an empty list', async () => {
+    const { repo, entityVersions } = fakeRepo([draft('p1', 't-acme')]);
+    const ctx = { identity: identity('t-acme', 'owner') };
+    const back = { url: '/api/public/assets/product-image/00000000-0000-4000-8000-000000000002.webp', alt: 'Back view' };
+    const front = { url: 'https://cdn.example.test/front.jpg', alt: '' };
+    const gallery = [back, front];
+    expect(await createProduct(ctx, { title: 'Workshop', priceCents: 4900 }, deps(repo, ['product-2']))).toMatchObject({ ok: true, value: { images: [] } });
+    expect(await createProduct(ctx, { title: 'Printed book', priceCents: 4900, images: [{ url: front.url }] }, deps(repo, ['product-3'])))
+      .toMatchObject({ ok: true, value: { images: [front] } });
+    expect(await updateProduct(ctx, { id: 'p1', images: gallery }, deps(repo, ['version-1']))).toMatchObject({ ok: true, value: { images: gallery } });
+    expect(await updateProduct(ctx, { id: 'p1', title: 'Renamed workshop' }, deps(repo, ['version-2']))).toMatchObject({ ok: true, value: { images: gallery } });
+    expect(entityVersions.at(-1)?.payload).toMatchObject({ images: gallery });
+    expect(await updateProduct(ctx, { id: 'p1', images: [back, back] }, deps(repo, ['version-3']))).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await updateProduct(ctx, { id: 'p1', images: [] }, deps(repo, ['version-4']))).toMatchObject({ ok: true, value: { images: [] } });
   });
 
   it('switches a physical product to shipping and refuses shipping for other product types', async () => {
@@ -566,16 +602,103 @@ describe('products use-cases', () => {
 });
 
 
+const accessCourse = (id: string, tenantId = 't1', archivedAt: string | null = null): Course => ({
+  id, tenantId, name: `Course ${id}`, description: '', imageUrl: null, moduleOrder: [], publiclyVisible: false, archivedAt, legacyId: null,
+  createdAt: '2026-07-01T00:00:00.000Z',
+});
+
+const accessModule = (id: string, courseId: string, lessonIds: string[], tenantId = 't1'): CourseModule => ({
+  id, tenantId, courseIds: [courseId], title: `Module ${id}`, prefix: null, name: `Module ${id}`, legacyId: null, createdAt: '2026-07-01T00:00:00.000Z',
+  chapters: [{ id: `${id}-chapter`, name: 'Chapter', contents: lessonIds.map((lessonId) => ({ id: `${id}-${lessonId}`, lessonId, name: lessonId })) }],
+});
+
+const accessLesson = (id: string, tenantId = 't1'): CourseLesson => ({
+  id, tenantId, name: `Lesson ${id}`, isPreview: false, contents: [], legacyId: null, createdAt: '2026-07-01T00:00:00.000Z',
+});
+
 it('rejects creating a product when persistence finds unavailable courses', async () => {
   const { repo, store } = fakeRepo();
   repo.create = async () => 'course_unavailable';
   const result = await createProduct(
     { identity: identity('t1', 'owner') },
     { type: 'course', title: 'Archived access', description: '', coverUrl: null, priceCents: 100, currency: 'PLN', visibility: 'listed', accessItems: [{ level: 'course', courseId: 'archived' }], vatRate: null },
-    deps(repo),
+    deps(repo, ['product-1'], { courses: [accessCourse('archived')] }),
   );
   expect(result).toMatchObject({ ok: false, error: { code: 'validation', message: 'Product access items may only reference existing, active courses' } });
   expect(store).toEqual([]);
+});
+
+describe('what a new product grants', () => {
+  const owner = { identity: identity('t1', 'owner') };
+  const catalog = {
+    courses: [accessCourse('c1'), accessCourse('c2'), accessCourse('c-archived', 't1', '2026-07-02T00:00:00.000Z'), accessCourse('c-other', 't2')],
+    modules: [accessModule('m1', 'c1', ['l1']), accessModule('m2', 'c2', ['l2']), accessModule('m-other', 'c-other', ['l-other'], 't2')],
+    lessons: [accessLesson('l1'), accessLesson('l2'), accessLesson('l-other', 't2')],
+  };
+  const create = async (accessItems: NonNullable<Parameters<typeof createProduct>[1]['accessItems']>) => {
+    const { repo, store } = fakeRepo();
+    const result = await createProduct(owner, { title: 'Bundle', priceCents: 100, accessItems }, deps(repo, ['product-1'], catalog));
+    return { result, store };
+  };
+
+  it('runs the shared access check before anything is stored', async () => {
+    const refused: Array<[NonNullable<Parameters<typeof createProduct>[1]['accessItems']>, string]> = [
+      [[{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }], 'Product access lessonIds must belong to the item courseId through its modules and chapters'],
+      [[{ level: 'modules', courseId: 'c1', moduleIds: ['m2'] }], 'Product access moduleIds must belong to the item courseId'],
+      [[{ level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] }], 'Product access excludedModuleIds must belong to the item courseId'],
+      [[{ level: 'modules', courseId: 'c1', moduleIds: ['missing'] }], 'Product access items may only reference existing modules'],
+      [[{ level: 'lessons', courseId: 'c1', lessonIds: ['missing'] }], 'Product access items may only reference existing lessons'],
+      [[{ level: 'course', courseId: 'missing' }], 'Product access items may only reference existing, active courses'],
+      [[{ level: 'course', courseId: 'c-archived' }], 'Product access items may only reference existing, active courses'],
+      [[{ level: 'course', courseId: 'c-other' }], 'Product access items may only reference existing, active courses'],
+      [[{ level: 'modules', courseId: 'c1', moduleIds: ['m-other'] }], 'Product access items may only reference existing modules'],
+      [[{ level: 'lessons', courseId: 'c1', lessonIds: ['l-other'] }], 'Product access items may only reference existing lessons'],
+    ];
+    for (const [accessItems, message] of refused) {
+      const { result, store } = await create(accessItems);
+      expect(result, JSON.stringify(accessItems)).toEqual({ ok: false, error: expect.objectContaining({ code: 'validation', message }) });
+      expect(store).toEqual([]);
+    }
+  });
+
+  it('answers a shop management key one refusal for every reason the access check or the write refuses a list', async () => {
+    const key = {
+      ...owner,
+      capabilities: ['product:write' as const],
+      machineActor: { kind: 'shop_management_key' as const, apiKeyId: 'key-direct', mode: 'direct' as const },
+    };
+    const lists: Array<NonNullable<Parameters<typeof createProduct>[1]['accessItems']>> = [
+      [{ level: 'lessons', courseId: 'c1', lessonIds: ['l2'] }],
+      [{ level: 'lessons', courseId: 'c1', lessonIds: ['missing'] }],
+      [{ level: 'modules', courseId: 'c1', moduleIds: ['m2'] }],
+      [{ level: 'modules', courseId: 'c1', moduleIds: ['missing'] }],
+      [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m2'] }],
+      [{ level: 'course', courseId: 'missing' }],
+      [{ level: 'course', courseId: 'c-archived' }],
+    ];
+    const messages = new Set<string>();
+    for (const accessItems of lists) {
+      const { repo, store } = fakeRepo();
+      const result = await createProduct(key, { title: 'Bundle', priceCents: 100, accessItems }, deps(repo, ['product-1'], catalog));
+      if (result.ok) throw new Error(`Accepted ${JSON.stringify(accessItems)}`);
+      expect(result.error.code).toBe('validation');
+      messages.add(result.error.message);
+      expect(store).toEqual([]);
+    }
+    const { repo } = fakeRepo();
+    repo.create = async () => 'course_unavailable';
+    const raced = await createProduct(key, { title: 'Bundle', priceCents: 100, accessItems: [{ level: 'course', courseId: 'c1' }] }, deps(repo, ['product-1'], catalog));
+    if (raced.ok) throw new Error('Accepted a list the write refused');
+    messages.add(raced.error.message);
+    expect([...messages]).toEqual([PRODUCT_ACCESS_KEY_REFUSAL]);
+  });
+
+  it('stores access items whose lessons and modules belong to their course', async () => {
+    const accessItems = [{ level: 'lessons' as const, courseId: 'c1', lessonIds: ['l1'] }, { level: 'modules' as const, courseId: 'c2', moduleIds: ['m2'] }];
+    const { result, store } = await create(accessItems);
+    expect(result).toMatchObject({ ok: true, value: { accessItems } });
+    expect(store).toHaveLength(1);
+  });
 });
 
 describe('shop manifest product VAT convergence with the persisted product', () => {

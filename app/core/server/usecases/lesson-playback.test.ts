@@ -168,14 +168,13 @@ const lessonRepository = (value: CourseLesson | null): CourseLessonRepository =>
 const progress: MemberCourseProgressRepository = {
   findByMemberAndCourse: async () => null,
   listByMember: async () => [],
-  findOrCreate: async (tenantId, input) => ({
-    id: input.id,
-    tenantId,
-    memberId: input.memberId,
-    courseId: input.courseId,
-    completedLessonIds: [],
-    updatedAt: input.now,
-  }),
+  addCompletedLesson: async () => {
+    throw new Error('not used');
+  },
+  removeCompletedLesson: async () => [],
+  setLastViewed: async () => {
+    throw new Error('not used');
+  },
   update: async (_tenantId, value) => value,
   countReferencingLesson: async () => 0,
 };

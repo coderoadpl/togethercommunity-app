@@ -1,4 +1,4 @@
-import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams } from '#core/domain/index.js';
+import { SALES_LINK_VARIANT_PARAM, parseSalesLinkVariantParams, trimTrailing } from '#core/domain/index.js';
 import { createHash } from 'node:crypto';
 import { isStripeTermsUrlMissing, publicShippingRates, SALES_LINK_TIME_ZONE, salesLinkAvailable } from '#core/domain/index.js';
 import { getCookie, deleteCookie } from 'hono/cookie';
@@ -72,6 +72,7 @@ import {
   authLinkBaseUrl,
   cleanUpFailedCheckout,
   fulfillStripeWebhook,
+  recordStripeWebhookOutcome,
   validateStripeInvoiceTenant,
   getPaymentConfig,
   getCheckoutSessionStatus,
@@ -199,7 +200,7 @@ const authEmailLanguage = async (
 };
 
 const platformAuthBaseUrl = (hostHeader: string, deps: AppDeps): string | null => {
-  const host = (hostHeader.split(':')[0] ?? '').replace(/\.+$/u, '').toLowerCase();
+  const host = trimTrailing(hostHeader.split(':')[0] ?? '', '.').toLowerCase();
   if (deps.platformHost === null || host !== deps.platformHost.toLowerCase()) return null;
   const url = new URL(deps.appBaseUrl);
   url.hostname = deps.platformHost;
@@ -386,13 +387,10 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
       deps,
     );
     if (!result.ok) return respondPublic(result);
-    return new Response(null, {
-      status: 302,
-      headers: {
-        location: result.value,
-        'cache-control': 'public, max-age=300',
-      },
-    });
+    const headers = publicHeaders();
+    headers.set('location', result.value);
+    headers.set('cache-control', 'public, max-age=300');
+    return new Response(null, { status: 302, headers });
   });
 
   app.get(API_PATHS.publicOrderQr, async (c) => {
@@ -1022,10 +1020,15 @@ export const registerPublicRoutes = (app: Hono<AppVars>, deps: AppDeps): void =>
         ...deps.secretCrypto.encrypt(now), maskedPreview: '', updatedAt: now,
       });
     }
-    const fulfilled = await fulfillStripeWebhook(tenant, { ...event.value, mode }, {
+    const verified: PaymentWebhookEvent = { ...event.value, mode };
+    const fulfilled = await fulfillStripeWebhook(tenant, verified, {
       ...deps,
       exposeMagicLinks: deps.devEndpoints.exposeMagicLinks,
+    }).catch(async (cause: unknown) => {
+      await recordStripeWebhookOutcome(tenant, verified, err(internal()), deps);
+      throw cause;
     });
+    await recordStripeWebhookOutcome(tenant, verified, fulfilled, deps);
     return respond(fulfilled.ok ? ok({ received: true as const, processed: fulfilled.value.processed }) : fulfilled);
   });
 

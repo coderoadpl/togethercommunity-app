@@ -12,6 +12,7 @@ import {
   importLessonRecordSchema,
   importModuleRecordSchema,
   importProductRecordSchema,
+  productImagesSchema,
   resolveProductVat,
   salesChannelAllowed,
   personalizationAllowed,
@@ -22,6 +23,7 @@ import {
   importWriteRequestSchema,
   ok,
   slugReserved,
+  trimTrailing,
   validation,
   type AccessItem,
   type AppError,
@@ -44,6 +46,7 @@ import {
   type ImportKind,
   type ImportRecord,
   type Product,
+  type ProductImage,
   type Result,
   type TenantApiKey,
 } from '#core/domain/index.js';
@@ -149,7 +152,7 @@ type ImportNormalizationInfo = {
 type ImportAssetUrlNormalizer = (value: string | null) => Promise<{ value: string | null; changed: boolean }>;
 
 const hostnameOf = (value: string): string =>
-  value.replace(/\.+$/, '').toLowerCase();
+  trimTrailing(value, '.').toLowerCase();
 
 const tenantHostnames = async (
   tenantId: string,
@@ -202,6 +205,25 @@ const normalizeField = async (
   };
 };
 
+const normalizeProductAssetUrls = async <R extends { coverUrl: string | null; images?: ProductImage[] | undefined }>(
+  record: R,
+  normalizeAssetUrl: ImportAssetUrlNormalizer,
+): Promise<{ record: R; infos: ImportNormalizationInfo[] }> => {
+  const coverUrl = await normalizeField('coverUrl', record.coverUrl, normalizeAssetUrl);
+  const images = record.images === undefined ? undefined : await Promise.all(record.images.map(async (image, index) => {
+    const url = await normalizeField(`images[${String(index)}].url`, image.url, normalizeAssetUrl);
+    return { image: { url: url.value ?? image.url, alt: image.alt }, info: url.info };
+  }));
+  return {
+    record: {
+      ...record,
+      coverUrl: coverUrl.value,
+      ...(images === undefined ? {} : { images: images.map((entry) => entry.image) }),
+    },
+    infos: [coverUrl.info, ...(images ?? []).map((entry) => entry.info)].filter((info) => info !== null),
+  };
+};
+
 type ContentImportRecord = Extract<ImportRecord, { kind: ImportContentKind }>;
 
 const parseContentRecord = (kind: ImportContentKind, record: unknown) => {
@@ -225,13 +247,7 @@ const normalizeContentAssetUrls = async (
       infos: imageUrl.info === null ? [] : [imageUrl.info],
     };
   }
-  if ('coverUrl' in record) {
-    const coverUrl = await normalizeField('coverUrl', record.coverUrl, normalizeAssetUrl);
-    return {
-      record: { ...record, coverUrl: coverUrl.value },
-      infos: coverUrl.info === null ? [] : [coverUrl.info],
-    };
-  }
+  if ('coverUrl' in record) return normalizeProductAssetUrls(record, normalizeAssetUrl);
   return { record, infos: [] };
 };
 
@@ -246,13 +262,7 @@ const normalizeImportRecordAssetUrls = async (
       infos: imageUrl.info === null ? [] : [imageUrl.info],
     };
   }
-  if (record.kind === 'product') {
-    const coverUrl = await normalizeField('coverUrl', record.coverUrl, normalizeAssetUrl);
-    return {
-      record: { ...record, coverUrl: coverUrl.value },
-      infos: coverUrl.info === null ? [] : [coverUrl.info],
-    };
-  }
+  if (record.kind === 'product') return normalizeProductAssetUrls(record, normalizeAssetUrl);
   return { record, infos: [] };
 };
 
@@ -550,7 +560,10 @@ const prepareProduct = async (
     ?? tenantProducts.find((product) => product.id === predicted.value.id)?.salesChannel
     ?? 'any';
   if (!salesChannelAllowed(record.type, salesChannel)) return err(validation(SALES_LINKS_ONLY_MEMBERSHIP_MESSAGE));
-  const storedPersonalization = tenantProducts.find((product) => product.id === predicted.value.id)?.personalization;
+  const storedProduct = tenantProducts.find((product) => product.id === predicted.value.id);
+  const images = productImagesSchema.safeParse(record.images ?? storedProduct?.images ?? []);
+  if (!images.success) return err(validation('Invalid product images', images.error.flatten()));
+  const storedPersonalization = storedProduct?.personalization;
   if (!personalizationAllowed(record.type, record.personalization === undefined ? storedPersonalization : record.personalization)) {
     return err(validation(PERSONALIZATION_MEMBERSHIP_MESSAGE));
   }
@@ -569,6 +582,7 @@ const prepareProduct = async (
       title: record.title,
       description: record.description,
       coverUrl: record.coverUrl,
+      images: images.data,
       priceCents: record.priceCents,
       currency: record.currency,
       visibility: 'listed',

@@ -3,7 +3,11 @@ import { Alert, AlertTitle, Box, Button, Chip, Stack, Tab, Tabs, Typography } fr
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 
-import { CHANGE_PROPOSAL_WITHDRAWAL_NOTES, type ChangeProposalEventView, type ChangeProposalOwnerView } from '#core/domain/index.js';
+import {
+  CHANGE_PROPOSAL_WITHDRAWAL_NOTES,
+  type ChangeProposalEventView,
+  type ChangeProposalOwnerView,
+} from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { PanelPage, StatusView } from '../../../components/layout/index.js';
@@ -14,13 +18,19 @@ import { EntryDate, FinePrint, WrapAnywhereText } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 import {
   GroupProposalCard,
+  failureOf,
   GroupTitle,
+  mayBeStaleForMissingAsset,
+  missingAssetOf,
   outcomeExplanation,
   ProposalBody,
   ProposedBy,
   SingleProposalCard,
+  staleForMissingAsset,
   TargetLine,
+  type MissingAsset,
   type SettledOutcome,
+  type StaleCause,
 } from './ProposalCards.js';
 import { groupReferences } from './proposal-display.js';
 import { Isolated, operationTitle } from './proposal-text.js';
@@ -70,7 +80,7 @@ const SettledNotice = ({ outcome, onDismiss }: { outcome: SettledOutcome; onDism
       data-testid={`proposal-outcome-${outcome.key}`}
     >
       <AlertTitle>{outcome.title}</AlertTitle>
-      {outcomeExplanation(t, outcome.status, outcome.reason)}
+      {outcomeExplanation(t, outcome.status, outcome.failure, outcome.missing)}
     </Alert>
   );
 };
@@ -156,6 +166,17 @@ const PendingTab = () => {
   );
 };
 
+const eventLabel = (t: Translations, event: ChangeProposalEventView): string => {
+  const missing = missingAssetOf(event);
+  if (missing === 'image') return t.eventStaleImageUnavailable;
+  return missing === 'file' ? t.eventStaleFileUnavailable : t.event[event.kind];
+};
+
+const statusLabel = (t: Translations, proposal: Pick<ChangeProposalOwnerView, 'status'>, missing: MissingAsset | null): string => {
+  if (missing === 'image') return t.statusStaleImageUnavailable;
+  return missing === 'file' ? t.statusStaleFileUnavailable : t.status[proposal.status];
+};
+
 const eventNote = (t: Translations, event: ChangeProposalEventView): string | null => {
   if (event.note === null) return null;
   if (event.kind === 'rejected') return t.decisionNote({ note: event.note });
@@ -188,7 +209,7 @@ const HistoryDetails = ({ proposal, siblings }: { proposal: ChangeProposalOwnerV
             return (
               <Typography key={event.sequence} component="li" variant="body2">
                 <EntryDate component="time" dateTime={event.at}>{formatDateTime(event.at, language)}</EntryDate>
-                {` · ${t.changeProposals.event[event.kind]}`}
+                {` · ${eventLabel(t.changeProposals, event)}`}
                 {note === null ? null : <>{' · '}<bdi>{note}</bdi></>}
               </Typography>
             );
@@ -211,7 +232,11 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
   const { language } = useLanguage();
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
-  const explanation = outcomeExplanation(t, proposal.status, proposal.failureMessage);
+  const assetStale = mayBeStaleForMissingAsset(proposal);
+  const detail = useQuery({ ...actions.changeProposal(proposal.id), enabled: assetStale });
+  const missing = assetStale && detail.data !== undefined ? staleForMissingAsset(detail.data.proposal.events) : null;
+  const cause: StaleCause | null = assetStale && detail.data === undefined ? 'unconfirmed' : missing;
+  const explanation = outcomeExplanation(t, proposal.status, failureOf(proposal), cause);
   const decided = decidedLine(t, proposal, language);
   const keyName = proposal.proposedBy.keyName;
   return (
@@ -220,7 +245,12 @@ const HistoryRow = ({ proposal, siblings }: { proposal: ChangeProposalOwnerView;
       title={operationTitle(t, proposal.operation)}
       badges={(
         <>
-          <Chip size="small" variant="outlined" label={t.status[proposal.status]} data-testid="proposal-history-status" />
+          <Chip
+            size="small"
+            variant="outlined"
+            label={statusLabel(t, proposal, missing)}
+            data-testid="proposal-history-status"
+          />
           <Button
             size="small"
             variant="text"

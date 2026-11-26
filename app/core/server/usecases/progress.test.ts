@@ -173,8 +173,33 @@ const grantsRepo = (grants: ProductGrant[], products: Product[]): ProductGrantRe
   },
 });
 
-const makeProgressStore = (): { repo: MemberCourseProgressRepository; rows: MemberCourseProgress[] } => {
+const makeProgressStore = (): {
+  repo: MemberCourseProgressRepository;
+  rows: MemberCourseProgress[];
+  failWritesTo: Set<string>;
+} => {
   const rows: MemberCourseProgress[] = [];
+  const failWritesTo = new Set<string>();
+  const findIndex = (tenantId: string, input: { memberId: string; courseId: string }) =>
+    rows.findIndex(
+      (r) => r.tenantId === tenantId && r.memberId === input.memberId && r.courseId === input.courseId,
+    );
+  const findOrCreateIndex = (
+    tenantId: string,
+    input: { id: string; memberId: string; courseId: string; now: string },
+  ) => {
+    const index = findIndex(tenantId, input);
+    if (index >= 0) return index;
+    rows.push({
+      id: input.id,
+      tenantId,
+      memberId: input.memberId,
+      courseId: input.courseId,
+      completedLessonIds: [],
+      updatedAt: input.now,
+    });
+    return rows.length - 1;
+  };
   const repo: MemberCourseProgressRepository = {
     findByMemberAndCourse: async (tenantId, input) =>
       rows.find(
@@ -183,28 +208,49 @@ const makeProgressStore = (): { repo: MemberCourseProgressRepository; rows: Memb
       ) ?? null,
     listByMember: async (tenantId, memberId) =>
       rows.filter((r) => r.tenantId === tenantId && r.memberId === memberId),
-    findOrCreate: async (tenantId, input) => {
-      const existing = rows.find(
-        (r) =>
-          r.tenantId === tenantId && r.memberId === input.memberId && r.courseId === input.courseId,
-      );
-      if (existing) return existing;
-      const created: MemberCourseProgress = {
-        id: input.id,
-        tenantId,
-        memberId: input.memberId,
-        courseId: input.courseId,
-        completedLessonIds: [],
+    addCompletedLesson: async (tenantId, input) => {
+      const index = findOrCreateIndex(tenantId, input);
+      const current = nn(rows[index]);
+      if (current.completedLessonIds.includes(input.lessonId)) return current;
+      const updated = {
+        ...current,
+        completedLessonIds: [...current.completedLessonIds, input.lessonId],
         updatedAt: input.now,
       };
-      rows.push(created);
-      return created;
+      rows[index] = updated;
+      return updated;
+    },
+    setLastViewed: async (tenantId, input) => {
+      const index = findOrCreateIndex(tenantId, input);
+      const current = nn(rows[index]);
+      const updated = {
+        ...current,
+        ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
+        ...(input.moduleId === undefined ? {} : { lastViewedModuleId: input.moduleId }),
+        ...(input.chapterId === undefined ? {} : { lastViewedChapterId: input.chapterId }),
+        updatedAt: input.now,
+      };
+      rows[index] = updated;
+      return updated;
     },
     update: async (tenantId, progress) => {
+      if (failWritesTo.has(progress.courseId)) throw new Error('progress write failed');
       const idx = rows.findIndex((r) => r.tenantId === tenantId && r.id === progress.id);
       if (idx < 0) return null;
       rows[idx] = progress;
       return progress;
+    },
+    removeCompletedLesson: async (tenantId, input) => {
+      const matching = rows.filter((r) => r.tenantId === tenantId && r.memberId === input.memberId && input.courseIds.includes(r.courseId));
+      if (matching.some((r) => r.completedLessonIds.includes(input.lessonId) && failWritesTo.has(r.courseId))) {
+        throw new Error('progress write failed');
+      }
+      return matching.map((r) => {
+        if (!r.completedLessonIds.includes(input.lessonId)) return r;
+        const updated = { ...r, completedLessonIds: r.completedLessonIds.filter((id) => id !== input.lessonId), updatedAt: input.now };
+        rows[rows.indexOf(r)] = updated;
+        return updated;
+      });
     },
     countReferencingLesson: async (tenantId, lessonId) =>
       rows.filter(
@@ -213,7 +259,7 @@ const makeProgressStore = (): { repo: MemberCourseProgressRepository; rows: Memb
           (r.completedLessonIds.includes(lessonId) || r.lastViewedLessonId === lessonId),
       ).length,
   };
-  return { repo, rows };
+  return { repo, rows, failWritesTo };
 };
 
 const deps = (
@@ -281,6 +327,167 @@ describe('markLessonCompleted', () => {
   });
 });
 
+describe('progress on a module that two courses share', () => {
+  const c2 = course('c2', 't1');
+  const shared: CourseModule = { ...m1, courseIds: ['c1', 'c2'] };
+  const sharedDeps = (progress: MemberCourseProgressRepository, accessItems: Product['accessItems']) =>
+    deps(progress, [activeGrant], [{ ...pCourse, accessItems }], [c1, c2], [shared]);
+
+  it('records completion under the course that opens the lesson when the item of the other course excludes its module', async () => {
+    const store = makeProgressStore();
+    const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }, { level: 'course', courseId: 'c2' }]);
+    expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: ['l1'] } });
+    expect(await unmarkLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: [] } });
+  });
+
+  it('keeps recording under the first course when that course opens the lesson', async () => {
+    const store = makeProgressStore();
+    const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c2' }]);
+    expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+  });
+
+  describe('with the course the member is viewing', () => {
+    const c3 = course('c3', 't1');
+    const inThree: CourseModule = { ...m1, courseIds: ['c1', 'c2', 'c3'] };
+    const threeDeps = (progress: MemberCourseProgressRepository, accessItems: Product['accessItems']) =>
+      deps(progress, [activeGrant], [{ ...pCourse, accessItems }], [c1, c2, c3], [inThree]);
+    const c1WithoutM1 = { level: 'course' as const, courseId: 'c1', excludedModuleIds: ['m1'] };
+
+    it('records and removes completion under the viewed course when it opens the lesson', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [c1WithoutM1, { level: 'course', courseId: 'c2' }, { level: 'course', courseId: 'c3' }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c3')).toMatchObject({ ok: true, value: { courseId: 'c3', completedLessonIds: ['l1'] } });
+      expect(await getProgress(ctx({}), 'c3', { ...d, lessons: { list: async () => [] } })).toMatchObject({ ok: true, value: { completedLessonIds: ['l1'] } });
+      expect(await unmarkLessonCompleted(ctx({}), 'l1', d, 'c3')).toMatchObject({ ok: true, value: { courseId: 'c3', completedLessonIds: [] } });
+    });
+
+    it('falls back to the first course that opens the lesson when the viewed course does not', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [c1WithoutM1, { level: 'course', courseId: 'c2' }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c1')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c-unknown')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+    });
+
+    it('records under the first opening course when the viewed course is held but lacks the lesson, or lives in another workspace', async () => {
+      const store = makeProgressStore();
+      const held = course('c4', 't1');
+      const elsewhere = course('c-elsewhere', 't2');
+      const m4: CourseModule = { ...m1, id: 'm4', courseIds: ['c4'], chapters: [] };
+      const d = deps(
+        store.repo, [activeGrant],
+        [{ ...pCourse, accessItems: [c1WithoutM1, { level: 'course', courseId: 'c2' }, { level: 'course', courseId: 'c4' }] }],
+        [c1, c2, c3, held, elsewhere], [inThree, m4],
+      );
+
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c4')).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: ['l1'] } });
+      expect(await markLessonCompleted(ctx({}), 'l2', d, 'c-elsewhere')).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: ['l1', 'l2'] } });
+      expect(store.rows.map((row) => row.courseId)).toEqual(['c2']);
+    });
+
+    it('records under the first course that opens the lesson when no course is sent', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c3' }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+    });
+
+    it('records staff completion under the viewed course and under the first course without one', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, []);
+      expect(await markLessonCompleted(ctx({ staffRole: 'admin' }), 'l1', d, 'c2')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+      expect(await markLessonCompleted(ctx({ staffRole: 'admin' }), 'l2', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+    });
+
+    it('removes the completion from the viewed course row when that course holds the lesson but no longer opens it', async () => {
+      const store = makeProgressStore();
+      const open = threeDeps(store.repo, [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c2' }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', open, 'c1')).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: ['l1'] } });
+
+      const closed = threeDeps(store.repo, [c1WithoutM1, { level: 'course', courseId: 'c2' }]);
+      expect(await unmarkLessonCompleted(ctx({}), 'l1', closed, 'c1')).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: [] } });
+      expect(await getProgress(ctx({}), 'c1', { ...closed, lessons: { list: async () => [] } })).toMatchObject({ ok: true, value: { completedLessonIds: [] } });
+    });
+
+    it('leaves both rows completed when removing the completion from the opening course fails after the viewed course row', async () => {
+      const store = makeProgressStore();
+      const open = threeDeps(store.repo, [{ level: 'course', courseId: 'c1' }, { level: 'course', courseId: 'c2' }]);
+      await markLessonCompleted(ctx({}), 'l1', open, 'c1');
+      await markLessonCompleted(ctx({}), 'l1', open, 'c2');
+
+      const closed = threeDeps(store.repo, [c1WithoutM1, { level: 'course', courseId: 'c2' }]);
+      store.failWritesTo.add('c2');
+      await expect(unmarkLessonCompleted(ctx({}), 'l1', closed, 'c1')).rejects.toThrow('progress write failed');
+      expect(store.rows.map((row) => [row.courseId, row.completedLessonIds])).toEqual([['c1', ['l1']], ['c2', ['l1']]]);
+
+      store.failWritesTo.clear();
+      expect(await unmarkLessonCompleted(ctx({}), 'l1', closed, 'c1')).toMatchObject({ ok: true, value: { courseId: 'c2', completedLessonIds: [] } });
+      expect(store.rows.map((row) => [row.courseId, row.completedLessonIds])).toEqual([['c1', []], ['c2', []]]);
+    });
+
+    it('leaves rows of courses that do not hold the lesson, of other members and of other workspaces untouched', async () => {
+      const store = makeProgressStore();
+      const elsewhere = course('c-elsewhere', 't2');
+      const unrelated = course('c4', 't1');
+      const row = (id: string, tenantId: string, memberId: string, courseId: string): MemberCourseProgress => ({
+        id, tenantId, memberId, courseId, completedLessonIds: ['l1'], updatedAt: NOW,
+      });
+      store.rows.push(
+        row('r-unrelated', 't1', 'mem1', 'c4'),
+        row('r-other-member', 't1', 'mem2', 'c1'),
+        row('r-elsewhere', 't2', 'mem1', 'c-elsewhere'),
+      );
+      const d = deps(
+        store.repo, [activeGrant],
+        [{ ...pCourse, accessItems: [c1WithoutM1, { level: 'course', courseId: 'c2' }] }],
+        [c1, c2, c3, unrelated, elsewhere], [inThree],
+      );
+
+      expect(await unmarkLessonCompleted(ctx({}), 'l1', d, 'c4')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+      expect(await unmarkLessonCompleted(ctx({}), 'l1', d, 'c-elsewhere')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+      expect(await unmarkLessonCompleted(ctx({}), 'l1', d, 'c1')).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+      expect(store.rows.filter((r) => r.id.startsWith('r-')).map((r) => r.completedLessonIds)).toEqual([['l1'], ['l1'], ['l1']]);
+    });
+
+    it('stays forbidden when the viewed course is named but no course opens the lesson', async () => {
+      const store = makeProgressStore();
+      const d = threeDeps(store.repo, [c1WithoutM1]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c1')).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+      expect(store.rows).toHaveLength(0);
+    });
+  });
+
+  describe('with an archived course that holds the module', () => {
+    const archived = { ...course('c2', 't1'), archivedAt: '2026-05-01T00:00:00.000Z' };
+    const moduleItem: Product['accessItems'] = [{ level: 'modules', courseId: 'c1', moduleIds: ['m1'] }];
+
+    it('records under the active course when the viewed course is archived', async () => {
+      const store = makeProgressStore();
+      const d = deps(store.repo, [activeGrant], [{ ...pCourse, accessItems: moduleItem }], [c1, archived], [{ ...m1, courseIds: ['c1', 'c2'] }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d, 'c2')).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: ['l1'] } });
+      expect(store.rows.map((row) => row.courseId)).toEqual(['c1']);
+    });
+
+    it('records under the active course when the archived course comes first', async () => {
+      const store = makeProgressStore();
+      const d = deps(store.repo, [activeGrant], [{ ...pCourse, accessItems: moduleItem }], [c1, archived], [{ ...m1, courseIds: ['c2', 'c1'] }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+      expect(await markLessonCompleted(ctx({ staffRole: 'admin' }), 'l2', d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+    });
+
+    it('records under the archived course when no active course opens the lesson', async () => {
+      const store = makeProgressStore();
+      const d = deps(store.repo, [activeGrant], [{ ...pCourse, accessItems: [{ level: 'course', courseId: 'c2' }] }], [c1, archived], [{ ...m1, courseIds: ['c1', 'c2'] }]);
+      expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: true, value: { courseId: 'c2' } });
+    });
+  });
+
+  it('forbids completion when the only course item excludes the module', async () => {
+    const store = makeProgressStore();
+    const d = sharedDeps(store.repo, [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }]);
+    expect(await markLessonCompleted(ctx({}), 'l1', d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.rows).toHaveLength(0);
+  });
+});
+
 describe('unmarkLessonCompleted', () => {
   it('removes a completed lesson and keeps the rest', async () => {
     const store = makeProgressStore();
@@ -306,8 +513,18 @@ describe('unmarkLessonCompleted', () => {
 
   it('is an idempotent no-op success when the lesson is not completed', async () => {
     const store = makeProgressStore();
+    const d = deps(store.repo);
+    await markLessonCompleted(ctx({}), 'l2', d);
+    const result = await unmarkLessonCompleted(ctx({}), 'l1', d);
+    expect(result).toMatchObject({ ok: true, value: { completedLessonIds: ['l2'] } });
+    expect(nn(store.rows[0]).completedLessonIds).toEqual(['l2']);
+  });
+
+  it('succeeds without creating a progress row when the member has none', async () => {
+    const store = makeProgressStore();
     const result = await unmarkLessonCompleted(ctx({}), 'l1', deps(store.repo));
-    expect(result).toMatchObject({ ok: true, value: { completedLessonIds: [] } });
+    expect(result).toMatchObject({ ok: true, value: { courseId: 'c1', completedLessonIds: [] } });
+    expect(store.rows).toHaveLength(0);
   });
 
   it('forbids un-marking an inaccessible lesson', async () => {
@@ -478,6 +695,36 @@ describe('updateLastViewed', () => {
       ok: true,
       value: { lastViewedLessonId: 'l2', lastViewedModuleId: 'm1' },
     });
+  });
+
+  it('refuses a lesson that the named course does not open for the member and writes nothing', async () => {
+    const store = makeProgressStore();
+    const other = course('c-other', 't1');
+    const shared: CourseModule = { ...m1, courseIds: ['c1', 'c2'] };
+    const d = deps(
+      store.repo, [activeGrant],
+      [{ ...pCourse, accessItems: [{ level: 'course', courseId: 'c1', excludedModuleIds: ['m1'] }, { level: 'course', courseId: 'c2' }] }],
+      [c1, course('c2', 't1'), other], [shared],
+    );
+    expect(await updateLastViewed(ctx({}), { courseId: 'c-other', lessonId: 'l1' }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await updateLastViewed(ctx({}), { courseId: 'c1', lessonId: 'l1', moduleId: 'm1' }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(await updateLastViewed(ctx({}), { courseId: 'c2', lessonId: 'l1', moduleId: 'm-other' }, d)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(store.rows).toHaveLength(0);
+
+    expect(await updateLastViewed(ctx({}), { courseId: 'c2', lessonId: 'l1', moduleId: 'm1', chapterId: 'ch1' }, d)).toMatchObject({ ok: true, value: { courseId: 'c2', lastViewedLessonId: 'l1' } });
+    expect(await updateLastViewed(ctx({ staffRole: 'admin' }), { courseId: 'c1', lessonId: 'l1' }, d)).toMatchObject({ ok: true, value: { courseId: 'c1' } });
+  });
+
+  it('moves only the pointers and keeps completed lessons', async () => {
+    const store = makeProgressStore();
+    const d = deps(store.repo);
+    await markLessonCompleted(ctx({}), 'l1', d);
+    const result = await updateLastViewed(ctx({}), { courseId: 'c1', lessonId: 'l2', chapterId: 'ch1' }, d);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { completedLessonIds: ['l1'], lastViewedLessonId: 'l2', lastViewedChapterId: 'ch1' },
+    });
+    expect(store.rows).toHaveLength(1);
   });
 
   it('is not found for an unknown course', async () => {

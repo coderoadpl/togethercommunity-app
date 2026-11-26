@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { decodeOrderChangeCursor, invoiceEventSchema, invoiceSchema, listOrderChangesQuerySchema, orderLineSchema, orderSchema, type InvoiceEvent, type Order, type OrderChange, type OrderChangeRead, type OrderShipping } from '#core/domain/index.js';
 
 import { createInvoiceRepository } from './invoice-repositories.js';
+import { waitForSettledOrderChanges } from './order-change-feed-test-helpers.js';
 import { orderChanges, orderFeedEpoch } from './order-change-schema.js';
 import { createOrderChangeRepository, rotateOrderFeedEpoch } from './order-changes.js';
 import { createOrderFulfilmentRepository } from './order-fulfilment.js';
@@ -87,13 +88,7 @@ const waitFor = async (condition: () => Promise<boolean>): Promise<void> => {
 };
 
 const settledCursor = async (tenantId: string): Promise<string | undefined> => {
-  await waitFor(async () => {
-    const [row] = await database.db
-      .select({ settled: sql<boolean>`coalesce(bool_and(${orderChanges.xactId} < pg_snapshot_xmin(pg_current_snapshot())), true)` })
-      .from(orderChanges)
-      .where(eq(orderChanges.tenantId, tenantId));
-    return row?.settled === true;
-  });
+  await waitForSettledOrderChanges(database.db, tenantId);
   return (await listAll(tenantId)).at(-1)?.cursor;
 };
 

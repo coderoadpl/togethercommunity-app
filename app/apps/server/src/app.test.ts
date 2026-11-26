@@ -11,18 +11,21 @@ import type { AppVars } from './app-vars.js';
 import { marketingContactDeps } from '#core/server/testing/marketing-contact-fakes.js';
 import { InMemoryMarketingSignupFormRepository } from '#core/server/testing/marketing-signup-fakes.js';
 import { createOrderRefundJobFake } from '#core/server/testing/order-refund-job-fake.js';
+import { unusedKeyDownloadRepositories } from '#core/server/testing/key-download-fakes.js';
 import { createStockRepositoryFake } from '#core/server/testing/stock-fake.js';
 import { createPickupPointDirectoryFake, TEST_PICKUP_POINTS } from '#core/server/testing/pickup-point-fake.js';
 import {
   changeProposalOwnerViewFakes,
   createChangeProposalStoreFake,
   createChangeProposalTransactionFake,
+  createQuarantinedImagesFake,
   createUnreadNotificationsFake,
   emptyCatalogState,
 } from '#core/server/testing/change-proposal-fakes.js';
 import { createOrganizationFakes } from '#core/server/testing/organization-fakes.js';
 import { processMarketingSnsInbox } from '#core/server/usecases/marketing-sns-inbox.js';
 import { readStoredMarketingSesEvents } from '#core/domain/marketing-sns-erasure.js';
+import { paymentEventRejectedOutboxId } from '#core/domain/payment-event-rejection.js';
 import { createInMemoryMarketingDelivery } from '#core/server/testing/marketing-delivery-fakes.js';
 import { createHtmlToText } from '#adapters/email/html-to-text.js';
 import { describe, expect, it, vi } from 'vitest';
@@ -396,7 +399,9 @@ const deps = (input: {
     changeProposalEvents: changeProposalStore.events,
     changeProposalGroups: changeProposalStore.groups,
     changeProposalTransaction: createChangeProposalTransactionFake(emptyCatalogState(), changeProposalStore),
+    quarantinedImages: createQuarantinedImagesFake(emptyCatalogState(), changeProposalStore).repository,
     ...changeProposalOwnerViewFakes(emptyCatalogState()),
+    ...unusedKeyDownloadRepositories(),
     changeProposalOwnerNotifier: createUnreadNotificationsFake().changeProposalOwnerNotifier,
     importContent: {
       commit: async () => 'saved',
@@ -530,6 +535,8 @@ const deps = (input: {
       getObject: async () => ok(new Uint8Array()),
       objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
       probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+      copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+      digestObject: () => Promise.reject(new Error('digestObject is not used here')),
       probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
       presignPut: (input) => ok(input.url),
       presignGet: (input) => ok(input.url),
@@ -546,6 +553,11 @@ const deps = (input: {
       claim: async () => 'claimed',
       finalize: async () => undefined,
       release: async () => undefined,
+    },
+    paymentEventRejections: {
+      record: async (tenantId, { seenAt, ...rejection }) => ({ tenantId, ...rejection, firstSeenAt: seenAt, lastSeenAt: seenAt, attempts: 1, resolvedAt: null }),
+      resolve: async () => undefined,
+      listUnresolved: async () => [],
     },
     purchases: {
       createMemberGrant: async (purchase) => ({
@@ -664,6 +676,8 @@ const deps = (input: {
     drainNotificationFanout: async () => ok({ jobsClaimed: 0, notificationsCreated: 0, jobsFailed: 0 }),
     stock: createStockRepositoryFake().repository,
     releaseExpiredStockReservations: async () => ok({ released: 0 }),
+    sweepQuarantinedImages: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
+    sweepKeyDownloadFiles: async () => ok({ tenants: 0, removed: 0, failed: 0 }),
     dispatchAutoInvoices: input.dispatchAutoInvoices ?? (async () => ok({
       processed: false,
       processedCount: 0,
@@ -740,6 +754,8 @@ const deps = (input: {
         (input.lessons ?? []).find((lesson) => lesson.tenantId === tenantId && lesson.id === id) ?? null,
       findByIds: async (tenantId, ids) =>
         (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)),
+      existingIds: async (tenantId, ids) =>
+        (input.lessons ?? []).filter((lesson) => lesson.tenantId === tenantId && ids.includes(lesson.id)).map((lesson) => lesson.id),
       create: async () => undefined,
       update: async () => null,
       delete: async () => false,
@@ -788,15 +804,34 @@ const deps = (input: {
     progress: {
       findByMemberAndCourse: async () => null,
       listByMember: async () => [],
-      findOrCreate: async (_tenantId, input) => ({
+      addCompletedLesson: async (_tenantId, input) => ({
         id: input.id,
         tenantId: _tenantId,
         memberId: input.memberId,
         courseId: input.courseId,
+        completedLessonIds: [input.lessonId],
+        updatedAt: input.now,
+      }),
+      setLastViewed: async (_tenantId, input) => ({
+        id: input.id,
+        tenantId: _tenantId,
+        memberId: input.memberId,
+        courseId: input.courseId,
+        ...(input.lessonId === undefined ? {} : { lastViewedLessonId: input.lessonId }),
+        ...(input.moduleId === undefined ? {} : { lastViewedModuleId: input.moduleId }),
+        ...(input.chapterId === undefined ? {} : { lastViewedChapterId: input.chapterId }),
         completedLessonIds: [],
         updatedAt: input.now,
       }),
       update: async (_tenantId, progress) => progress,
+      removeCompletedLesson: async (tenantId, input) => input.courseIds.map((courseId) => ({
+        id: `progress-${courseId}`,
+        tenantId,
+        memberId: input.memberId,
+        courseId,
+        completedLessonIds: [],
+        updatedAt: input.now,
+      })),
       countReferencingLesson: async () => 0,
     },
     posts: {
@@ -3829,6 +3864,78 @@ describe('email dispatch route', () => {
     expect((await response).status).toBe(200);
   });
 
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('runs both staged object sweeps on the %s tick after e-mail and refunds, side by side, each with its own failure', async (_trigger, init) => {
+    const calls: string[] = [];
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
+      calls.push('email');
+      return ok({ attemptsMade: 0, sentCount: 0, failedCount: 0 });
+    });
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      calls.push('refunds');
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchEmails, dispatchOrderRefundJobs, logger });
+    let finishImages: () => void = () => undefined;
+    const sweepQuarantinedImages = vi.fn<AppDeps['sweepQuarantinedImages']>(() => {
+      calls.push('images');
+      return new Promise((_resolve, reject) => { finishImages = () => { reject(new Error('image storage unavailable')); }; });
+    });
+    const sweepKeyDownloadFiles = vi.fn<AppDeps['sweepKeyDownloadFiles']>(async () => {
+      calls.push('files');
+      return err(integrationUnavailable('file storage unavailable'));
+    });
+    base.sweepQuarantinedImages = sweepQuarantinedImages;
+    base.sweepKeyDownloadFiles = sweepKeyDownloadFiles;
+    const response = buildApp(base).request(API_PATHS.emailDispatch, init);
+    await vi.waitFor(() => { expect(sweepKeyDownloadFiles).toHaveBeenCalledOnce(); });
+    expect(calls).toStrictEqual(['email', 'refunds', 'images', 'files']);
+    finishImages();
+    expect((await response).status).toBe(200);
+    const deadlineAt = Date.parse('1998-07-12T00:00:00.000Z') + 50_000;
+    expect(sweepQuarantinedImages.mock.calls).toStrictEqual([[{ deadlineAt }]]);
+    expect(sweepKeyDownloadFiles.mock.calls).toStrictEqual([[{ deadlineAt }]]);
+    expect(logger.error).toHaveBeenCalledWith('[change-proposal] quarantined image sweep failed: image storage unavailable');
+    expect(logger.error).toHaveBeenCalledWith('[key-download] staged download file sweep failed: file storage unavailable');
+  });
+
+  it('logs a failed tick for a staged object sweep that answered with failed steps', async () => {
+    const logger = { error: vi.fn(), warn: vi.fn() };
+    const base = deps({ logger });
+    base.sweepQuarantinedImages = async () => ok({ tenants: 2, removed: 1, failed: 1 });
+    base.sweepKeyDownloadFiles = async () => ok({ tenants: 3, removed: 0, failed: 2 });
+    const response = await buildApp(base).request(API_PATHS.emailDispatch, { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } });
+    expect(response.status).toBe(200);
+    expect(logger.error.mock.calls).toStrictEqual([
+      ['[change-proposal] quarantined image sweep failed: 1 of its steps failed'],
+      ['[key-download] staged download file sweep failed: 2 of its steps failed'],
+    ]);
+  });
+
+  it.each([
+    ['cron', { headers: { authorization: 'Bearer test-email-dispatch-cron-secret' } }],
+    ['manual', { method: 'POST', headers: { 'x-email-dispatch-secret': 'test-email-dispatch-secret' } }],
+  ] as const)('starts neither staged object sweep on the %s tick once the dispatch before them used the time up to the sweep end', async (_trigger, init) => {
+    let now = '1998-07-12T00:00:00.000Z';
+    const dispatchOrderRefundJobs = vi.fn<AppDeps['dispatchOrderRefundJobs']>(async () => {
+      now = '1998-07-12T00:00:50.000Z';
+      return ok({ processedCount: 0, outcomes: {} });
+    });
+    const base = deps({ dispatchOrderRefundJobs });
+    base.clock = { nowIso: () => now };
+    const sweepQuarantinedImages = vi.fn<AppDeps['sweepQuarantinedImages']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    const sweepKeyDownloadFiles = vi.fn<AppDeps['sweepKeyDownloadFiles']>(async () => ok({ tenants: 0, removed: 0, failed: 0 }));
+    base.sweepQuarantinedImages = sweepQuarantinedImages;
+    base.sweepKeyDownloadFiles = sweepKeyDownloadFiles;
+    expect((await buildApp(base).request(API_PATHS.emailDispatch, init)).status).toBe(200);
+    expect(dispatchOrderRefundJobs).toHaveBeenCalledOnce();
+    expect(sweepQuarantinedImages).not.toHaveBeenCalled();
+    expect(sweepKeyDownloadFiles).not.toHaveBeenCalled();
+  });
+
   it('dispatches order refunds on the cron tick after e-mail and before Meta conversions', async () => {
     const calls: string[] = [];
     const dispatchEmails = vi.fn<AppDeps['dispatchEmails']>(async () => {
@@ -4100,6 +4207,8 @@ describe('tenant domain check route', () => {
           getObject: async () => ok(new Uint8Array()),
           objectUrl: (configuration, key) => new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
           probe: async () => ok({ code: 'storage.available', message: 'Storage is available.' }),
+          copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+          digestObject: () => Promise.reject(new Error('digestObject is not used here')),
           probeCors,
           presignPut: (input) => ok(input.url),
           presignGet: (input) => ok(input.url),
@@ -4872,6 +4981,7 @@ describe('lesson attachment download route', () => {
         findById: async (tenantId, lessonId) =>
           tenantId === acme.id && lessonId === lesson.id ? lesson : null,
         findByIds: async () => [lesson],
+        existingIds: async () => [lesson.id],
         create: async () => undefined,
         update: async () => null,
         delete: async () => false,
@@ -4902,6 +5012,8 @@ describe('lesson attachment download route', () => {
         objectUrl: (configuration, key) =>
           new URL(`${configuration.endpoint}/${configuration.bucket}/${key}`),
         probe: async () => ok({ code: 'storage.available', message: 'ok' }),
+        copyObject: () => Promise.reject(new Error('copyObject is not used here')),
+        digestObject: () => Promise.reject(new Error('digestObject is not used here')),
         probeCors: async (_configuration, origins) => origins.map((origin) => ({ origin, status: 'ok' })),
         presignPut: (input) => ok(input.url),
         presignGet: () => ok('https://download.example.test/signed'),
@@ -5473,6 +5585,7 @@ describe('public tenant image asset route', () => {
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('https://storage.example.test/signed-private-image');
     expect(response.headers.get('cache-control')).toBe('public, max-age=300');
+    expect(response.headers.get('vary')).toBe(`Host, ${TENANT_HEADER}`);
   });
 
   it('returns only a not-found envelope when storage is unconfigured', async () => {
@@ -5938,6 +6051,15 @@ describe('new route authorization', () => {
     ).toBe(403);
     expect(
       (await scopedApp('staff').request(API_PATHS.ordersReconciliation, { headers })).status,
+    ).toBe(200);
+  });
+
+  it('denies members and permits staff on the payments that could not be recorded', async () => {
+    expect(
+      (await scopedApp('member').request(API_PATHS.paymentEventRejections, { headers })).status,
+    ).toBe(403);
+    expect(
+      (await scopedApp('staff').request(API_PATHS.paymentEventRejections, { headers })).status,
     ).toBe(200);
   });
 
@@ -9320,6 +9442,88 @@ describe('checkout consent ordering', () => {
     });
   });
 
+  describe('a refused paid checkout delivery', () => {
+    const payload = JSON.stringify({
+      id: 'evt_refused_paid', type: 'checkout.session.completed', livemode: true,
+      data: { object: {
+        id: 'cs_refused_paid', customer: 'cus_refused', payment_intent: 'pi_refused', payment_status: 'paid',
+        amount_total: 1000, currency: 'pln', customer_details: { email: 'buyer@togethercommunity.app' },
+        metadata: { tenantId: acme.id },
+      } },
+    });
+    const signed = (secret: string) => {
+      const timestamp = Math.floor(Date.now() / 1000);
+      return `t=${timestamp},v1=${createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest('hex')}`;
+    };
+    const deliver = async (signatureHeader: string | undefined, configure: (base: AppDeps) => void = () => undefined) => {
+      const base = deps({ tenants: [acme] });
+      base.payment = createStripePaymentProvider({
+        resolver: { resolve: async () => { throw new Error('Unexpected Stripe API lookup'); } },
+        clientFactory: () => { throw new Error('Unexpected Stripe API client'); },
+      });
+      base.tenantAccess = {
+        ...base.tenantAccess,
+        listStaffForTenant: async () => [{ userId: 'owner-1', email: 'owner@togethercommunity.app', staffRole: 'owner', language: 'en' }],
+      };
+      configure(base);
+      const record = vi.spyOn(base.paymentEventRejections, 'record');
+      const resolve = vi.spyOn(base.paymentEventRejections, 'resolve');
+      const enqueue = vi.spyOn(base.emailOutbox, 'enqueue');
+      const error = vi.spyOn(base.logger, 'error');
+      const response = await buildApp(base).request(`/api/webhooks/stripe/${acme.id}`, {
+        method: 'POST', headers: signatureHeader === undefined ? {} : { 'stripe-signature': signatureHeader }, body: payload,
+      });
+      return { response, record, resolve, enqueue, error };
+    };
+
+    it('keeps the refusal for Stripe, records the event and queues the staff e-mail when the signature verifies', async () => {
+      const { response, record, enqueue, error } = await deliver(signed('plaintext'));
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation', message: 'Stripe checkout metadata is missing productId' } });
+      expect(record).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+        eventId: 'evt_refused_paid', checkoutSessionId: 'cs_refused_paid', reasonCode: 'validation',
+      }));
+      expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({
+        id: paymentEventRejectedOutboxId(acme.id, 'evt_refused_paid', 'owner@togethercommunity.app'), to: 'owner@togethercommunity.app',
+        payload: expect.objectContaining({ kind: 'm2m-transactional' }), sourceApp: 'payment-event-rejections',
+      }));
+      expect(error).toHaveBeenCalledWith(`[payment-webhook-rejected] tenant=${acme.id} event=evt_refused_paid type=checkout.session.completed reason=validation`);
+    });
+
+    it('keeps the 500 for Stripe and records the event with the masked reason when processing throws', async () => {
+      const { response, record, enqueue } = await deliver(signed('plaintext'), (base) => {
+        base.processedPaymentEvents = {
+          ...base.processedPaymentEvents,
+          claim: async () => { throw new Error('connection reset while reading buyer@togethercommunity.app'); },
+        };
+      });
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'internal' } });
+      expect(record).toHaveBeenCalledExactlyOnceWith(acme.id, expect.objectContaining({
+        eventId: 'evt_refused_paid', reasonCode: 'internal', reasonMessage: 'Payment processing failed unexpectedly',
+      }));
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(enqueue.mock.calls)).not.toContain('buyer@togethercommunity.app');
+    });
+
+    it.each<[string, string | undefined]>([
+      ['a missing signature header', undefined],
+      ['a forged signature', `t=${Math.floor(Date.now() / 1000)},v1=${'0'.repeat(64)}`],
+      ['a signature made with another secret', 'wrong-secret'],
+    ])('records nothing and e-mails nobody for %s', async (_label, header) => {
+      const { response, record, resolve, enqueue, error } = await deliver(header === 'wrong-secret' ? signed('whsec_someone_else') : header);
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(record).not.toHaveBeenCalled();
+      expect(resolve).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(error.mock.calls.flat().join('\n')).not.toContain('[payment-webhook-rejected]');
+    });
+  });
+
   it('acknowledges a verified stripe webhook for an ignored event type', async () => {
     const base = deps({ tenants: [acme] });
     const app = buildApp(base);
@@ -10490,7 +10694,7 @@ describe('staff member self-service routes', () => {
       Object.assign(row, patch);
       return row;
     };
-    const saveProgress = vi.fn(base.progress.update);
+    const saveLastViewed = vi.fn(base.progress.setLastViewed);
     const app = buildApp({
       ...base,
       marketing: marketingDeps(),
@@ -10508,7 +10712,7 @@ describe('staff member self-service routes', () => {
       },
       courses: { ...base.courses, list: async () => [course], findById: async () => course },
       modules: { ...base.modules, list: async () => [module] },
-      progress: { ...base.progress, update: saveProgress },
+      progress: { ...base.progress, setLastViewed: saveLastViewed },
     });
     const headers = { host: 'acme.localhost:48730', 'content-type': 'application/json' };
     const profile = await app.request(API_PATHS.meProfile, {
@@ -10532,12 +10736,14 @@ describe('staff member self-service routes', () => {
       [API_PATHS.studentLastViewed, { courseId: course.id, lessonId: 'lesson-1' }],
       [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1' }],
       [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1' }],
+      [API_PATHS.studentLessonComplete, { lessonId: 'lesson-1', courseId: course.id }],
+      [API_PATHS.studentLessonUncomplete, { lessonId: 'lesson-1', courseId: course.id }],
     ] as const) {
       const response = await app.request(path, { method: 'POST', headers, body: JSON.stringify(body) });
       expect(response.status, path).toBe(200);
       expect(await response.json()).toMatchObject({ data: { progress: { courseId: course.id } } });
     }
-    expect(saveProgress).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lastViewedLessonId: 'lesson-1' }));
+    expect(saveLastViewed).toHaveBeenCalledWith(acme.id, expect.objectContaining({ memberId: ownMember?.id, lessonId: 'lesson-1' }));
     expect(createMember).toHaveBeenCalledOnce();
   });
 });
@@ -12824,6 +13030,7 @@ describe('image upload publication boundary', () => {
     ['logo', 'owner', API_PATHS.brandingAssetUpload, API_PATHS.brandingAssetComplete],
     ['course-cover', 'staff', API_PATHS.courseCoverUpload, API_PATHS.courseCoverComplete],
     ['product-cover', 'staff', API_PATHS.productCoverUpload, API_PATHS.productCoverComplete],
+    ['product-image', 'staff', API_PATHS.productImageUpload, API_PATHS.productImageComplete],
     ['avatar', 'member', API_PATHS.avatarUpload, API_PATHS.avatarComplete],
   ] as const)('keeps %s candidates private and publishes only server-owned bytes', async (kind, role, uploadPath, completePath) => {
     const base = deps();

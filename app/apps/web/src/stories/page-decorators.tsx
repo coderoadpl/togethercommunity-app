@@ -185,6 +185,11 @@ const Preview = ({ parameters, children }: { parameters: z.infer<typeof paramete
   </ThemeProvider>;
 };
 export const withAccountPreview: Decorator = (Story, context) => <Preview key={context.id} parameters={parametersSchema.parse(context.parameters)}><Story /></Preview>;
+const QueryPreview = ({ children }: { children: ReactNode }) => {
+  const [client] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }));
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+};
+export const withQueryClient: Decorator = (Story, context) => <QueryPreview key={context.id}><Story /></QueryPreview>;
 export const idleOperation = { pending: false, success: false, error: null, run: () => undefined };
 export const previewFailure = new Error('Preview operation failed');
 

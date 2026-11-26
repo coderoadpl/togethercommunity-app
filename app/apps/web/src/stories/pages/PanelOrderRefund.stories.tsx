@@ -152,6 +152,7 @@ export const OrdersToPack: Story = {
         'listProducts:[]': { ok: true, value: { products: [] } },
         'listCouponOptions:[]': { ok: true, value: { coupons: [] } },
         'listOrderReconciliation:[{}]': { ok: true, value: { rows: [], checkedThrough: '2026-06-01T12:00:00.000Z' } },
+        'listPaymentEventRejections:[{}]': { ok: true, value: { rejections: [] } },
         'listOrders:[{"page":1,"pageSize":25}]': { ok: true, value: { orders: allOrders, total: allOrders.length, page: 1, pageSize: 25, sources: [] } },
         'listOrders:[{"fulfilmentStatus":"to_pack","page":1,"pageSize":25}]': { ok: true, value: { orders: toPack, total: toPack.length, page: 1, pageSize: 25, sources: [] } },
       },

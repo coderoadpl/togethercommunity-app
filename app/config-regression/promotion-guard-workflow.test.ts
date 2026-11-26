@@ -16,6 +16,7 @@ const workflowSchema = z.object({
   jobs: z.object({
     'promotion-guard': z.object({
       name: z.string(),
+      permissions: z.record(z.string()),
       steps: z.array(z.object({
         name: z.string().optional(),
         uses: z.string().optional(),
@@ -50,7 +51,8 @@ describe('promotion guard workflow', () => {
   });
 
   it('has the permissions needed to read checks and upsert one PR comment', () => {
-    expect(workflow.permissions).toEqual({
+    expect(workflow.permissions).toEqual({ contents: 'read' });
+    expect(job.permissions).toEqual({
       contents: 'read',
       'pull-requests': 'write',
       actions: 'read',

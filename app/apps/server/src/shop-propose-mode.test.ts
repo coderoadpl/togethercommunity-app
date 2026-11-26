@@ -13,9 +13,11 @@ import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
   changeProposalEvents,
   changeProposals,
+  courses,
   emailOutbox,
   entityVersions,
   productPrices,
+  productDownloadAssets,
   products,
   productStock,
   salesLinks,
@@ -39,20 +41,26 @@ import {
   changeProposalsListOutputSchema,
   SHOP_ASSETS_ROUTES,
   SHOP_CATALOG_ROUTES,
+  SHOP_DOWNLOAD_ROUTES,
   SHOP_PROPOSAL_ROUTES,
   SHOP_SETTINGS_ROUTES,
   shopAssetsContracts,
   shopCatalogContracts,
+  shopDownloadContracts,
   shopProposalContracts,
   shopSettingsContracts,
 } from '#core/contract/index.js';
-import { shopManagementKeyHash } from '#core/server/index.js';
+import { shopManagementKeyHash, type TenantSecretResolver } from '#core/server/index.js';
+import { createObjectStorageFake, fakeStorageSecrets, type FakeObjectStorage } from '#core/server/testing/object-storage-fake.js';
+
+import { collectPermissionInventory, KEY_MODE_ROUTES } from '../../../scripts/permission-inventory.js';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
 import { envSchema } from './env.js';
 import { shopAssetsRoutes } from './shop-assets-routes.js';
 import { shopCatalogRoutes } from './shop-catalog-routes.js';
+import { shopDownloadRoutes } from './shop-download-routes.js';
 import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import type { ShopMachineRoute } from './shop-machine-auth.js';
 import { shopOrderRoutes } from './shop-order-routes.js';
@@ -77,6 +85,8 @@ let secretsMasterKey: string;
 let ownerToken: string;
 let ownerId: string;
 let adminToken: string;
+let imageStorage: FakeObjectStorage;
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGUlEQVQokWMwTptJEmIY1ZA2GkrGwzVpAABIfDIQjwcm5wAAAABJRU5ErkJggg==', 'base64');
 
 const envelope = <S extends z.ZodTypeAny>(schema: S) => z.object({ ok: z.literal(true), data: schema });
 const errorOf = async (response: Response) =>
@@ -138,9 +148,14 @@ const liveState = async () => {
     versions: forWorkspace(await database.db.select().from(entityVersions)),
     outbox: forWorkspace(await database.db.select().from(emailOutbox)),
     salesLinks: forWorkspace(await database.db.select().from(salesLinks)),
+    files: forWorkspace(await database.db.select().from(productDownloadAssets)),
     secrets: forWorkspace(await database.db.select().from(tenantSecrets)),
   });
 };
+
+const withFakeStorage = (resolver: TenantSecretResolver): TenantSecretResolver => ({
+  resolve: async (tenantId, key) => key === 's3.configuration' ? fakeStorageSecrets.resolve() : resolver.resolve(tenantId, key),
+});
 
 const briefLockWaitApp = () => {
   const lockWait = { lockWaitMs: 300 };
@@ -149,7 +164,7 @@ const briefLockWaitApp = () => {
     ...deps,
     changeProposals: createChangeProposalRepository(database.db, lockWait),
     changeProposalTransaction: createChangeProposalTransaction(database.db, deps.logger, (connection) =>
-      createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto), lockWait),
+      withFakeStorage(createTenantSecretResolver(createTenantSecretRepository(connection), secretCrypto)), lockWait),
   });
 };
 
@@ -163,7 +178,7 @@ const routeClass = (route: ShopMachineRoute): string => {
 
 const registeredShopRoutes = (): readonly ShopMachineRoute[] => [
   ...shopCatalogRoutes(deps), ...shopOrderRoutes(deps), ...shopSettingsRoutes(deps), ...shopAssetsRoutes(deps),
-  ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps),
+  ...shopDownloadRoutes(deps), ...shopIntegrationRoutes(deps), ...shopProposalRoutes(deps),
 ];
 
 const concretePath = (path: string): string => path
@@ -178,7 +193,12 @@ interface Fixture {
   draft: string;
   publishedPrice: string;
   salesLink: string;
+  digital: string;
 }
+
+const OWNER_FILE = { id: 'owner-workbook', key: 'acme/product-downloads/owner/workbook.pdf' };
+const ACCESS_COURSE = 'course-propose-access';
+const PDF = new TextEncoder().encode('%PDF-1.7\nworkbook\n%%EOF\n');
 
 let fixture: Fixture;
 let direct: Awaited<ReturnType<typeof createShopKey>>;
@@ -190,6 +210,7 @@ const proposalBodies = (): Record<string, unknown> => ({
   [SHOP_CATALOG_ROUTES.publishProduct.path]: { id: fixture.draft },
   [SHOP_CATALOG_ROUTES.unpublishProduct.path]: { id: fixture.published },
   [SHOP_CATALOG_ROUTES.deleteProductDraft.path]: { productId: fixture.draft },
+  [SHOP_CATALOG_ROUTES.setProductAccess.path]: { id: fixture.digital, accessItems: [{ level: 'course', courseId: ACCESS_COURSE }] },
   [SHOP_CATALOG_ROUTES.createProductPrice.path]: { productId: fixture.draft, kind: 'one_time', amountCents: 2500 },
   [SHOP_CATALOG_ROUTES.deactivateProductPrice.path]: { id: fixture.publishedPrice },
   [SHOP_CATALOG_ROUTES.enableProductStock.path]: { productId: fixture.draft, onHand: 4, lowStockThreshold: null },
@@ -198,7 +219,78 @@ const proposalBodies = (): Record<string, unknown> => ({
   [SHOP_ASSETS_ROUTES.createSalesLink.path]: { slug: 'proposed-link', title: 'Proposed link', heading: 'Proposed offer', productIds: [fixture.draft] },
   [SHOP_ASSETS_ROUTES.updateSalesLink.path]: { ...salesLinkFields(), id: fixture.salesLink, expectedRevision: 1, heading: 'Proposed heading' },
   [SHOP_SETTINGS_ROUTES.updateSettings.path]: { name: 'Proposed shop name' },
+  [SHOP_DOWNLOAD_ROUTES.removeProductDownload.path]: { productId: fixture.digital, assetId: OWNER_FILE.id },
 });
+
+const storageKeyOf = (url: string): string => decodeURIComponent(new URL(url).pathname.slice(1));
+
+const stageFile = async (secret: string, fileName: string): Promise<string> => {
+  const started = await keyed(secret, 'POST', SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path, { fileName, contentType: 'application/pdf', sizeBytes: PDF.byteLength });
+  expect(started.status, fileName).toBe(200);
+  const upload = envelope(shopDownloadContracts.uploadStagedDownload.output).parse(await started.json()).data.upload;
+  imageStorage.objects.set(storageKeyOf(upload.url), { bytes: PDF, contentType: 'application/pdf' });
+  const completed = await keyed(secret, 'POST', SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path, { uploadId: upload.id });
+  expect(completed.status, fileName).toBe(200);
+  return envelope(shopDownloadContracts.completeStagedDownload.output).parse(await completed.json()).data.file.id;
+};
+
+const bodyFor = async (secret: string, path: string, bodies: Record<string, unknown>): Promise<unknown> => {
+  if (path === SHOP_DOWNLOAD_ROUTES.addProductDownload.path) return { productId: fixture.digital, stagedFileId: await stageFile(secret, 'added.pdf') };
+  if (path === SHOP_DOWNLOAD_ROUTES.replaceProductDownload.path) {
+    return { productId: fixture.digital, replacesAssetId: OWNER_FILE.id, stagedFileId: await stageFile(secret, 'replacing.pdf') };
+  }
+  return bodies[path] ?? {};
+};
+
+const STAGING_ROUTES: ReadonlySet<string> = new Set([
+  SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path, SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path,
+  SHOP_DOWNLOAD_ROUTES.copyStagedDownload.path, SHOP_DOWNLOAD_ROUTES.discardStagedDownload.path,
+]);
+
+const stagingRoute = async (secret: string, route: ShopMachineRoute, extra: Record<string, string> = {}): Promise<number> => {
+  if (route.path === SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path) {
+    return (await keyed(secret, 'POST', route.path, { fileName: 'started.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength }, acmeHost, extra)).status;
+  }
+  if (route.path === SHOP_DOWNLOAD_ROUTES.completeStagedDownload.path) {
+    const started = await keyed(secret, 'POST', SHOP_DOWNLOAD_ROUTES.uploadStagedDownload.path, { fileName: 'completed.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength });
+    const upload = envelope(shopDownloadContracts.uploadStagedDownload.output).parse(await started.json()).data.upload;
+    imageStorage.objects.set(storageKeyOf(upload.url), { bytes: PDF, contentType: 'application/pdf' });
+    return (await keyed(secret, 'POST', route.path, { uploadId: upload.id }, acmeHost, extra)).status;
+  }
+  if (route.path === SHOP_DOWNLOAD_ROUTES.copyStagedDownload.path) {
+    return (await keyed(secret, 'POST', route.path, { productId: fixture.digital, assetId: OWNER_FILE.id }, acmeHost, extra)).status;
+  }
+  const id = await stageFile(secret, 'discarded.pdf');
+  return (await keyed(secret, 'DELETE', route.path.replace(':id', id), undefined, acmeHost, extra)).status;
+};
+
+const directRoute = (secret: string, route: ShopMachineRoute, candidate: { key: string | null }, extra: Record<string, string> = {}): Promise<number> =>
+  STAGING_ROUTES.has(route.path) ? stagingRoute(secret, route, extra) : imageUploadRoute(secret, route, candidate, extra);
+
+const IMAGE_UPLOAD_BODIES: Record<string, unknown> = {
+  [SHOP_ASSETS_ROUTES.productCoverUpload.path]: { kind: 'product-cover', fileName: 'cover.png', contentType: 'image/png', sizeBytes: PNG.byteLength },
+  [SHOP_SETTINGS_ROUTES.brandingAssetUpload.path]: { kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: PNG.byteLength },
+};
+
+const imageUploadKey = z.object({ ok: z.literal(true), data: z.object({ key: z.string(), quarantined: z.literal(true) }) });
+
+const imageUploadRoute = async (secret: string, route: ShopMachineRoute, candidate: { key: string | null }, extra: Record<string, string> = {}): Promise<number> => {
+  const upload = IMAGE_UPLOAD_BODIES[route.path];
+  if (upload !== undefined) {
+    const response = await keyed(secret, route.method, route.path, upload, acmeHost, extra);
+    if (response.status !== 200) return response.status;
+    const { key } = imageUploadKey.parse(await response.json()).data;
+    imageStorage.objects.set(key, { bytes: new Uint8Array(PNG), contentType: 'image/png' });
+    candidate.key = key;
+    return response.status;
+  }
+  const response = await keyed(secret, route.method, route.path, { key: candidate.key }, acmeHost, extra);
+  if (response.status === 200) {
+    const answer = z.object({ ok: z.literal(true), data: z.object({ url: z.string(), quarantined: z.literal(true) }) }).parse(await response.json()).data;
+    expect(answer.url).toMatch(/^\/api\/public\/assets\/(product-cover|logo)\/[0-9a-f]{64}\.png$/);
+  }
+  return response.status;
+};
 
 const salesLinkFields = () => ({ slug: 'spring', title: 'Spring', heading: 'Spring offer', productIds: [fixture.published] });
 
@@ -217,7 +309,15 @@ beforeAll(async () => {
     BETTER_AUTH_SECRET: 'shop-propose-mode-test-secret-at-least-32-characters',
   });
   secretsMasterKey = env.SECRETS_MASTER_KEY;
-  deps = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
+  const created = createDeps(env, { db: database.db, clock: { nowIso: () => now } });
+  imageStorage = createObjectStorageFake();
+  deps = {
+    ...created,
+    storage: imageStorage.storage,
+    secretResolver: withFakeStorage(created.secretResolver),
+    changeProposalTransaction: createChangeProposalTransaction(database.db, created.logger, (connection) =>
+      withFakeStorage(createTenantSecretResolver(createTenantSecretRepository(connection), createSecretCrypto(secretsMasterKey)))),
+  };
   app = buildApp(deps);
 
   const owner = await signUp('shop-propose-owner@example.test', 'Propose Owner');
@@ -248,7 +348,16 @@ beforeAll(async () => {
   const linked = await keyed(direct.secret, 'POST', SHOP_ASSETS_ROUTES.createSalesLink.path, { slug: 'spring', title: 'Spring', heading: 'Spring offer', productIds: [published] });
   expect(linked.status).toBe(201);
   const salesLink = envelope(shopAssetsContracts.createSalesLink.output).parse(await linked.json()).data.salesLink.id;
-  fixture = { published, draft, publishedPrice, salesLink };
+  const digitalCreated = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.createProduct.path, { title: 'Workbook', type: 'digital_download', priceCents: 900 });
+  expect(digitalCreated.status).toBe(200);
+  const digital = envelope(shopCatalogContracts.createProduct.output).parse(await digitalCreated.json()).data.product.id;
+  await database.db.insert(courses).values({ id: ACCESS_COURSE, tenantId: 'acme', name: 'Field course', description: '', createdAt: now });
+  await database.db.insert(productDownloadAssets).values({
+    id: OWNER_FILE.id, tenantId: 'acme', productId: digital, lineageId: OWNER_FILE.id, versionNumber: 1, versionNote: null, supersededAt: null, replacesAssetId: null,
+    fileName: 'workbook.pdf', contentType: 'application/pdf', sizeBytes: PDF.byteLength, storageKey: OWNER_FILE.key, status: 'ready', createdAt: now, sha256: null,
+  });
+  imageStorage.objects.set(OWNER_FILE.key, { bytes: PDF, contentType: 'application/pdf' });
+  fixture = { published, draft, publishedPrice, salesLink, digital };
 }, 120_000);
 
 afterAll(async () => { await database?.close(); });
@@ -267,6 +376,7 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/products/publish': 'proposal product.publish',
       'POST /api/m2m/shop/products/unpublish': 'proposal product.unpublish',
       'POST /api/m2m/shop/products/delete': 'proposal product.delete-draft',
+      'POST /api/m2m/shop/products/access': 'proposal product.set-access',
       'GET /api/m2m/shop/products/:productId/prices': 'read',
       'POST /api/m2m/shop/products/prices': 'proposal price.create',
       'POST /api/m2m/shop/products/prices/deactivate': 'proposal price.deactivate',
@@ -288,15 +398,26 @@ describe('shop route classification', () => {
       'POST /api/m2m/shop/orders/:orderId/shipx/label': 'refuse side-effect',
       'GET /api/m2m/shop/settings': 'read',
       'POST /api/m2m/shop/settings': 'proposal settings.update',
-      'POST /api/m2m/shop/image-assets/branding/upload': 'refuse not-in-release',
-      'POST /api/m2m/shop/image-assets/branding/complete': 'refuse not-in-release',
-      'POST /api/m2m/shop/image-assets/product-cover/upload': 'refuse not-in-release',
-      'POST /api/m2m/shop/image-assets/product-cover/complete': 'refuse not-in-release',
+      'POST /api/m2m/shop/image-assets/branding/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/branding/complete': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/complete': 'direct',
+      'POST /api/m2m/shop/image-assets/product-image/upload': 'refuse not-in-release',
+      'POST /api/m2m/shop/image-assets/product-image/complete': 'refuse not-in-release',
       'GET /api/m2m/shop/sales-links': 'read',
       'GET /api/m2m/shop/sales-links/:id': 'read',
       'POST /api/m2m/shop/sales-links': 'proposal sales-link.create',
       'POST /api/m2m/shop/sales-links/:id': 'proposal sales-link.update',
       'DELETE /api/m2m/shop/sales-links/:id': 'proposal sales-link.delete',
+      'POST /api/m2m/shop/downloads/upload': 'direct',
+      'POST /api/m2m/shop/downloads/complete': 'direct',
+      'POST /api/m2m/shop/downloads/copy': 'direct',
+      'GET /api/m2m/shop/downloads/staged': 'read',
+      'DELETE /api/m2m/shop/downloads/staged/:id': 'direct',
+      'GET /api/m2m/shop/products/:productId/downloads': 'read',
+      'POST /api/m2m/shop/products/downloads': 'proposal download.add',
+      'POST /api/m2m/shop/products/downloads/replace': 'proposal download.replace',
+      'POST /api/m2m/shop/products/downloads/remove': 'proposal download.remove',
       'GET /api/m2m/shop/integrations/secrets': 'read',
       'POST /api/m2m/shop/integrations/secrets': 'refuse secret',
       'DELETE /api/m2m/shop/integrations/secrets/:key': 'refuse secret',
@@ -314,6 +435,38 @@ describe('shop route classification', () => {
     });
   });
 
+  it('lists one permission row per key mode for every route whose handler both modes reach and for the access and product file proposal routes', () => {
+    const classes = new Map(registeredShopRoutes().map((route) => [`${route.method} ${route.path}`, routeClass(route)]));
+    const keyModeRoutes = Object.keys(KEY_MODE_ROUTES);
+    expect([...classes].filter(([, kind]) => kind === 'direct').map(([label]) => label).filter((label) => !keyModeRoutes.includes(label))).toEqual([]);
+    expect(Object.fromEntries(keyModeRoutes.map((label) => [label, classes.get(label)]))).toEqual({
+      'POST /api/m2m/shop/downloads/upload': 'direct',
+      'POST /api/m2m/shop/downloads/complete': 'direct',
+      'POST /api/m2m/shop/downloads/copy': 'direct',
+      'GET /api/m2m/shop/downloads/staged': 'read',
+      'DELETE /api/m2m/shop/downloads/staged/:id': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/product-cover/complete': 'direct',
+      'POST /api/m2m/shop/image-assets/branding/upload': 'direct',
+      'POST /api/m2m/shop/image-assets/branding/complete': 'direct',
+      'POST /api/m2m/shop/products/access': 'proposal product.set-access',
+      'POST /api/m2m/shop/products/downloads': 'proposal download.add',
+      'POST /api/m2m/shop/products/downloads/replace': 'proposal download.replace',
+      'POST /api/m2m/shop/products/downloads/remove': 'proposal download.remove',
+    });
+    const routeRows = collectPermissionInventory().routes;
+    const rows = new Map(routeRows.map((row) => [row.subject, row]));
+    expect(routeRows.filter((row) => row.modes !== undefined).map((row) => row.subject).sort()).toEqual([...keyModeRoutes].sort());
+    for (const label of keyModeRoutes) {
+      const modes = rows.get(label)?.modes;
+      expect([modes?.direct !== undefined, modes?.propose !== undefined], label).toEqual([true, true]);
+      const operation = classes.get(label)?.replace(/^proposal /u, '');
+      if (operation !== undefined && operation !== classes.get(label)) {
+        expect(modes?.propose.evidence, label).toContain(`stores a ${operation} proposal`);
+      }
+    }
+  });
+
   it('registers exactly the classified routes under the shop prefix', () => {
     expect(app.routes.filter((route) => route.path.startsWith('/api/m2m/shop/')).map((route) => `${route.method} ${route.path}`))
       .toEqual(registeredShopRoutes().map((route) => `${route.method} ${route.path}`));
@@ -321,15 +474,24 @@ describe('shop route classification', () => {
 });
 
 describe('a propose-mode key on every registered shop route', () => {
-  it('never reaches a live write: proposals answer 202, refusals 403, reads still read', async () => {
+  it('never reaches a live write: proposals answer 202, refusals 403, reads still read, uploads stay private', async () => {
     const bodies = proposalBodies();
     const before = await liveState();
+    const publicBefore = imageStorage.keysUnder('image-assets/');
+    const candidate: { key: string | null } = { key: null };
     const outcomes: string[] = [];
     for (const route of registeredShopRoutes()) {
       const label = `${route.method} ${route.path}`;
       const mode = route.proposeMode;
       if (mode?.kind === 'proposal-management') continue;
-      const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
+      minute += 1;
+      now = new Date(START + minute * 60_000).toISOString();
+      if (mode?.kind === 'direct') {
+        expect(await directRoute(proposer.secret, route, candidate), label).toBe(200);
+        outcomes.push(`${label} quarantined`);
+        continue;
+      }
+      const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : await bodyFor(proposer.secret, route.path, bodies);
       const response = await keyed(proposer.secret, route.method, salesLinkPath(route.path), body);
       if (mode === undefined) {
         expect([401, 403], label).not.toContain(response.status);
@@ -347,16 +509,22 @@ describe('a propose-mode key on every registered shop route', () => {
       outcomes.push(`${label} refused`);
     }
     expect(await liveState()).toBe(before);
-    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(14);
-    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(16);
+    expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
+    expect(imageStorage.keysUnder('image-asset-quarantine/acme/').length).toBeGreaterThan(0);
+    expect(imageStorage.keysUnder('acme/product-downloads/').filter((key) => !key.includes(`/${proposer.apiKey.id}/`))).toEqual([OWNER_FILE.key]);
+    expect(outcomes.filter((outcome) => outcome.endsWith('proposed'))).toHaveLength(18);
+    expect(outcomes.filter((outcome) => outcome.endsWith('quarantined'))).toHaveLength(8);
+    expect(outcomes.filter((outcome) => outcome.endsWith('refused'))).toHaveLength(14);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === proposer.apiKey.id);
-    expect(stored).toHaveLength(14);
+    expect(stored).toHaveLength(18);
   });
 
   it('never reaches a live write with the group header either: every proposal joins its group, refusals stay 403, reads still read', async () => {
     const bodies = proposalBodies();
     const grouper = await createShopKey(PROPOSE_SCOPES, 'propose');
     const before = await liveState();
+    const publicBefore = imageStorage.keysUnder('image-assets/');
+    const candidate: { key: string | null } = { key: null };
     const proposed: string[] = [];
     for (const route of registeredShopRoutes()) {
       const label = `${route.method} ${route.path}`;
@@ -367,9 +535,13 @@ describe('a propose-mode key on every registered shop route', () => {
       const created = await keyed(grouper.secret, 'POST', SHOP_PROPOSAL_ROUTES.createGroup.path, { title: label });
       expect(created.status, label).toBe(201);
       const group = envelope(shopProposalContracts.createGroup.output).parse(await created.json()).data.group;
-      const body = route.method === 'GET' || route.method === 'DELETE' ? undefined : bodies[route.path] ?? {};
-      const response = await keyed(grouper.secret, route.method, salesLinkPath(route.path), body, acmeHost, { 'x-proposal-group': group.id });
-      if (mode === undefined) {
+      const body = route.method === 'GET' || route.method === 'DELETE' || mode?.kind === 'direct' ? undefined : await bodyFor(grouper.secret, route.path, bodies);
+      const response = mode?.kind === 'direct'
+        ? null
+        : await keyed(grouper.secret, route.method, salesLinkPath(route.path), body, acmeHost, { 'x-proposal-group': group.id });
+      if (response === null) {
+        expect(await directRoute(grouper.secret, route, candidate, { 'x-proposal-group': group.id }), label).toBe(200);
+      } else if (mode === undefined) {
         expect([401, 403], label).not.toContain(response.status);
       } else if (mode.kind === 'proposal') {
         expect(response.status, label).toBe(202);
@@ -384,18 +556,19 @@ describe('a propose-mode key on every registered shop route', () => {
       expect(withdrawn.status, label).toBe(200);
     }
     expect(await liveState()).toBe(before);
-    expect(proposed).toHaveLength(14);
+    expect(imageStorage.keysUnder('image-assets/')).toEqual(publicBefore);
+    expect(proposed).toHaveLength(18);
     const stored = (await database.db.select().from(changeProposals)).filter((row) => row.proposedByKeyId === grouper.apiKey.id);
-    expect(stored).toHaveLength(14);
+    expect(stored).toHaveLength(18);
     expect(stored.every((row) => row.groupId !== null && row.groupPosition === 1)).toBe(true);
   });
 
-  it('answers a refused write with the refusal reason and records the request in the key history', async () => {
-    const response = await keyed(proposer.secret, 'POST', SHOP_SETTINGS_ROUTES.brandingAssetUpload.path, { kind: 'logo', fileName: 'logo.png', contentType: 'image/png', sizeBytes: 4 });
-    expect(response.status).toBe(403);
-    expect(await errorOf(response)).toEqual({ code: 'forbidden', message: 'A propose-mode shop management key cannot call this route (not-in-release)' });
+  it('records an image upload of a propose-mode key in the key history like every other write', async () => {
+    const path = SHOP_ASSETS_ROUTES.productCoverUpload.path;
+    const response = await keyed(proposer.secret, 'POST', path, IMAGE_UPLOAD_BODIES[path]);
+    expect(response.status).toBe(200);
     const requests = (await database.db.select().from(shopManagementKeyEvents))
-      .filter((event) => event.apiKeyId === proposer.apiKey.id && event.kind === 'request' && event.route === SHOP_SETTINGS_ROUTES.brandingAssetUpload.path);
+      .filter((event) => event.apiKeyId === proposer.apiKey.id && event.kind === 'request' && event.route === path);
     expect(requests.length).toBeGreaterThan(0);
   });
 
@@ -446,6 +619,14 @@ describe('a direct-mode key on every registered shop route', () => {
       expect(response.status, label).not.toBe(202);
       expect(error?.message ?? '', label).not.toContain('propose-mode');
     }
+  });
+
+  it('is refused what a product grants, which it holds no capability to change, and changes nothing', async () => {
+    const before = await liveState();
+    const response = await keyed(direct.secret, 'POST', SHOP_CATALOG_ROUTES.setProductAccess.path, { id: fixture.digital, accessItems: [{ level: 'course', courseId: ACCESS_COURSE }] });
+    expect(response.status).toBe(403);
+    expect((await errorOf(response)).code).toBe('forbidden');
+    expect(await liveState()).toBe(before);
   });
 
   it('applies a catalogue write live and answers it with the resource, not a receipt', async () => {
@@ -717,6 +898,23 @@ describe('the owner approval route', () => {
     }
     expect((await approved(proposal.id)).status).toBe('applied');
   }, 30_000);
+
+  it('proposes what a product grants, shows the owner the course title, and applies the stored list only on approval', async () => {
+    const accessOf = async () => (await database.db.select().from(products)).find((row) => row.id === fixture.digital)?.accessItems;
+    const before = await accessOf();
+    const accessItems = [{ level: 'course', courseId: ACCESS_COURSE }];
+    const proposal = await propose(SHOP_CATALOG_ROUTES.setProductAccess.path, { id: fixture.digital, accessItems });
+    expect(proposal).toMatchObject({ operation: 'product.set-access', input: { id: fixture.digital, accessItems } });
+    expect(await accessOf()).toEqual(before);
+    const shown = await sessionRequest(ownerToken, 'GET', API_PATHS.changeProposal.replace(':id', proposal.id));
+    const view = envelope(changeProposalShowOutputSchema).parse(await shown.json()).data.proposal;
+    expect(view.effect).toEqual({ accessItems: { before, after: accessItems } });
+    expect(view.accessLabels).toEqual({ courses: [{ id: ACCESS_COURSE, title: 'Field course' }], modules: [], lessons: [] });
+    const receipt = await (await keyed(proposer.secret, 'GET', SHOP_PROPOSAL_ROUTES.getProposal.path.replace(':id', proposal.id))).text();
+    expect(receipt).not.toContain('Field course');
+    expect((await approved(proposal.id)).status).toBe('applied');
+    expect(await accessOf()).toEqual(accessItems);
+  });
 
   it.each([
     ['checkoutReturnOrigins', ['https://shop.example.test']],

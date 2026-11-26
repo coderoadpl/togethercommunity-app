@@ -26,6 +26,7 @@ import {
   setProductStockThreshold,
   unpublishProduct,
   updateProduct,
+  updateProductAccessItems,
   type Ctx,
 } from '#core/server/index.js';
 
@@ -95,6 +96,10 @@ export const shopCatalogRoutes = (deps: AppDeps): readonly ShopMachineRoute[] =>
   }),
   proposableWrite(SHOP_CATALOG_ROUTES.deleteProductDraft, 'product.delete-draft', shopCatalogContracts.deleteProductDraft.input, 'Invalid product deletion payload', async (ctx, input) =>
     respond(await deleteProductDraft(ctx, input, deps))),
+  proposableWrite(SHOP_CATALOG_ROUTES.setProductAccess, 'product.set-access', shopCatalogContracts.setProductAccess.input, 'Invalid product access payload', async (ctx, input) => {
+    const result = await updateProductAccessItems(ctx, input, deps);
+    return respond(result.ok ? ok({ product: result.value }) : result);
+  }),
   {
     ...SHOP_CATALOG_ROUTES.listProductPrices,
     handler: async (c, { ctx }) => {

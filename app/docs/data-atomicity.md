@@ -130,10 +130,50 @@ at all.
 - Download copies: `DownloadCopyRepository.create` locks the member row with
   `FOR UPDATE`, checks that the member is not erased, and inserts the registry
   row in one transaction to serialize issuance with member erasure.
+- Course progress: `MemberCourseProgressRepository.addCompletedLesson` writes
+  the progress projection and its `lesson-completion` member event in one
+  commit. It locks the member's progress row for the course with `FOR UPDATE`,
+  so completions of one member and course are serialized, and writes the event
+  only when the locked row did not already contain the lesson.
+  `MemberCourseProgressRepository.removeCompletedLesson` removes a lesson from
+  the member's rows of one or two courses in one transaction: it locks the
+  existing rows with `FOR UPDATE` in course-id order and removes the lesson
+  from what each locked row holds, so a failure leaves every row unchanged and
+  an overlapping completion is not lost; it creates no row.
+  `MemberCourseProgressRepository.setLastViewed` upserts only the pointers it
+  is given and never writes the completed lessons.
 - Telemetry outbox: `EmailEventRepository.append` and
   `MemberEventRepository.append` write the event, the per-tenant telemetry
   accounting row and the outbox row in one commit, so the outbox sequence
   follows commit order and an event is never stored without its accounting.
+- Staged download files of shop management keys:
+  `KeyDownloadFileRepository.reserve` checks the staging limits under the
+  workspace's and the key's staging locks and inserts the upload or copy record
+  with its `started` event in one commit. `KeyDownloadFileRepository.claimCompletion`,
+  `KeyDownloadFileRepository.finishCompletion`,
+  `KeyDownloadFileRepository.interruptAttempt` and
+  `KeyDownloadFileRepository.releaseRecord` lock the record row and write its
+  state, attempt, staged file row and append-only
+  `change_proposal_download_upload_events` row together.
+  `releaseRecord` holds the record row until the storage answers the delete of
+  what the record still owns and keeps the record: an attempt clears its
+  destination and marks a completing record `failed` with its event; a sweep
+  inserts the owed second delete of the upload object, when the record has one,
+  and settles the record with its `settled` event in the same commit; a failed
+  delete keeps the keys. The retention purge deletes settled records later.
+  `KeyDownloadFileRepository.finishDeletion` holds an owed deletion's row until
+  the storage answers and deletes that row only when the storage confirms.
+  `KeyDownloadFileRepository.discard` and `KeyDownloadFileRepository.sweepStaged`
+  move a staged file to the owed deletions in the commit that deletes its row,
+  before any storage delete; `KeyDownloadFileRepository.release` does the same
+  for the files it releases and only clears the hold of a decided proposal
+  whose decision keeps its files proposable.
+  `KeyDownloadAttachRepository.attach` turns a staged row into a product file
+  version and `KeyDownloadAttachRepository.remove` deletes a file version, each
+  in one commit; removal owes the deletion of the object only for a file a key
+  staged, never for an owner-uploaded file. The protocol is in
+  [Download file prefixes](storage.md#download-file-prefixes) and
+  [Download files](shop-management-keys.md#download-files).
 
 <!-- MUST-ATOMIC:end -->
 

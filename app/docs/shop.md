@@ -73,8 +73,9 @@ a map that failed to load) the option shows the code input directly, with one
 short reason when there is one. Both checkout layouts show a mobile phone
 field for any selected InPost rate. The pay button stays disabled until the
 buyer has chosen a delivery option and supplied a valid locker code and Polish
-mobile number when required. The single-product form explains the missing
-requirement below the pay button.
+mobile number when required. The single-product form names the missing
+requirement below the pay button; the cart form names a missing phone or a
+rejected locker.
 
 A typed code is checked at the carrier through the
 [parcel locker lookup](#parcel-locker-lookup-at-the-carrier) when the buyer
@@ -390,8 +391,9 @@ The checkout snapshot appends a shipping line after the product lines:
 `productType: 'shipping'`, `productId: 'shipping:<rateId>'`, the option label as
 its name, gross, net and VAT split at the option's VAT rate and
 `issuedCount: null`. `checkout_snapshots.shipping` freezes the option
-(`rateId`, `label`, `amountCents`, `vatRatePercent`, `carrier`, `pickupPoint`)
-and the allowed countries at checkout start, so later edits to the option do not
+(`rateId`, `label`, `amountCents`, `vatRatePercent`, `carrier`, `pickupPoint`),
+the canonical `phone` for an InPost rate and the allowed countries at checkout
+start, so later edits to the option do not
 change an order in flight.
 
 When Stripe reports the completed session, the webhook requires a shipping fee
@@ -470,7 +472,9 @@ JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `out_of_stock` for an order cancelled because its goods sold out before the
 payment arrived, empty otherwise. `cancel_reason` is the last column so the
 earlier column positions stay unchanged, and `status` keeps the payment status.
-The JSON export carries the same value as `cancelReason`.
+The JSON export carries the same value as `cancelReason`. The staff JSON export
+also carries `shipping.corrections` (see
+[Correct delivery details](#correct-delivery-details)); shop-key exports omit it.
 
 ### Correct delivery details
 
@@ -511,6 +515,10 @@ correction; saving does not replace it.
 | Non-canceled shipment exists or creation is active or unresolved | `delivery_correction_shipment_exists` | 409 | 36 |
 | Member erased | `delivery_correction_member_erased` | 409 | 37 |
 | Stored details differ from `expected`; reload the order before retrying | `delivery_correction_conflict` | 409 | 38 |
+| No field actually changes (`unchanged`), the history would exceed 50 entries (`history_full`), the address country is outside the allowed delivery countries (`country`), a Polish postal code is not in `00-000` form (`postal_code`), locker change on an address order (`locker_not_allowed`), InPost lookup unavailable (`locker_unavailable`) or locker unknown or unusable (`locker_invalid`) | `validation` with `details.deliveryCorrection` set to the reason | 400 | 2 |
+
+An order that is not paid, has nothing to pack or has no delivery details is a
+`validation` error (400, exit 2).
 
 ## Fulfilment
 
@@ -903,7 +911,9 @@ attempt, and the last status, and the order stays to pack. A row that holds
 neither yet (the deadline passed before the create was recorded) is deleted,
 so the next click starts over with the current settings. `GET /api/orders/<orderId>/shipx`
 (`order:read`) returns the readiness and the stored shipment without calling
-ShipX or writing. `POST /api/orders/<orderId>/shipx/refresh` (`order:write`, CLI
+ShipX or writing. The stored shipment carries `operationClaimed: true` while a
+request holds its creation claim; such a shipment blocks a
+[delivery correction](#correct-delivery-details). `POST /api/orders/<orderId>/shipx/refresh` (`order:write`, CLI
 `order shipx refresh <orderId>`) returns the same view after reading the live
 ShipX status once for a stored shipment that is not bought yet and storing it.
 When staff who may ship open the order, Studio loads the view through the

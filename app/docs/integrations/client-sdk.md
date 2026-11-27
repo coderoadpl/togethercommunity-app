@@ -54,7 +54,8 @@ to `/api/public/checkout/session` and pass through the supplied `shipping`
 object. When the selected rate has `carrier: "inpost"`, provide the buyer's
 Polish mobile number as `shipping.phone` (and the selected `shipping.pickupPoint`
 for a locker). The SDK does not supply a phone for you. A missing or invalid
-InPost phone returns `locker_phone_invalid` (HTTP 400). See the
+InPost phone returns `locker_phone_invalid` (HTTP 400); a phone longer than 40
+characters is a `validation` error. See the
 [storefront checkout guide](../shop-integration.md#6-connect-an-anonymous-storefront-from-another-origin)
 for request examples.
 

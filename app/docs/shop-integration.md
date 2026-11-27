@@ -397,7 +397,8 @@ For a custom form on an external site, the following plain JavaScript runs in a
 `<script type="module">` element without any package. Call the session request
 only after the buyer accepted the displayed legal terms. This example selects
 the configured manual `courier` rate; choose an active rate from the offer in a
-real UI. The examples below use the manual rate, so they omit `shipping.phone`.
+real UI. The two request examples that follow use this manual rate, so they omit
+`shipping.phone`.
 
 ```js
 const workspaceOrigin = 'https://acme.togethercommunity.app';
@@ -487,7 +488,8 @@ and the selected `code`; optional `name` and `address` are display metadata.
 For any rate with `carrier: "inpost"`, collect the buyer's Polish mobile number
 in `shipping.phone`: nine digits with an optional `+48`, `0048` or `48` prefix.
 Spaces and dashes are accepted. Missing or invalid numbers return
-`locker_phone_invalid` (HTTP 400, CLI exit 33). Together stores the number as
+`locker_phone_invalid` (HTTP 400, CLI exit 33); a value longer than 40
+characters after trimming is a `validation` error (400). Together stores the number as
 `+48XXXXXXXXX` and uses it on the order. Stripe collects the shipping address
 and still asks for a phone for one release to support rollback; for other
 carriers the order still uses Stripe's number and no `shipping.phone` is

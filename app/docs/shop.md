@@ -249,7 +249,14 @@ keeps that page's content security policy, the map does not load, the picker
 says so, and the code input remains the way to choose a locker.
 
 The checkout request carries
-`shipping: { rateId, pickupPoint?: { provider: 'inpost', code, name?, address? } }`.
+`shipping: { rateId, phone?, pickupPoint?: { provider: 'inpost', code, name?, address? } }`
+for both single-product and cart checkout. `shipping.phone` is required for
+every rate with `carrier: 'inpost'` (parcel locker and courier). Enter a Polish
+mobile number: nine digits, optionally prefixed with `+48`, `0048` or `48`;
+spaces and dashes are accepted. Together stores it as `+48XXXXXXXXX` and uses
+it on the order instead of the number entered in Stripe. Stripe still collects
+a phone for one release so a rollback can fulfil existing checkouts. Other
+carriers do not require `shipping.phone` and still use the number from Stripe.
 The server validates it again:
 
 | Situation | Result |
@@ -258,6 +265,7 @@ The server validates it again:
 | no selected product ships and `shipping` is present | `validation` |
 | unknown or inactive option | `validation` |
 | locker option without a locker, or address option with one | `validation` |
+| missing or invalid Polish mobile number for an InPost rate | `locker_phone_invalid` (HTTP 400, CLI exit 33) |
 | locker code not matching `^[A-Z0-9]{4,12}$` after trimming and upper-casing | `validation` |
 | locker code the carrier does not know | `validation` with the message `No InPost parcel locker has this code` and `details.pickupPointReason: 'not_found'` |
 | carrier point that is not a parcel locker or cannot hold parcels for collection | `validation`, `This InPost point cannot hold parcels for collection`, `not_usable` |

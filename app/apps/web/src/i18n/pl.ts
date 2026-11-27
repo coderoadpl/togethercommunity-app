@@ -1419,7 +1419,7 @@ export const pl: Messages = {
     locker: 'Kod paczkomatu',
     invalid: 'Wpisz poprawną wartość o dozwolonej długości.',
     postalInvalid: 'Wpisz kod pocztowy w formacie 00-000.',
-    fields: { phone: 'Telefon', recipient_name: 'Odbiorca', address: 'Adres', pickup_point: 'paczkomat' },
+    fields: { phone: 'Telefon', recipient_name: 'Odbiorca', address: 'Adres', pickup_point: 'Paczkomat' },
     reasons: {
       unchanged: 'Przed zapisem zmień co najmniej jedno pole danych dostawy.',
       history_full: 'Osiągnięto limit 50 zmian danych dostawy dla tego zamówienia.',

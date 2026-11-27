@@ -136,9 +136,11 @@ Shipping supports Poland and at most five uniquely identified rates. A rate uses
 (`none` or `inpost_locker`) and `active`. Only active rates are public; the public
 projection omits `vatRatePercent`. `deliveryEstimateDays: { "min": 2, "max": 4 }`
 is optional. `carrier: other` with `pickupPoint: none` supports manual shipping
-without ShipX credentials. An InPost locker rate requires a selected locker code;
-a typed code works without the optional map. A pickup product needs no shipping
-selection: publish practical pickup instructions in the product or storefront.
+without ShipX credentials. Every InPost rate (parcel locker or courier) also
+requires `shipping.phone` at checkout. A locker rate additionally requires a
+selected locker code; a typed code works without the optional map. A pickup
+product needs no shipping selection: publish practical pickup instructions in
+the product or storefront.
 
 The CLI `tenant settings-set --shipping-rates '<json-array>'` can update rates;
 use HTTP for the complete seller/legal/branding settings. Supplying
@@ -482,9 +484,16 @@ window.location.assign(session.data.url);
 ready for the storefront's image component. A pickup product omits
 `shipping`. For a locker rate, add `shipping.pickupPoint` with `provider: "inpost"`
 and the selected `code`; optional `name` and `address` are display metadata.
-The payment provider collects the shipping address/phone; do not invent an
-address field in this session request. Optional `email`, `billing`, `couponCode`
-and `marketingConsentDefinitionIds` must follow `checkoutSessionRequestSchema`.
+For any rate with `carrier: "inpost"`, collect the buyer's Polish mobile number
+in `shipping.phone`: nine digits with an optional `+48`, `0048` or `48` prefix.
+Spaces and dashes are accepted. Missing or invalid numbers return
+`locker_phone_invalid` (HTTP 400, CLI exit 33). Together stores the number as
+`+48XXXXXXXXX` and uses it on the order. Stripe collects the shipping address
+and still asks for a phone for one release to support rollback; for other
+carriers the order still uses Stripe's number and no `shipping.phone` is
+required. Do not send a delivery address in the session request. Optional
+`email`, `billing`, `couponCode` and `marketingConsentDefinitionIds` must follow
+`checkoutSessionRequestSchema`.
 Display the returned consent wording and never preselect marketing consent.
 
 Optional `clientReference` is the storefront's own reference for the checkout,
@@ -573,6 +582,7 @@ The cart answers with the same error envelope as the other routes:
 | an unknown or unpublished product, a product sold only through sales links, an unknown or inactive `priceId` | `not_found` (404) |
 | a tracked product with fewer available pieces than its line quantity | `sold_out` (409) |
 | a shipped product without `shipping` | `shipping_required` (400) |
+| an InPost rate without a valid Polish mobile number in `shipping.phone` | `locker_phone_invalid` (400; CLI exit 33) |
 
 A custom cart form bounds each quantity picker by `maxQuantity` and shows the
 remaining count from `stock.available`. Membership products cannot join a cart

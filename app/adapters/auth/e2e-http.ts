@@ -2,10 +2,13 @@ import { acceptedSessionCookieNames } from './browser-session-token.js';
 
 export const AUTH_MAGIC_LINK_VERIFICATION_PATH = '/api/auth/magic-link/verify';
 export const AUTH_EMAIL_VERIFICATION_PATH = '/api/auth/verify-email';
+export const AUTH_EMAIL_SIGN_IN_PATH = '/api/auth/sign-in/email';
 export const AUTH_TOTP_VERIFICATION_PATH = '/api/auth/two-factor/verify-totp';
 export const AUTH_PASSKEY_AUTHENTICATION_PATH = '/api/auth/passkey/verify-authentication';
+export const AUTH_PASSKEY_REGISTRATION_PATH = '/api/auth/passkey/verify-registration';
 export const AUTH_ONE_TAP_CALLBACK_PATH = '/api/auth/one-tap/callback';
 export const AUTH_GOOGLE_CALLBACK_PATH = '/api/auth/callback/google';
+export const AUTH_LINK_SOCIAL_PATH = '/api/auth/link-social';
 
 /**
  * Headless HTTP driver for the Better Auth routes that scripts/auth-e2e.ts
@@ -104,9 +107,9 @@ export interface AuthE2eClient {
 
 export const createAuthE2eClient = (transport: AuthE2eTransport): AuthE2eClient => ({
   signUpEmail: (input) => requestJson(transport, '/api/auth/sign-up/email', { method: 'POST', body: input }),
-  signInEmail: (input) => requestJson(transport, '/api/auth/sign-in/email', { method: 'POST', body: input }),
+  signInEmail: (input) => requestJson(transport, AUTH_EMAIL_SIGN_IN_PATH, { method: 'POST', body: input }),
   signInEmailResponse: (input) =>
-    requestResponse(transport, '/api/auth/sign-in/email', { method: 'POST', body: input }),
+    requestResponse(transport, AUTH_EMAIL_SIGN_IN_PATH, { method: 'POST', body: input }),
   requestMagicLink: (input) =>
     requestJson(transport, '/api/auth/sign-in/magic-link', { method: 'POST', body: input }),
   enableTwoFactor: (token, password) =>

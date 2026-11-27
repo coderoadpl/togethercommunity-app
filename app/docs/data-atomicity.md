@@ -175,6 +175,16 @@ at all.
   [Download file prefixes](storage.md#download-file-prefixes) and
   [Download files](shop-management-keys.md#download-files).
 
+- Dormant sign-in clients: `SignInClientRepository.create` checks the active
+  workspace under a shared row lock and relies on the hostname primary key to
+  reserve it once. The reservation, client record, and `created` event commit
+  together. `SignInClientRepository.rotate` checks the expected version under
+  a workspace-scoped `FOR UPDATE` row lock; the replacement digest, expiry,
+  and version commit with the `secret_rotated` event.
+  `SignInClientRepository.disable` takes the same row lock; the retirement,
+  cleared fields, and version commit with the `retired` event. Repeating
+  disable writes nothing. All three transactions explicitly use `READ COMMITTED`.
+
 <!-- MUST-ATOMIC:end -->
 
 The legacy importer also uses interactive transactions for each import unit and

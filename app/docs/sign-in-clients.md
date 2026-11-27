@@ -22,10 +22,13 @@ Register 1–5 distinct absolute HTTPS return addresses on the same host.
 Use a lowercase ASCII DNS host, the implicit HTTPS port, and an explicit
 path. IP addresses, IDNs, trailing dots, user info, fragments, queries,
 wildcards, whitespace, backslashes, and addresses the URL parser would rewrite
-are not accepted. Neither the platform base domain nor its subdomains nor a
-verified custom workspace domain can be registered. There is no edit or
+are not accepted. The platform base domain and its subdomains, the configured
+application URL host, the configured custom-domain target, and any already
+verified custom workspace domain cannot be registered. There is no edit or
 transfer and the host cannot be assigned again, even after workspace deletion.
-Registration does not change how existing custom domains are verified.
+
+The registry does not refuse later custom-domain verification for a reserved
+host. Activation is not implemented; any later activation must re-check the host.
 
 The list returns metadata with a 50-item default and 100-item maximum page
 size, ordered by creation time then ID. Use the returned cursor to continue.

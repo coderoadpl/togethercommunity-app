@@ -39,6 +39,7 @@ describe('DEMO_TENANT_WIPE_TABLES', () => {
       schema.rateLimit,
       schema.apiKeyRateLimitBuckets,
       schema.shopManagementKeyRateLimitBuckets,
+      schema.signInClientHostReservations,
       schema.rateLimitBuckets,
       schema.platformAuditEvents,
       schema.orderFeedEpoch,
@@ -49,6 +50,12 @@ describe('DEMO_TENANT_WIPE_TABLES', () => {
     ].map(getTableName).toSorted();
 
     expect(tablesWithoutTenantId).toEqual(allowedTablesWithoutTenantId);
+  });
+
+  it('wipes sign-in client projections and events but preserves host reservations', () => {
+    expect(DEMO_TENANT_WIPE_TABLES).toContain(schema.signInClients);
+    expect(DEMO_TENANT_WIPE_TABLES).toContain(schema.signInClientEvents);
+    expect(DEMO_TENANT_WIPE_TABLES).not.toContain(schema.signInClientHostReservations);
   });
 
   it('lists every table before the tables it references', () => {

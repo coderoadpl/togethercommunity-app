@@ -1,6 +1,6 @@
 {
-  "hash": "9e2afabee961fed23c7fcd10c496065791034c18cba4952f4637258b0d0fcff2",
-  "shortId": "9e2afabee961",
+  "hash": "dc1bdea7b25114a9f912346e3b3844cac4fe50fa893d0d5fb749a542dedeff97",
+  "shortId": "dc1bdea7b251",
   "schema": {
     "constraints": [
       {
@@ -27,6 +27,11 @@
         "definition": "CHECK ((((kind = 'upload'::text) = (copied_from_asset_id IS NULL)) AND ((copied_from_product_id IS NULL) = (copied_from_asset_id IS NULL)) AND ((copied_from_asset_id IS NULL) = (copied_from_version IS NULL))))",
         "name": "change_proposal_download_uploads_shape_check",
         "table": "change_proposal_download_uploads"
+      },
+      {
+        "definition": "CHECK ((((state = 'pending_activation'::text) AND (retired_at IS NULL) AND (name IS NOT NULL) AND ((char_length(name) >= 1) AND (char_length(name) <= 120)) AND ((cardinality(redirect_uris) >= 1) AND (cardinality(redirect_uris) <= 5)) AND (array_position(redirect_uris, NULL::text) IS NULL) AND (secret_hash IS NOT NULL) AND (secret_hash ~ '^v1:[A-Za-z0-9_-]{43}$'::text) AND (secret_expires_at IS NOT NULL)) OR ((state = 'retired'::text) AND (retired_at IS NOT NULL) AND (name IS NULL) AND (cardinality(redirect_uris) = 0) AND (secret_hash IS NULL) AND (secret_expires_at IS NULL))))",
+        "name": "sign_in_clients_lifecycle_check",
+        "table": "sign_in_clients"
       },
       {
         "definition": "CHECK ((((status = 'failed'::text) AND (failure_code IS NOT NULL)) OR ((status <> 'failed'::text) AND (failure_code IS NULL) AND (failure_message IS NULL))))",
@@ -149,6 +154,11 @@
         "table": "change_proposals"
       },
       {
+        "definition": "CHECK (((host_verified_at IS NULL) AND (activated_at IS NULL)))",
+        "name": "sign_in_clients_activation_check",
+        "table": "sign_in_clients"
+      },
+      {
         "definition": "CHECK (((jsonb_typeof(scopes) = 'array'::text) AND (scopes <> '[]'::jsonb) AND (scopes <@ '[\"shop:catalog:read\", \"shop:catalog:write\", \"shop:orders:read\", \"shop:fulfilment:write\", \"shop:settings:read\", \"shop:settings:write\", \"shop:integrations:read\", \"shop:integrations:write\"]'::jsonb)))",
         "name": "shop_management_keys_scopes_check",
         "table": "shop_management_keys"
@@ -269,6 +279,11 @@
         "table": "products"
       },
       {
+        "definition": "CHECK ((actor_kind = 'direct_owner'::text))",
+        "name": "sign_in_client_events_actor_check",
+        "table": "sign_in_client_events"
+      },
+      {
         "definition": "CHECK ((amount_cents > 0))",
         "name": "order_refund_jobs_amount_check",
         "table": "order_refund_jobs"
@@ -384,6 +399,16 @@
         "table": "change_proposals"
       },
       {
+        "definition": "CHECK ((credential_version > 0))",
+        "name": "sign_in_client_events_version_check",
+        "table": "sign_in_client_events"
+      },
+      {
+        "definition": "CHECK ((credential_version > 0))",
+        "name": "sign_in_clients_version_check",
+        "table": "sign_in_clients"
+      },
+      {
         "definition": "CHECK ((decided_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{3}Z$'::text))",
         "name": "change_proposals_decided_at_check",
         "table": "change_proposals"
@@ -482,6 +507,11 @@
         "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'revoked'::text, 'purged'::text, 'request'::text])))",
         "name": "shop_management_key_events_kind_check",
         "table": "shop_management_key_events"
+      },
+      {
+        "definition": "CHECK ((kind = ANY (ARRAY['created'::text, 'secret_rotated'::text, 'retired'::text])))",
+        "name": "sign_in_client_events_kind_check",
+        "table": "sign_in_client_events"
       },
       {
         "definition": "CHECK ((kind = ANY (ARRAY['product-cover'::text, 'logo'::text, 'logo-dark'::text, 'favicon'::text, 'share-image'::text])))",
@@ -1059,6 +1089,11 @@
         "table": "coupon_redemption_events"
       },
       {
+        "definition": "FOREIGN KEY (redirect_host, client_id) REFERENCES sign_in_client_host_reservations(hostname, client_id)",
+        "name": "sign_in_clients_reservation_fk",
+        "table": "sign_in_clients"
+      },
+      {
         "definition": "FOREIGN KEY (report_id) REFERENCES post_reports(id) ON DELETE RESTRICT",
         "name": "post_report_events_report_id_post_reports_id_fk",
         "table": "post_report_events"
@@ -1595,6 +1630,11 @@
       },
       {
         "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
+        "name": "sign_in_clients_tenant_id_fkey",
+        "table": "sign_in_clients"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE",
         "name": "sns_webhook_deliveries_tenant_id_tenants_id_fk",
         "table": "sns_webhook_deliveries"
       },
@@ -1742,6 +1782,11 @@
         "definition": "FOREIGN KEY (tenant_id, campaign_id) REFERENCES campaigns(tenant_id, id) ON DELETE CASCADE",
         "name": "marketing_campaign_audience_snapshots_tenant_id_campaign_id_cam",
         "table": "marketing_campaign_audience_snapshots"
+      },
+      {
+        "definition": "FOREIGN KEY (tenant_id, client_id) REFERENCES sign_in_clients(tenant_id, client_id) ON DELETE CASCADE",
+        "name": "sign_in_client_events_client_fk",
+        "table": "sign_in_client_events"
       },
       {
         "definition": "FOREIGN KEY (tenant_id, consent_definition_id) REFERENCES consent_definitions(tenant_id, id) ON DELETE RESTRICT",
@@ -2024,9 +2069,19 @@
         "table": "shop_management_key_rate_limit_buckets"
       },
       {
+        "definition": "PRIMARY KEY (client_id)",
+        "name": "sign_in_clients_pkey",
+        "table": "sign_in_clients"
+      },
+      {
         "definition": "PRIMARY KEY (email)",
         "name": "dev_magic_links_pkey",
         "table": "dev_magic_links"
+      },
+      {
+        "definition": "PRIMARY KEY (hostname)",
+        "name": "sign_in_client_host_reservations_pkey",
+        "table": "sign_in_client_host_reservations"
       },
       {
         "definition": "PRIMARY KEY (id)",
@@ -2410,6 +2465,11 @@
       },
       {
         "definition": "PRIMARY KEY (id)",
+        "name": "sign_in_client_events_pkey",
+        "table": "sign_in_client_events"
+      },
+      {
+        "definition": "PRIMARY KEY (id)",
         "name": "space_events_pkey",
         "table": "space_events"
       },
@@ -2739,9 +2799,19 @@
         "table": "meta_capi_events"
       },
       {
+        "definition": "UNIQUE (client_id)",
+        "name": "sign_in_client_reservations_client_id_key",
+        "table": "sign_in_client_host_reservations"
+      },
+      {
         "definition": "UNIQUE (email)",
         "name": "user_email_unique",
         "table": "user"
+      },
+      {
+        "definition": "UNIQUE (hostname, client_id)",
+        "name": "sign_in_client_reservations_binding_key",
+        "table": "sign_in_client_host_reservations"
       },
       {
         "definition": "UNIQUE (id)",
@@ -2757,6 +2827,11 @@
         "definition": "UNIQUE (slug)",
         "name": "tenants_slug_unique",
         "table": "tenants"
+      },
+      {
+        "definition": "UNIQUE (tenant_id, client_id)",
+        "name": "sign_in_clients_tenant_client_key",
+        "table": "sign_in_clients"
       },
       {
         "definition": "UNIQUE (token)",
@@ -3561,6 +3636,21 @@
         "definition": "CREATE INDEX shop_management_keys_tenant_id_idx ON shop_management_keys USING btree (tenant_id)",
         "name": "shop_management_keys_tenant_id_idx",
         "table": "shop_management_keys"
+      },
+      {
+        "definition": "CREATE INDEX sign_in_client_events_client_time_idx ON sign_in_client_events USING btree (tenant_id, client_id, occurred_at, id)",
+        "name": "sign_in_client_events_client_time_idx",
+        "table": "sign_in_client_events"
+      },
+      {
+        "definition": "CREATE INDEX sign_in_clients_retired_idx ON sign_in_clients USING btree (tenant_id, retired_at, client_id) WHERE (state = 'retired'::text)",
+        "name": "sign_in_clients_retired_idx",
+        "table": "sign_in_clients"
+      },
+      {
+        "definition": "CREATE INDEX sign_in_clients_tenant_created_idx ON sign_in_clients USING btree (tenant_id, created_at, client_id)",
+        "name": "sign_in_clients_tenant_created_idx",
+        "table": "sign_in_clients"
       },
       {
         "definition": "CREATE INDEX space_event_rsvps_tenant_event_idx ON space_event_rsvps USING btree (tenant_id, event_id)",
@@ -11124,6 +11214,131 @@
             "default": null,
             "generated": "",
             "identity": "",
+            "name": "activated_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "created_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "credential_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "host_verified_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "name",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "redirect_host",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "redirect_uris",
+            "notNull": true,
+            "type": "text[]"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "retired_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "secret_expires_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "secret_hash",
+            "notNull": false,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "secret_rotated_at",
+            "notNull": false,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "state",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "updated_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "sign_in_clients"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
             "name": "active",
             "notNull": true,
             "type": "boolean"
@@ -11582,6 +11797,67 @@
           }
         ],
         "name": "tenant_audit_events"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "actor_kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "credential_version",
+            "notNull": true,
+            "type": "integer"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "kind",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "occurred_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "tenant_id",
+            "notNull": true,
+            "type": "text"
+          }
+        ],
+        "name": "sign_in_client_events"
       },
       {
         "columns": [
@@ -14842,6 +15118,35 @@
           }
         ],
         "name": "marketing_idempotency_keys"
+      },
+      {
+        "columns": [
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "client_id",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "hostname",
+            "notNull": true,
+            "type": "text"
+          },
+          {
+            "default": null,
+            "generated": "",
+            "identity": "",
+            "name": "reserved_at",
+            "notNull": true,
+            "type": "timestamp with time zone"
+          }
+        ],
+        "name": "sign_in_client_host_reservations"
       },
       {
         "columns": [

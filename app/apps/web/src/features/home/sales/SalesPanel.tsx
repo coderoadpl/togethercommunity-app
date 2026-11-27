@@ -29,7 +29,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 
 import type { FulfilmentStatus, OrderExportFile, OrderExportFormat, OrderListItem, OrderStatus, PriceKind } from '#core/domain/index.js';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { SALES_LINK_TIME_ZONE, orderFulfilmentDisplay } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
@@ -189,10 +189,13 @@ export const SalesPanel = () => {
       )}
     </>
   );
-  const fulfilmentChip = (order: OrderListItem) => order.fulfilmentStatus == null ? null : (
-    <Chip size="small" variant="outlined" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
-      label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid="sales-fulfilment-chip" />
-  );
+  const fulfilmentChip = (order: OrderListItem) => {
+    const state = orderFulfilmentDisplay(order);
+    return state == null ? null : (
+      <Chip size="small" variant="outlined" color={state === 'to_pack' ? 'warning' : state === 'label_ready' ? 'info' : 'success'}
+        label={t.shipping.fulfilmentStatuses[state]} data-testid="sales-fulfilment-chip" />
+    );
+  };
   const selectBox = (order: OrderListItem) => order.invoice?.ksef?.state === 'held' ? (
     <SalesCardControl data-testid="sales-ksef-control">
       <Checkbox checked={selected.includes(order.id)} disabled={sending}

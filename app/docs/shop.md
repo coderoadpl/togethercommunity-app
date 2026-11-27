@@ -444,7 +444,7 @@ is shown below that line, see [Fulfilment](#fulfilment).
 
 The order detail page shows a **Delivery** card (option, price, locker,
 address, phone, and a **Locker not verified** warning for a pickup point stored
-with `verified: false`) and a fulfilment chip (**To pack** or **Shipped**). The orders
+with `verified: false`) and a fulfilment chip (**To pack**, **Label ready** or **Shipped**). The orders
 list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
 `fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
@@ -483,12 +483,20 @@ e-mail is queued. A unique index on the order and event type keeps one shipped
 event per order. Two concurrent requests serialize on the order row: one ships
 the order, the other returns `fulfilment_conflict` and queues nothing.
 
+A bought InPost label leaves the stored status `to_pack`; its derived
+**Label ready** display changes no fulfilment event. Use the same ship route
+with the label's stored tracking number when the parcel is dispatched.
+
 The tracking link is derived from the carrier and the number by
 `shipmentTrackingUrl` in `core/domain/fulfilment.ts`: InPost parcels link to
 `https://inpost.pl/sledzenie-przesylek?number=<trackingNumber>`; `other` shows
 the number without a link. A new carrier is one entry in that map.
 
 ### Shipment e-mail
+
+Creating or refreshing a label sends no buyer e-mail. The message below is
+queued only by **Mark as shipped**, including the explicit `markShipped`
+opt-in during label creation.
 
 The buyer receives the `order-shipped` e-mail at the member e-mail address:
 "Order shipped — <workspace> (#<reference>)", where the reference is the first
@@ -733,8 +741,9 @@ delivery option has the carrier `inpost`, when the staff role has `order:write`
 and the workspace is ready. The service follows the option: a parcel locker
 option sends `inpost_locker_standard` with the locker code as `target_point`,
 an address option sends `inpost_courier_standard` with the delivery address.
-The confirmation names the service, the parcel size and the buyer e-mail, and
-offers **Parcel size for this shipment**: **Automatic** (the largest product
+The confirmation names the service and parcel size. It offers an unchecked
+**Mark as shipped right away and e-mail the buyer** checkbox (test orders say
+that no e-mail is sent), and **Parcel size for this shipment**: **Automatic** (the largest product
 size, the default) or one of the three sizes. The chosen size is sent as the
 optional `parcelTemplate` (`small`, `medium` or `large`) in the body of
 `POST /api/orders/<orderId>/shipx`, or with
@@ -777,15 +786,56 @@ order id (cut to 100 characters).
    (`offers_prepared` or `offer_selected` without a running or successful
    transaction) is paid with the selected or the matching available offer
    (`POST /v1/shipments/<id>/buy`), at most once per request;
-4. stores the tracking number and the purchase time and calls the existing
-   **Mark as shipped** use-case with the carrier `inpost` and the tracking
-   number, so the fulfilment event, the shipment projection and the buyer
-   e-mail come from the same code path as a manual shipment. That step is a
-   conditional transition inside the fulfilment transaction: when staff marked
-   the order as shipped by hand in the meantime, the ShipX shipment stays
-   stored and the request answers `fulfilment_conflict` with the tracking
-   number in the message and in `details`, so staff can reconcile the two in
-   Manager Paczek.
+4. stores the tracking number and the purchase time, then returns `{ order,
+   shipment }`. **The default changed: creating a label no longer marks the
+   order as shipped.** The order stays `to_pack`, no fulfilment event is
+   written and no buyer e-mail is queued. `markShipped: true` in the API body
+   or `--mark-shipped` on `order shipx create` (also `shop orders shipx create`)
+   restores the one-step flow: the existing **Mark as shipped** use-case runs
+   with `inpost` and the stored tracking number. Its conditional transaction
+   writes the fulfilment event and queues the buyer e-mail. In either create
+   mode, if another request dispatched the same InPost label meanwhile, the
+   request returns the shipped order without queuing another e-mail. If the
+   other request used a different carrier or tracking number, create returns
+   `fulfilment_conflict` with `details.state: 'manual_shipped'`, `trackingNumber`
+   and `shipxShipmentId` for reconciliation in Manager Paczek. If the order
+   instead left the packing list while the shipment was bought, create returns
+   `conflict` with `details: { trackingNumber, shipxShipmentId }` and tells staff
+   to cancel the label in Manager Paczek. Both conflicts preserve the bought
+   shipment and record the operation outcome as `bought`. If the stored or
+   newly read status of the label is `canceled`, with or without a tracking
+   number, both create modes return `conflict` with
+   `details.state: 'label_canceled'`, `trackingNumber` (or `null`) and
+   `shipxShipmentId`, without waiting for a payment. The operation ends as `failed`, with no dispatch or
+   e-mail. Staff must create a new label in Manager Paczek and mark the order
+   as shipped by hand.
+
+**Label ready** is a display state, never a stored fulfilment status. It means
+`to_pack` with a stored ShipX id, valid tracking number and status past
+`offer_selected`, excluding a known `canceled` status. Order list and detail
+responses add an optional `label` object (`{ carrier: 'inpost', trackingNumber }`), or `null`;
+older clients can keep parsing the response. These orders stay in the `to_pack` filter and
+packing list. Studio shows an info-coloured chip, carrier status, tracking
+number, **Print label** and one primary **Mark as shipped** action. The
+shipping form prefills the carrier and tracking number. Staff can replace both
+if they canceled a label in Manager Paczek. The confirmation says that the
+buyer e-mail will be sent now (never for test orders). Studio shows no shipped
+date or staff name until dispatch, and no second **Create InPost shipment**
+button. A stale ShipX view cannot hide a label already stored on the order
+unless it reports `canceled`, in which case Studio warns staff and clears the
+tracking prefill; on an order that is no longer to pack the warning only says
+that the original label was canceled. Cancellation is only known here if a ShipX read recorded it
+before purchase completed in Together; status changes after purchase are not
+tracked yet.
+When the ShipX view discovers a label that the order detail did not have,
+Studio invalidates the sales order lists without calling the ShipX refresh
+again.
+
+A create request for an already bought label still takes and finishes its
+claim but makes no ShipX call or purchase. Unless the label is known to be
+canceled, the request returns the current order and shipment without writing
+fulfilment or sending e-mail by default; with `markShipped: true` it runs the
+same one-time dispatch transition.
 
 The request has one deadline, 20 seconds from its start, checked before the
 create, before each read and before the purchase, and once before the
@@ -873,6 +923,10 @@ concurrent click confirmed.
 
 ### Shipment history
 
+The `bought` operation outcome means the carrier label is paid, not that the
+order was dispatched. It stays `bought` for both label-only creation and the
+explicit one-step flow; no history enum or stored status changed.
+
 Every ShipX attempt step is recorded with the staff user who caused it in the
 append-only `order_shipment_events` table, written in the same transaction as
 the `order_shipments` change, so the row can be deleted on release or discard
@@ -912,7 +966,11 @@ ShipX webhooks.
 
 ### Label
 
-**Print label** appears once the shipment has a tracking number. Studio calls
+**Print label** appears for a bought label with a tracking number unless its
+stored status is `canceled`. For an already shipped order, Studio shows it
+only if the actual dispatch is InPost with the same tracking number (ignoring
+surrounding whitespace). The download refuses a known canceled label with a
+`validation` error without calling ShipX. Otherwise Studio calls
 `POST /api/orders/<orderId>/shipx/label` (`order:write`) with the API client,
 checks that the answer is `application/pdf` and saves it as a file; an error
 answer is shown under the button instead of being saved. The route asks ShipX
@@ -931,7 +989,8 @@ paid yet.
 | order not to pack, or already shipped | `validation` or `fulfilment_conflict` |
 | delivery option not InPost, phone not a Polish number, building number missing | `validation` |
 | another request holds the order's claim, or took it over during the request | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
-| the order was marked as shipped by hand while the shipment was bought | `fulfilment_conflict` with the tracking number |
+| another request marked the order as shipped with a different carrier or tracking number while the shipment was bought | `fulfilment_conflict` with `details.state: 'manual_shipped'`, `trackingNumber` and `shipxShipmentId` |
+| the order left the packing list while the shipment was bought | `conflict` with `trackingNumber` and `shipxShipmentId`; cancel the label in Manager Paczek |
 | the stored shipment belongs to another connection than the order's mode uses, or to another organization | `conflict` (HTTP 409, CLI exit 6) |
 | an earlier attempt is unconfirmed and ShipX lists no shipment for the order | `conflict` |
 | ShipX refuses the request (4xx), the payment fails or the offer is unavailable or expired | `shipx_rejected` (HTTP 422, CLI exit 29) with the ShipX `error` key, a description of at most 300 characters and the field keys of `details`; the raw body is never stored or logged |
@@ -1390,6 +1449,7 @@ pnpm --silent run cli --tenant acme product update <id> --parcel-template large
 pnpm --silent run cli --tenant acme --json order shipx show <orderId>
 pnpm --silent run cli --tenant acme --json order shipx refresh <orderId>
 pnpm --silent run cli --tenant acme --json order shipx create <orderId>
+pnpm --silent run cli --tenant acme --json order shipx create <orderId> --mark-shipped
 pnpm --silent run cli --tenant acme order shipx label <orderId> --out label.pdf
 pnpm --silent run cli --tenant acme order shipx discard <orderId>
 pnpm --silent run cli --tenant acme product update <id> \

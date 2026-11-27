@@ -758,6 +758,7 @@
             "fulfilmentStatus": null,
             "id": "order-studio-active-club",
             "kind": "recurring",
+            "label": null,
             "lines": [
               {
                 "grossCents": 4900,
@@ -805,6 +806,7 @@
             "fulfilmentStatus": null,
             "id": "order-studio-active-js",
             "kind": "one_time",
+            "label": null,
             "lines": [
               {
                 "grossCents": 39900,

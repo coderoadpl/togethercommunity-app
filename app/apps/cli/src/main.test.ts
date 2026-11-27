@@ -471,7 +471,7 @@ beforeEach(() => {
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
-  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
+  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack', label: { carrier: 'inpost', trackingNumber: '520000011395200025754311' } }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
   const unconnected = { organizationId: null, token: null, configured: false };
@@ -2319,6 +2319,12 @@ describe('orders list CLI text', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\t2 × Paperback; Poster\tbuyer@example.com\t'));
   });
 
+  it('prints label_ready for a to-pack order with a bought label', async () => {
+    h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, fulfilmentStatus: 'to_pack', label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }], total: 1, page: 1, pageSize: 20, sources: [] }));
+    await run('orders', 'list', '--fulfilment', 'to_pack');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tlabel_ready\t'));
+  });
+
   it('shows the client reference only of an order that has one', async () => {
     h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, clientReference: 'shop-cart-8812' }, { ...order, id: 'order-87654321' }], total: 2, page: 1, pageSize: 20, sources: [] }));
     await run('orders', 'list');
@@ -2648,8 +2654,8 @@ describe('InPost ShipX CLI', () => {
 
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
-    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
-    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost 520000011395200025754311)');
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', markShipped: false });
+    expect(logSpy).toHaveBeenCalledWith('label ready; order still to pack: order-number (inpost 520000011395200025754311)');
     h.shipxCreate.mockResolvedValue(err(appError('shipx_unavailable', 'InPost ShipX is unavailable')));
     await run('--json', 'orders', 'shipx', 'create', 'order-number');
     expect(process.exitCode).toBe(28);
@@ -2659,9 +2665,37 @@ describe('InPost ShipX CLI', () => {
     expect(process.exitCode).toBe(29);
   });
 
+  it('treats whitespace around the bought and dispatched tracking numbers as immaterial', async () => {
+    h.shipxCreate.mockResolvedValue(ok({
+      order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: ' LABEL1234' } },
+      shipment: { trackingNumber: 'LABEL1234 ' },
+    }));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost LABEL1234)');
+  });
+
+  it('warns when the bought label has no usable dispatch tracking number', async () => {
+    h.shipxCreate.mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack', label: null }, shipment: { trackingNumber: 'T1' } }));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(logSpy).toHaveBeenCalledWith('label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: order-number (inpost T1)');
+  });
+
+  it.each([
+    ['fulfilment_conflict', 'The order was marked as shipped meanwhile', { state: 'manual_shipped', trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }, 27],
+    ['conflict', 'The order left the packing list meanwhile', { trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }, 6],
+  ] as const)('reports the bought-label %s on stderr with a non-zero exit', async (code, message, details, exitCode) => {
+    h.shipxCreate.mockResolvedValue(err(appError(code, message, details)));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(errorSpy).toHaveBeenCalledWith(`error(${code}): ${message}`);
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(exitCode);
+  });
+
   it('passes a chosen parcel template and rejects an unknown one before calling the server', async () => {
     await run('order', 'shipx', 'create', 'order-number', '--parcel-template', 'large');
-    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large' });
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large', markShipped: false });
+    await run('order', 'shipx', 'create', 'order-number', '--mark-shipped');
+    expect(h.shipxCreate).toHaveBeenLastCalledWith({ orderId: 'order-number', markShipped: true });
     h.shipxCreate.mockClear();
     await run('--json', 'order', 'shipx', 'create', 'order-number', '--parcel-template', 'huge');
     expect(h.shipxCreate).not.toHaveBeenCalled();

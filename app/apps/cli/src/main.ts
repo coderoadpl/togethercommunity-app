@@ -1,4 +1,4 @@
-import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, orderFulfilmentDisplay, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -74,6 +74,7 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
+import { shipxCreateLine } from './shipx-output.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerOrderRefundCommands } from './order-refund-commands.js';
@@ -255,7 +256,7 @@ const ordersShipOptionsSchema = z.object({
 const ordersIssueOptionsSchema = z.object({
   count: z.string().regex(/^[1-9]\d*$/, 'Count must be a positive integer').transform((value) => Number.parseInt(value, 10)).optional(),
 });
-const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional() });
+const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional(), markShipped: z.boolean().default(false) });
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
   slot: shipxEnvironmentSchema.optional(),
@@ -1988,14 +1989,15 @@ ordersShipx.command('refresh <orderId>').description('Read the live ShipX status
 );
 ordersShipx
   .command('create <orderId>')
-  .description('Create and pay the InPost shipment, then mark the order as shipped')
+  .description('Create and pay the InPost label; keep the order to pack by default')
+  .option('--mark-shipped', 'also mark the order as shipped and email the buyer', false)
   .option('--parcel-template <size>', 'InPost parcel size for this shipment: small, medium or large (default: the largest product template)')
   .action(
     withInput(z.tuple([z.string().min(1), ordersShipxCreateOptionsSchema]), async (ctx, [orderId, options]) => {
       emit(
-        await ctx.api.shipxCreate({ orderId, ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }) }),
+        await ctx.api.shipxCreate({ orderId, markShipped: options.markShipped, ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }) }),
         ctx.json,
-        (data) => `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`,
+        shipxCreateLine,
       );
     }),
   );
@@ -2076,7 +2078,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${orderStatusLabel(order)}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${orderStatusLabel(order)}\t${orderFulfilmentDisplay(order) ?? '-'}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),

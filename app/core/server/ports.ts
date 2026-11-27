@@ -976,7 +976,7 @@ export interface SignInClientMutation {
   eventId: string;
 }
 
-export interface SignInClientSecretState {
+interface SignInClientSecretState {
   secretHash: string;
   secretExpiresAt: string;
 }

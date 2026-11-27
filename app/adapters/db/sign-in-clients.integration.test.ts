@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createApiKeyCrypto } from '#adapters/auth/api-key-crypto.js';
 import { createSignInClientCrypto } from '#adapters/auth/sign-in-client-crypto.js';
-import { signInClientIdSchema, signInClientSecretSchema } from '#core/domain/index.js';
+import { signInClientIdSchema, signInClientPageSchema, signInClientSecretSchema } from '#core/domain/index.js';
 import {
   authenticateApiKey,
   authenticateShopManagementKey,
@@ -285,8 +285,10 @@ it('stores only the domain-specific digest and keeps the issued secret out of re
   const stored = await rowsOf(client.id);
   expect(stored).toMatchObject([{ secretHash: digest, redirectUris: input.redirectUris, credentialVersion: 1 }]);
   expect(JSON.stringify(stored)).not.toContain(secret);
-  const page = await signInClientsRepo.list(workspaceA, { limit: 100 });
+  const page = signInClientPageSchema.parse(await signInClientsRepo.list(workspaceA, { limit: 100 }));
   expect(page.clients).toContainEqual(client);
+  expect(signInClientPageSchema.safeParse({ clients: [{ ...client, secret }], nextCursor: null }).success).toBe(false);
+  expect(signInClientPageSchema.safeParse({ clients: [{ ...client, secretHash: digest }], nextCursor: null }).success).toBe(false);
   for (const value of [page, await signInClientsRepo.findById(workspaceA, client.id), await eventsOf(client.id)]) {
     expect(JSON.stringify(value)).not.toContain(secret);
     expect(JSON.stringify(value)).not.toContain(digest);

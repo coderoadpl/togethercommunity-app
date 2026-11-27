@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { createSignInClientInputSchema, isSignInClientPlatformHost, signInClientHostsSchema } from './sign-in-client.js';
+import { createSignInClientInputSchema, isSignInClientPlatformHost, signInClientHostSchema, signInClientHostsSchema } from './sign-in-client.js';
 
 const input = (redirectUris: string[]) => ({ name: 'Example application', redirectUris });
 const root = 'https://client.example.org/';
@@ -71,6 +71,12 @@ describe('sign-in client return addresses', () => {
   it('preserves exact path bytes, case, order and the 2048-byte boundary', () => {
     const uris = [root, `${root}Callback/a%2Fb`, `${root}caf%C3%A9`, `${root}a//b`, `${root}${'x'.repeat(2048 - root.length)}`];
     expect(createSignInClientInputSchema.parse(input(uris)).redirectUris).toEqual(uris);
+  });
+
+  it('enforces the DNS name length independently of the address length', () => {
+    const longestHost = `${'a'.repeat(63)}.${'b'.repeat(63)}.${'c'.repeat(63)}.${'d'.repeat(61)}`;
+    expect(signInClientHostSchema.parse(longestHost)).toBe(longestHost);
+    expect(signInClientHostSchema.safeParse(`${longestHost}d`).success).toBe(false);
   });
 
   it('compares the platform host by complete DNS suffix', () => {

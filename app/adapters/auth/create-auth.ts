@@ -337,9 +337,20 @@ const hostScopedCredentials = (settings: AuthSettings) => {
       before: [{
         matcher: () => true,
         handler: createAuthMiddleware(async (ctx) => {
-          const customHost = await verifiedCustomHost(settings, authRequestHost(ctx));
+          const host = authRequestHost(ctx);
+          const customHost = await verifiedCustomHost(settings, host);
           const ceremony = isPasskeyCeremonyPath(ctx.path);
           if (customHost === null && !ceremony) return;
+          if (ceremony && ctx.request && customHost === null && host !== null
+            && host !== routing.baseDomain && hostServedByBaseDomain(host, routing.baseDomain)) {
+            const url = new URL(routing.baseUrl);
+            url.hostname = host;
+            const wildcard = `${url.protocol}//*.${routing.baseDomain}${url.port ? `:${url.port}` : ''}`;
+            const origins = ctx.context.trustedOrigins;
+            if (url.hostname === host && origins.includes(wildcard) && !origins.includes(url.origin)) {
+              ctx.context.trustedOrigins = [...origins, url.origin];
+            }
+          }
           const scoped = customHost === null
             ? ctx.context.options
             : withoutSharedCookieDomain(ctx.context.options);

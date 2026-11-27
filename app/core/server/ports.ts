@@ -1271,7 +1271,7 @@ export interface PaymentProvider {
     lines?: { productId: string; name: string; grossCents: number; quantity?: number | undefined }[];
     shipping?: {
       allowedCountries: string[];
-      phone: true;
+      phone: boolean;
       option: {
         label: string;
         amountCents: number;

@@ -333,7 +333,7 @@ const orderShipmentState = async (tenantId: string, input: unknown, deps: ShipxV
 };
 
 const orderShipmentView = (state: OrderShipmentState, shipment: ShipxShipmentRecord | null): ShipxOrderView =>
-  ({ ...state.view, shipment: shipment === null ? null : publicShipment(shipment) });
+  ({ ...state.view, shipment: shipment === null ? null : { ...publicShipment(shipment), operationClaimed: shipment.operationToken !== null } });
 
 export const getInpostShipment = async (
   ctx: Ctx,
@@ -661,7 +661,10 @@ export const createInpostShipment = async (
   };
   let outcome: ShipxOperationOutcome = 'failed';
   try {
-    const result = await runShipment(ctx, run, parsed.data.markShipped, deps);
+    const current = await loadOrder(tenant.value, order.value.id, deps);
+    if (!current.ok) return current;
+    if (current.value.shipping == null) return err(validation('Order has no delivery details'));
+    const result = await runShipment(ctx, { ...run, order: current.value, shipping: current.value.shipping }, parsed.data.markShipped, deps);
     outcome = operationOutcome(result, run.lease.released);
     return result;
   } finally {

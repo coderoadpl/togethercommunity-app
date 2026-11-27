@@ -5,6 +5,25 @@ import type { ProductPersonalization } from './personalization.js';
 import type { ProductCompliance } from './product-compliance.js';
 import { err, ok, type Result } from './result.js';
 
+const SHIPX_PHONE_PATTERN = /^[1-9]\d{8}$/;
+
+export const normalizeShipxPhone = (raw: string): string | null => {
+  const value = raw.trim();
+  if (!/^\+?[\d\s-]+$/.test(value)) return null;
+  const digits = value.replace(/\D/g, '');
+  if (value.startsWith('+') && !(digits.startsWith('48') && digits.length === 11)) return null;
+  if (digits.startsWith('00') && !(digits.startsWith('0048') && digits.length === 13)) return null;
+  const local = digits.length === 11 && digits.startsWith('48')
+    ? digits.slice(2)
+    : digits.length === 13 && digits.startsWith('0048') ? digits.slice(4) : digits;
+  return SHIPX_PHONE_PATTERN.test(local) ? local : null;
+};
+
+export const normalizeLockerPhone = (raw: string): string | null => {
+  const national = normalizeShipxPhone(raw);
+  return national === null ? null : `+48${national}`;
+};
+
 export const SHIPPING_ALLOWED_COUNTRIES = ['PL'] as const;
 
 export const SHIPPING_RATES_MAX = 5;
@@ -36,6 +55,8 @@ const shippingVatRateSchema = z.union([z.literal(5), z.literal(8), z.literal(23)
 export const shippingCarrierSchema = z.enum(['inpost', 'other']);
 
 export type ShippingCarrier = z.infer<typeof shippingCarrierSchema>;
+
+export const rateNeedsPolishMobile = (rate: { carrier: ShippingCarrier }): boolean => rate.carrier === 'inpost';
 
 const pickupPointKindSchema = z.enum(['none', 'inpost_locker']);
 
@@ -125,6 +146,7 @@ const checkoutPickupPointSchema = z.object({
 export const checkoutShippingInputSchema = z.object({
   rateId: z.string().trim().min(1).max(40),
   pickupPoint: checkoutPickupPointSchema.optional(),
+  phone: z.string().trim().max(40).optional(),
 });
 
 export type CheckoutShippingInput = z.input<typeof checkoutShippingInputSchema>;
@@ -149,13 +171,14 @@ const shippingSelectionFields = {
 export const checkoutShippingSnapshotSchema = z.object({
   ...shippingSelectionFields,
   allowedCountries: z.array(z.string().length(2)).min(1),
+  phone: z.string().refine((phone) => normalizeLockerPhone(phone) === phone, 'Phone must be a canonical Polish number').optional(),
 });
 
 export type CheckoutShippingSnapshot = z.infer<typeof checkoutShippingSnapshotSchema>;
 
 export type CheckoutShippingSelection = CheckoutShippingSnapshot & { deliveryEstimateDays?: { min: number; max: number } };
 
-const SHIPPING_FIELD_MAX_LENGTH = { name: 200, line1: 300, line2: 300, postalCode: 30, city: 120, phone: 40 } as const;
+export const SHIPPING_FIELD_MAX_LENGTH = { name: 200, line1: 300, line2: 300, postalCode: 30, city: 120, phone: 40 } as const;
 
 const shippingAddressSchema = z.object({
   name: z.string().max(SHIPPING_FIELD_MAX_LENGTH.name),
@@ -170,6 +193,14 @@ export const orderShippingSchema = z.object({
   ...shippingSelectionFields,
   address: shippingAddressSchema,
   phone: z.string().max(SHIPPING_FIELD_MAX_LENGTH.phone).nullable(),
+  corrections: z.array(z.object({
+    field: z.enum(['phone', 'recipient_name', 'address', 'pickup_point']),
+    from: z.string().nullable(),
+    to: z.string(),
+    at: z.string().datetime(),
+    byUserId: z.string().min(1),
+    byEmail: z.string().nullable(),
+  })).max(50).optional(),
 });
 
 export type OrderShipping = z.infer<typeof orderShippingSchema>;
@@ -215,7 +246,13 @@ export const resolveCheckoutShipping = (
   if (rate.pickupPoint !== 'none' && input.pickupPoint === undefined) {
     return err(validation('Choose a parcel locker for the selected delivery option'));
   }
+  const needsPhone = rateNeedsPolishMobile(rate);
+  const phone = needsPhone ? normalizeLockerPhone(input.phone ?? '') : null;
+  if (needsPhone && phone === null) {
+    return err(appError('locker_phone_invalid', 'InPost deliveries need a Polish mobile number (9 digits, optional +48)'));
+  }
   return ok({
+    ...(phone === null ? {} : { phone }),
     rateId: rate.id,
     label: rate.label,
     amountCents: rate.amountCents,
@@ -386,6 +423,6 @@ export const orderShippingFrom = (
       city: truncate(collected.address.city ?? '', SHIPPING_FIELD_MAX_LENGTH.city),
       country,
     },
-    phone: collected.phone === null ? null : truncate(collected.phone, SHIPPING_FIELD_MAX_LENGTH.phone),
+    phone: snapshot.phone ?? (collected.phone === null ? null : truncate(collected.phone, SHIPPING_FIELD_MAX_LENGTH.phone)),
   });
 };

@@ -146,9 +146,12 @@ such order line starts with `issuedCount = 0` for the **issued N of Q** count, w
 Q is the line quantity (1 for every line without a stored quantity).
 Shipped by parcel (`shipping`) adds a delivery step to the Together checkout
 page: the buyer picks a workspace delivery option, and a parcel locker when the
-option needs one, before Stripe collects the address and phone number. A link
-with a shipped product, with any product that carries product safety
-information, or with any product that offers a personalisation, never hands off
+option needs one. Every InPost option also requires a Polish mobile number
+before the handoff. Stripe collects the shipping address and still asks for a
+phone during the rollback window; the InPost order uses the phone entered on
+the Together page. A link with a shipped product, with any product that
+carries product safety information, or with any product that offers a
+personalisation, never hands off
 to Stripe automatically; it keeps the Together page at `?checkout=together`,
 like a link with purchase consent checkboxes, and
 `POST /api/public/sales-links/<slug>/checkout` refuses it. The
@@ -412,7 +415,10 @@ Create and update accept `--input` JSON; update includes `id` and
 `expectedRevision`. The JSON can include `cancelReturnUrl` as an HTTPS address
 or `null` to clear it. Activate and deactivate preserve the configured address.
 `checkout session` and the local `simulate-purchase` command
-accept `--sales-link <id>` with `--product <first-product-id>`. Product commands and import records accept product VAT and the sales channel.
+accept `--sales-link <id>` with `--product <first-product-id>`. If the selected
+shipping rate uses InPost, pass `--shipping-phone` with the buyer's Polish
+mobile number. Product commands and import records accept product VAT and the
+sales channel.
 See [Import API](import-api.md).
 
 The `orders verify <reference>` command accepts the same token or order number

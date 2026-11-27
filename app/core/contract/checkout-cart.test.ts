@@ -38,6 +38,12 @@ describe('cart coupon validation request', () => {
 describe('cart checkout session request', () => {
   const bare = { lines, email: 'buyer@example.test', termsAccepted: true };
 
+  it('keeps the locker phone in nested shipping without relaxing the strict cart request', () => {
+    const shipping = { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'ABC01M' } };
+    expect(checkoutCartSessionRequestSchema.parse({ ...bare, shipping }).shipping).toEqual(shipping);
+    expect(checkoutCartSessionRequestSchema.safeParse({ ...bare, shipping, unknown: true }).success).toBe(false);
+  });
+
   it('accepts the bare cart form and is recognised as a cart request', () => {
     expect(checkoutCartSessionRequestSchema.safeParse(bare).success).toBe(true);
     expect(isCheckoutCartRequest(bare)).toBe(true);

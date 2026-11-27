@@ -77,6 +77,7 @@ export * from './checkout-return.js';
 export * from './attribution.js';
 export * from './commerce.js';
 export * from './shipping.js';
+export * from './delivery-correction.js';
 export * from './fulfilment.js';
 export * from './order-change.js';
 export * from './shipx.js';

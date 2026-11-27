@@ -100,11 +100,11 @@ const openRow = async (name: string) => {
 };
 const fillInvoice = async () => {
   await openRow(en.checkout.invoiceReveal);
-  await userEvent.type(screen.getByLabelText(en.checkout.nipLabel), '1234567890');
-  await userEvent.type(screen.getByLabelText(en.checkout.companyNameLabel), 'Buyer Ltd');
-  await userEvent.type(screen.getByLabelText(en.checkout.addressLabel), 'Main Street 2');
-  await userEvent.type(screen.getByLabelText(en.checkout.postalCodeLabel), '00-001');
-  await userEvent.type(screen.getByLabelText(en.checkout.cityLabel), 'Warsaw');
+  fireEvent.change(screen.getByLabelText(en.checkout.nipLabel), { target: { value: '1234567890' } });
+  fireEvent.change(screen.getByLabelText(en.checkout.companyNameLabel), { target: { value: 'Buyer Ltd' } });
+  fireEvent.change(screen.getByLabelText(en.checkout.addressLabel), { target: { value: 'Main Street 2' } });
+  fireEvent.change(screen.getByLabelText(en.checkout.postalCodeLabel), { target: { value: '00-001' } });
+  fireEvent.change(screen.getByLabelText(en.checkout.cityLabel), { target: { value: 'Warsaw' } });
 };
 const tickEngraving = async () => {
   await userEvent.click(screen.getByRole('checkbox', { name: /Add an engraving/u }));
@@ -135,6 +135,7 @@ const pickLockerOnMap = async () => {
   await pickOnMap();
   await pickerClosed();
   await screen.findByTestId('checkout-pickup-point-selected');
+  fireEvent.change(screen.getByLabelText(en.shipping.lockerPhoneLabel), { target: { value: '500000000' } });
 };
 const submitted = (calls: Calls) => waitFor(() => expect(calls.sessions).toHaveLength(1));
 const notSubmitted = async (calls: Calls) => {
@@ -175,6 +176,7 @@ const enterCases: EnterCase[] = [
     arrange: async () => {
       await userEvent.click(await screen.findByRole('radio', { name: rateName('Parcel locker', 1499) }));
       const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
+      fireEvent.change(screen.getByLabelText(en.shipping.lockerPhoneLabel), { target: { value: '500000000' } });
       await userEvent.type(code, 'WAW01M');
       expect(pay()).toBeEnabled();
       return code;
@@ -202,6 +204,7 @@ const enterCases: EnterCase[] = [
       await userEvent.click(await screen.findByRole('radio', { name: rateName('Parcel locker', 1499) }));
       await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerKnowCode }));
       const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
+      fireEvent.change(screen.getByLabelText(en.shipping.lockerPhoneLabel), { target: { value: '500000000' } });
       await userEvent.type(code, 'WAW01M');
       expect(pay()).toBeEnabled();
       return code;

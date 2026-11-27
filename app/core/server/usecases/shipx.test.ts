@@ -1031,6 +1031,14 @@ describe('InPost shipment view and label', () => {
   const ebook = productSchema.parse({ ...product('ebook', 'small'), type: 'digital_download', deliveryMethod: 'pickup', parcelTemplate: undefined });
   const course = productSchema.parse({ ...product('course', 'large'), type: 'course', deliveryMethod: 'pickup' });
 
+  it('exposes a held creation claim in the refreshed shipment without exposing its token', async () => {
+    const h = harness();
+    h.seed({ shipxShipmentId: null, status: 'creating', createAttemptedAt: null, operationToken: 'held-token' });
+    const result = await refreshInpostShipment(write, { orderId: 'order-1' }, h.deps);
+    expect(result).toMatchObject({ ok: true, value: { shipment: { shipxShipmentId: null, createAttemptedAt: null, operationClaimed: true } } });
+    expect(JSON.stringify(result)).not.toContain('held-token');
+  });
+
   const sizedParcel = async (lines: OrderLine[] | undefined, catalog: ReturnType<typeof product>[]) => {
     const h = harness({ order: orderListItemSchema.parse({ ...baseOrder, lines }) });
     h.deps.products = { findByIds: async (_tenantId, productIds) => catalog.filter((row) => productIds.includes(row.id)) };
@@ -1467,7 +1475,7 @@ describe('label creation without dispatch', () => {
     expect(await createInpostShipment(write, { orderId: 'order-1', markShipped }, h.deps)).toMatchObject({
       ok: true, value: { order: { fulfilmentStatus: markShipped ? 'shipped' : 'to_pack' }, shipment: { trackingNumber: TRACKING } },
     });
-    expect(h.deps.orderDetails.findById).toHaveBeenCalledTimes(2);
+    expect(h.deps.orderDetails.findById).toHaveBeenCalledTimes(3);
     expect(h.ship).toHaveBeenCalledTimes(markShipped ? 1 : 0);
     if (markShipped) expect(h.ship.mock.calls[0]?.[1].email?.payload.shipment.trackingNumber).toBe(TRACKING);
     else expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
@@ -1617,4 +1625,22 @@ it('preserves a failed dispatch error while the bought label order remains to pa
   expect(await createInpostShipment(write, { orderId: 'order-1', markShipped: true }, h.deps)).toEqual({ ok: false, error: failure });
   expect(h.deps.ship.dispatchEmail).not.toHaveBeenCalled();
   expect((await h.shipments.repository.listEvents('workspace', 'order-1')).at(-1)).toMatchObject({ type: 'operation_finished', details: { outcome: 'failed' } });
+});
+
+describe('corrected delivery shipment handling', () => {
+  const corrected = (): OrderListItem => ({ ...baseOrder, shipping: { ...lockerShipping, pickupPoint: { provider: 'inpost', code: 'ABC01M', name: null, address: null }, phone: '+48500000000', corrections: [
+    { field: 'phone', from: null, to: '+48500000000', at: NOW, byUserId: 'staff', byEmail: 'staff@example.org' },
+  ] } });
+  it('reloads delivery after acquiring the order lease before making a carrier request', async () => {
+    const h = harness();
+    vi.mocked(h.deps.orderDetails.findById).mockResolvedValueOnce({ ...baseOrder, shipping: { ...lockerShipping, phone: '+44 7700 900000' } }).mockResolvedValue(corrected());
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls.create[0]?.receiver.phone).toBe('500000000');
+  });
+  it('retries a draft created with corrected details even when its local claim is older', async () => {
+    const h = harness({ order: corrected() });
+    h.seed({ shipxShipmentId: 'draft', status: 'created', createAttemptedAt: NOW });
+    expect(await createInpostShipment(write, { orderId: 'order-1' }, h.deps)).toMatchObject({ ok: true });
+    expect(h.real.calls.create).toHaveLength(0);
+  });
 });

@@ -80,11 +80,15 @@ prints the hosted checkout URL; `simulate-purchase` calls the dev purchase
 endpoint for the selected tenant. A workspace with a terms or privacy URL
 refuses either request until the buyer accepts the terms: pass
 `--accept-terms` to send `termsAccepted: true`. Without the flag the request
-carries no terms field.
+carries no terms field. For single-product, sales-link, cart and simulated
+checkout, pass `--shipping-rate` for products that ship and `--shipping-phone`
+for every InPost rate, including courier. The phone must be a Polish mobile
+number; `locker_phone_invalid` exits with code 33 (HTTP 400). A locker rate
+also needs `--pickup-point`.
 
 ```bash
 pnpm --silent run cli --tenant studio checkout session --product product-id \
-  --email buyer@example.test --shipping-rate courier --accept-terms
+  --email buyer@example.test --shipping-rate courier --shipping-phone "+48 500 000 000" --accept-terms
 pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
   --email buyer@example.test --accept-terms
 ```
@@ -119,6 +123,17 @@ with `images.json`:
 With a [shop management key](shop-management-keys.md#product-covers-gallery-images-and-sales-links)
 the same steps are `shop images upload <file>` and
 `shop products create|update --images-file <path>`.
+
+## Correct order delivery details
+
+`order delivery <orderId>` (also `orders delivery <orderId>`) needs an owner
+or admin session. Use `--phone`, `--recipient-name`, `--locker` or address
+flags. Give `--line1`, `--postal-code` and `--city` together. Omitting
+`--line2` leaves it unchanged; `--line2 ''` clears it. The command reads the
+order first and sends the previous values it expects to replace. If the order
+changes before the correction is saved, it exits with code 38
+(`delivery_correction_conflict`). See
+[Correct delivery details](shop.md#correct-delivery-details) for other refusals.
 
 ## InPost labels and dispatch
 

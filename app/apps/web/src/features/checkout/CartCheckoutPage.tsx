@@ -329,6 +329,9 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     const code = checkoutState.pickupPointCode;
     checkoutSession.mutate(checkoutRequest(), {
       onError: (error) => {
+        if (error instanceof ApiError && error.appError.code === 'locker_phone_invalid') {
+          dispatchCheckout({ type: 'lockerPhoneValidationFailed', phone: checkoutState.lockerPhone });
+        }
         const refusal = error instanceof ApiError ? lockerRefusal(code, error.appError.details) : null;
         if (refusal !== null) dispatchCheckout({ type: 'lockerCheckChanged', check: refusal });
       },
@@ -413,7 +416,8 @@ const CartCheckoutForm = ({ initialLines, offers }: { initialLines: readonly Car
     lockerHold.submit();
   };
   const payReason = blockedByLines ? t.checkout.cartPayBlockedLines
-    : delivery.status === 'incomplete' && delivery.missing === 'pickup_point_rejected' ? t.checkout.payBlockedLockerRejected
+    : delivery.status === 'incomplete' && delivery.missing === 'locker_phone' ? t.checkout.payBlockedLockerPhone
+      : delivery.status === 'incomplete' && delivery.missing === 'pickup_point_rejected' ? t.checkout.payBlockedLockerRejected
       : null;
 
   return (

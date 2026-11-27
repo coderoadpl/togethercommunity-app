@@ -432,7 +432,7 @@ describe('simulated shipped purchase', () => {
   it('synthesises a Polish address and records the same shipped order shape as a paid checkout', async () => {
     const h = shippedHarness();
     const result = await simulatePurchase('t-acme', {
-      email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+      email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
     }, h.deps);
     expect(result).toMatchObject({ ok: true, value: { alreadyOwned: false } });
     expect(h.orders).toHaveLength(1);
@@ -441,7 +441,7 @@ describe('simulated shipped purchase', () => {
       lines: [{ productId: 'accessory', productType: 'physical', grossCents: 4900 }, { productId: 'shipping:locker', productType: 'shipping', grossCents: 1499, vatRate: 23, issuedCount: null }],
       shipping: {
         rateId: 'locker', label: 'Parcel locker', pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' },
-        address: { country: 'PL' }, phone: expect.any(String),
+        address: { country: 'PL' }, phone: '+48500000000',
       },
     });
     expect(h.grants.size).toBe(0);
@@ -451,7 +451,7 @@ describe('simulated shipped purchase', () => {
     const h = shippedHarness();
     const directory = createPickupPointDirectoryFake();
     h.deps.pickupPoints = directory;
-    const input = { email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost' as const, code: 'waw01m' } } };
+    const input = { email: 'buyer@together.dev', productId: 'accessory', shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost' as const, code: 'waw01m' } } };
     const selection = await validateCheckoutSelection('t-acme', input, h.deps);
     if (!selection.ok) throw new Error('Expected a valid selection');
     expect(await simulateValidatedPurchase('t-acme', input, selection.value, h.deps)).toMatchObject({ ok: true });

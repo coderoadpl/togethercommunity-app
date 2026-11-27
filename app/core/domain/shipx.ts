@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { appError, validation, type AppError, type ErrorCode } from './errors.js';
 import type { StripeMode } from './integration.js';
 import { err, ok, type Result } from './result.js';
-import type { OrderShipping } from './shipping.js';
+import { normalizeShipxPhone, type OrderShipping } from './shipping.js';
 import type { TenantSecretKey } from './tenant-secret.js';
+
+export { normalizeShipxPhone } from './shipping.js';
 
 export const PARCEL_TEMPLATES = ['small', 'medium', 'large'] as const;
 
@@ -66,14 +68,12 @@ export const SHIPX_PARCEL_DIMENSIONS_MM: Record<ParcelTemplate, { length: number
   large: { length: 640, width: 380, height: 410 },
 };
 
-const SHIPX_PHONE_PATTERN = /^\d{9}$/;
-
-export const normalizeShipxPhone = (raw: string): string | null => {
+export const normalizeShipxSenderPhone = (raw: string): string | null => {
   const digits = raw.replace(/\D/g, '');
   const local = digits.length === 11 && digits.startsWith('48')
     ? digits.slice(2)
     : digits.length === 13 && digits.startsWith('0048') ? digits.slice(4) : digits;
-  return SHIPX_PHONE_PATTERN.test(local) ? local : null;
+  return /^\d{9}$/.test(local) ? local : null;
 };
 
 const POST_CODE_PATTERN = /^\d{2}-\d{3}$/;
@@ -82,7 +82,7 @@ export const shipxSenderSchema = z.object({
   name: z.string().trim().min(1).max(100),
   company: z.string().trim().min(1).max(100).nullable().default(null),
   email: z.string().trim().email().max(200),
-  phone: z.string().trim().refine((phone) => normalizeShipxPhone(phone) !== null, 'Phone must be a Polish 9-digit number'),
+  phone: z.string().trim().refine((phone) => normalizeShipxSenderPhone(phone) !== null, 'Phone must be a Polish 9-digit number'),
   street: z.string().trim().min(1).max(100),
   buildingNumber: z.string().trim().min(1).max(20),
   city: z.string().trim().min(1).max(100),
@@ -175,7 +175,7 @@ export const shipxOrderViewSchema = z.object({
   environment: shipxEnvironmentSchema,
   service: shipxServiceSchema.nullable(),
   parcelTemplate: parcelTemplateSchema,
-  shipment: shipxShipmentSchema.nullable(),
+  shipment: shipxShipmentSchema.extend({ operationClaimed: z.boolean().optional() }).nullable(),
 });
 
 export type ShipxOrderView = z.infer<typeof shipxOrderViewSchema>;

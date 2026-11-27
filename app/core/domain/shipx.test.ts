@@ -70,6 +70,14 @@ describe('ShipX domain', () => {
     expect(normalizeShipxPhone('500-600-700')).toBe('500600700');
     expect(normalizeShipxPhone('+49 1512 3456789')).toBeNull();
     expect(normalizeShipxPhone('12345')).toBeNull();
+    expect(normalizeShipxPhone('500000000')).toBe('500000000');
+    expect(normalizeShipxPhone('+48 500 000 000')).toBe('500000000');
+    expect(normalizeShipxPhone('0048500000000')).toBe('500000000');
+    expect(normalizeShipxPhone('48 500-000-000')).toBe('500000000');
+    expect(normalizeShipxPhone('+44 7700 900000')).toBeNull();
+    expect(normalizeShipxPhone('50000000')).toBeNull();
+    expect(normalizeShipxPhone('+44 7700900')).toBeNull();
+    expect(normalizeShipxPhone('abc500000000')).toBeNull();
   });
 
   it('splits names and street lines', () => {

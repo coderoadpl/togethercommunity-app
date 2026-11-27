@@ -960,6 +960,12 @@ export interface Messages {
     deliveryHeading: string;
     deliveryOptionsLabel: string;
     deliveryEstimate: (params: { min: number; max: number }) => string;
+    lockerPhoneLabel: string;
+    lockerPhoneHint: string;
+    lockerPhoneInvalid: string;
+    courierPhoneLabel: string;
+    courierPhoneHint: string;
+    inpostPhoneInvalid: string;
     lockerCodeLabel: string;
     lockerCodeHint: string;
     lockerChoose: string;
@@ -1145,6 +1151,32 @@ export interface Messages {
     appliesTo: (params: { count: number }) => string;
     showMore: string;
     showLess: string;
+  };
+  deliveryCorrection: {
+    shipmentExists: string;
+    shipmentAttempt: string;
+    shipmentRefresh: string;
+    receiverEmailOrCountry: string;
+    memberErased: string;
+    conflict: string;
+    action: string;
+    save: string;
+    saved: string;
+    bought: string;
+    shipped: string;
+    history: string;
+    phone: string;
+    recipientName: string;
+    line1: string;
+    line2: string;
+    postalCode: string;
+    city: string;
+    country: string;
+    locker: string;
+    invalid: string;
+    postalInvalid: string;
+    fields: { phone: string; recipient_name: string; address: string; pickup_point: string };
+    reasons: { unchanged: string; history_full: string; country: string; postal_code: string; locker_not_allowed: string; locker_unavailable: string; locker_invalid: string };
   };
   personalization: {
     forLine: (params: { name: string }) => string;
@@ -3411,6 +3443,7 @@ export interface Messages {
     emailHint: string;
     couponEmailHint: string;
     payBlockedDelivery: string;
+    payBlockedLockerPhone: string;
     payBlockedLocker: string;
     payBlockedLockerRejected: string;
     payBlockedPersonalizationText: string;

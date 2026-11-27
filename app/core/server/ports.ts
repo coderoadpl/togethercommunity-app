@@ -1272,6 +1272,7 @@ export interface PaymentProvider {
     shipping?: {
       allowedCountries: string[];
       phone: true;
+      phoneHint?: string;
       option: {
         label: string;
         amountCents: number;

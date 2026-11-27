@@ -11,6 +11,7 @@ import {
   checkoutSessionInputSchema,
   err,
   FREE_ORDER_DELIVERY_UNAVAILABLE,
+  inpostCheckoutPhoneHint,
   isStandalonePurchasable,
   normalizeCouponCode,
   notFound,
@@ -322,6 +323,7 @@ export const startCheckoutSession = async (
   }
   const tenantSettings = await deps.tenants?.findSettings(tenant.id);
   const checkoutBranding = tenantSettings == null ? undefined : resolveCheckoutBranding(tenantSettings, tenantBaseUrl);
+  const phoneHint = shipping === undefined ? null : inpostCheckoutPhoneHint(shipping.carrier, shipping.pickupPoint === null ? 'courier' : 'locker', input.language);
   const couponQuery = applied === undefined || input.couponCode === undefined ? '' : `&code=${encodeURIComponent(normalizeCouponCode(input.couponCode))}`;
   const hold = await reserveStock();
   if (!hold.ok) return hold;
@@ -339,6 +341,7 @@ export const startCheckoutSession = async (
       shipping: {
         allowedCountries: shipping.allowedCountries,
         phone: true,
+        ...(phoneHint === null ? {} : { phoneHint }),
         option: {
           label: shipping.label,
           amountCents: shipping.amountCents,

@@ -13,7 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 
-import { pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
+import { inpostCheckoutPhoneHint, pickupPointCodeValid, type PublicShippingRate } from '#core/domain/index.js';
 
 import { CheckIcon, ChevronDownIcon, CircleAlertIcon, MapPinIcon } from '../../components/ui/account-icons.js';
 import { useTranslations } from '../../i18n/index.js';
@@ -37,20 +37,24 @@ import {
   type PickedPickupPoint,
 } from './index.web.js';
 
-export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, language, geowidget, disabled, layout = 'list' }: {
+export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, language, showPhoneHint, geowidget, disabled, layout = 'list' }: {
   rates: PublicShippingRate[];
   state: CheckoutState;
   dispatch: (event: CheckoutEvent) => void;
   checkLocker: CheckLocker;
   currency: string;
   language: 'pl' | 'en';
+  showPhoneHint: boolean;
   geowidget: GeowidgetAccess;
   disabled: boolean;
   layout?: 'list' | 'cards';
 }) => {
   const t = useTranslations();
   const lockerId = useId();
+  const phoneHintId = `${lockerId}-phone-hint`;
   const selected = rates.find((rate) => rate.id === state.shippingRateId) ?? null;
+  const phoneHint = !showPhoneHint || selected === null ? null
+    : inpostCheckoutPhoneHint(selected.carrier, selected.pickupPoint === 'inpost_locker' ? 'locker' : 'courier', language);
   const [codeBlurred, setCodeBlurred] = useState(false);
   const codeInvalid = codeBlurred && state.pickupPointCode.trim() !== '' && !pickupPointCodeValid(state.pickupPointCode);
   const check = typedLockerCheck(state);
@@ -229,6 +233,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
         ) : (
           <RadioGroup
             aria-labelledby="checkout-delivery-label"
+            aria-describedby={phoneHint === null ? undefined : phoneHintId}
             sx={layout === 'cards' ? { gap: '0.5rem', mt: '0.25rem' } : undefined}
             value={state.shippingRateId ?? ''}
             onChange={(event) => dispatch({ type: 'shippingRateSelected', rateId: event.target.value })}
@@ -281,6 +286,7 @@ export const DeliveryStep = ({ rates, state, dispatch, checkLocker, currency, la
             ))}
           </RadioGroup>
         )}
+        {phoneHint === null ? null : <FormHelperText id={phoneHintId}>{phoneHint}</FormHelperText>}
         {layout === 'list' && selected === null && rates.length > 0 ? <FormHelperText>{t.shipping.chooseDelivery}</FormHelperText> : null}
       </FormControl>
       {lockerDialog}

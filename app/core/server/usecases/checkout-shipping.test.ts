@@ -36,6 +36,7 @@ const course: Product = { ...accessory, id: 'course', slug: 'course', title: 'Co
 const rates: ShippingRate[] = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 2 } },
   { id: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 8, carrier: 'other', pickupPoint: 'none', active: true },
+  { id: 'inpost-courier', label: 'InPost courier', amountCents: 2199, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'none', active: true },
   { id: 'retired', label: 'Retired option', amountCents: 999, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: false },
 ];
 
@@ -245,7 +246,10 @@ describe('checkout with shipping', () => {
     expect(h.calls).toHaveLength(1);
     expect(h.calls[0]).toMatchObject({
       priceCents: 4900,
-      shipping: { allowedCountries: ['PL'], phone: true, option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN', deliveryEstimateDays: { min: 1, max: 2 } } },
+      shipping: {
+        allowedCountries: ['PL'], phone: true, phoneHint: 'InPost parcel lockers require a Polish mobile number (9 digits).',
+        option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN', deliveryEstimateDays: { min: 1, max: 2 } },
+      },
     });
     expect(h.calls[0]).not.toHaveProperty('lines');
     expect(h.calls[0]).not.toHaveProperty('expiresAt');
@@ -257,6 +261,17 @@ describe('checkout with shipping', () => {
       rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
       pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' }, allowedCountries: ['PL'],
     });
+  });
+
+  it('keeps phone collection enabled for all carriers but adds the courier hint only for InPost', async () => {
+    const h = harness();
+    for (const rateId of ['inpost-courier', 'courier']) {
+      const result = await createCheckoutSession(tenant, 'https://example.test', { productId: accessory.id, shipping: { rateId } }, h.deps);
+      expect(result).toMatchObject({ ok: true });
+    }
+    expect(h.calls[0]?.shipping).toMatchObject({ phone: true, phoneHint: 'InPost courier delivery requires a Polish mobile number (9 digits).' });
+    expect(h.calls[1]?.shipping).toMatchObject({ phone: true });
+    expect(h.calls[1]?.shipping).not.toHaveProperty('phoneHint');
   });
 
   it('asks the carrier before writing any coupon session, stock reservation, snapshot or payment session', async () => {

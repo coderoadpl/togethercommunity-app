@@ -3791,6 +3791,17 @@ describe('shipped checkout fulfilment', () => {
     } });
   });
 
+  it.each(['+447700900000', null])('warns about an unusable InPost phone without rejecting the paid order (%s)', async (phone) => {
+    const h = shippedPayment();
+    h.session.shipping = { ...collectedShipping, phone };
+
+    expect(await fulfillStripeWebhook(tenantA, h.event, h.deps)).toEqual(ok({ processed: true }));
+    expect(h.orders).toMatchObject([{ status: 'paid', fulfilmentStatus: 'to_pack', shipping: { phone } }]);
+    expect(h.warnings.filter((message) => message.includes('reason=invalid_inpost_phone'))).toEqual([
+      `[stripe-webhook] tenant=${tenantA.id} event=${h.event.id} order=${h.orders[0]?.id} reason=invalid_inpost_phone`,
+    ]);
+  });
+
   it('commits stock for the product lines only, never for the shipping line', async () => {
     const h = shippedPayment();
     const stock = createStockRepositoryFake();

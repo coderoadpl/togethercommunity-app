@@ -791,6 +791,7 @@ export const CheckoutPage = ({ productRef, salesLinkSlug }: { productRef: string
               checkLocker={checkLocker}
               currency={selectedCurrency}
               language={language}
+              showPhoneHint={stripeConfigured}
               geowidget={paymentConfig.data.inpostGeowidgetWithheld ? { status: 'withheld_for_staff' } : geowidgetAccess({
                 token: paymentConfig.data.inpostGeowidgetToken,
                 staffSession: paymentConfig.data.canTest,

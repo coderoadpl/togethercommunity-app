@@ -15,7 +15,14 @@ import {
   BETTER_AUTH_SIGN_OUT_PATH,
   BETTER_AUTH_TWO_FACTOR_TOTP_PATH,
 } from '#adapters/auth/create-auth.js';
-import { AUTH_EMAIL_VERIFICATION_PATH, AUTH_GOOGLE_CALLBACK_PATH } from '#adapters/auth/e2e-http.js';
+import {
+  AUTH_EMAIL_SIGN_IN_PATH,
+  AUTH_EMAIL_VERIFICATION_PATH,
+  AUTH_GOOGLE_CALLBACK_PATH,
+  AUTH_LINK_SOCIAL_PATH,
+  AUTH_PASSKEY_AUTHENTICATION_PATH,
+  AUTH_PASSKEY_REGISTRATION_PATH,
+} from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
@@ -427,7 +434,8 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
 
 const submitPasskeyCeremony = async (page: Page, ceremony: 'registration' | 'authentication', testId: string) => {
   const origin = new URL(page.url()).origin;
-  const verificationUrl = `${origin}/api/auth/passkey/verify-${ceremony}`;
+  const path = ceremony === 'registration' ? AUTH_PASSKEY_REGISTRATION_PATH : AUTH_PASSKEY_AUTHENTICATION_PATH;
+  const verificationUrl = `${origin}${path}`;
   const [response] = await Promise.all([
     page.waitForResponse((candidate) => candidate.url() === verificationUrl && candidate.request().method() === 'POST', { timeout: 20000 }),
     page.getByTestId(testId).click(),
@@ -995,10 +1003,10 @@ const runGoogleAccountLinking = async (databaseUrl: string): Promise<void> => {
     };
 
     for (const flow of ['revoked-session', 'legacy-state'] as const) {
-      const signIn = await post('/api/auth/sign-in/email', { email: identity.email, password: CREATOR_PASSWORD });
+      const signIn = await post(AUTH_EMAIL_SIGN_IN_PATH, { email: identity.email, password: CREATOR_PASSWORD });
       assert(signIn.status === 200, `account-link sign-in returned HTTP ${signIn.status}`);
       const session = sessionCookiePair(signIn.headers);
-      const started = await post('/api/auth/link-social', { provider: 'google', callbackURL, disableRedirect: true }, session);
+      const started = await post(AUTH_LINK_SOCIAL_PATH, { provider: 'google', callbackURL, disableRedirect: true }, session);
       assert(started.status === 200, `account-link start returned HTTP ${started.status}`);
       const { url } = z.object({ url: z.string().url() }).parse(parseJson(started.body));
       const state = new URL(url).searchParams.get('state');

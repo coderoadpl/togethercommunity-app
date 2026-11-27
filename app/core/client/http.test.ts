@@ -860,7 +860,7 @@ describe('sign-in client transport', () => {
       if (step === undefined) throw new Error('Unexpected sign-in client request');
       expect(input).toBe(`https://api.example.test${step.path}`);
       expect(init?.method).toBe(step.method);
-      expect(init?.body).toBe(step.input === undefined ? undefined : JSON.stringify(step.input));
+      expect(init?.body).toBe(step.input === undefined ? null : JSON.stringify(step.input));
       return jsonResponse({ ok: true, data: step.output }, step.status);
     } });
     expect(await api.createSignInClient(draft)).toEqual(ok(first));

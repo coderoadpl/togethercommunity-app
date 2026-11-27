@@ -50,6 +50,10 @@ interface Hoisted {
   activitySummary: ReturnType<typeof vi.fn>;
   memberActivity: ReturnType<typeof vi.fn>;
   createApiKey: ReturnType<typeof vi.fn>;
+  createSignInClient: ReturnType<typeof vi.fn>;
+  listSignInClients: ReturnType<typeof vi.fn>;
+  rotateSignInClientSecret: ReturnType<typeof vi.fn>;
+  disableSignInClient: ReturnType<typeof vi.fn>;
   createShopManagementKey: ReturnType<typeof vi.fn>;
   listShopManagementKeys: ReturnType<typeof vi.fn>;
   revokeShopManagementKey: ReturnType<typeof vi.fn>;
@@ -162,6 +166,10 @@ const h = vi.hoisted(
     activitySummary: vi.fn(),
     memberActivity: vi.fn(),
     createApiKey: vi.fn(),
+    createSignInClient: vi.fn(),
+    listSignInClients: vi.fn(),
+    rotateSignInClientSecret: vi.fn(),
+    disableSignInClient: vi.fn(),
     createShopManagementKey: vi.fn(),
     listShopManagementKeys: vi.fn(),
     revokeShopManagementKey: vi.fn(),
@@ -322,6 +330,10 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     activitySummary: h.activitySummary,
     memberActivity: h.memberActivity,
     createApiKey: h.createApiKey,
+    createSignInClient: h.createSignInClient,
+    listSignInClients: h.listSignInClients,
+    rotateSignInClientSecret: h.rotateSignInClientSecret,
+    disableSignInClient: h.disableSignInClient,
     createShopManagementKey: h.createShopManagementKey,
     listShopManagementKeys: h.listShopManagementKeys,
     revokeShopManagementKey: h.revokeShopManagementKey,
@@ -1574,6 +1586,39 @@ describe('activity report CLI parsing', () => {
     h.createApiKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Reporting' }, secret: 'secret' }));
     await run('api-keys', 'create', 'Reporting', '--scope', 'report:read', '--json');
     expect(h.createApiKey).toHaveBeenCalledWith({ name: 'Reporting', scopes: ['report:read'] });
+  });
+  it('creates a dormant sign-in client with repeated return addresses and prints the secret once', async () => {
+    const client = { id: 'client-1', name: 'External application', credentialVersion: 1 };
+    const redirectUris = ['https://callback.example.test/return', 'https://callback.example.test/alternate'];
+    h.createSignInClient.mockReset().mockResolvedValue(ok({ client, secret: 'new-client-test-secret' }));
+    await run('sign-in-clients', 'create', client.name, '--redirect-uri', redirectUris[0] ?? '', '--redirect-uri', redirectUris[1] ?? '');
+    expect(h.createSignInClient).toHaveBeenCalledExactlyOnceWith({ name: client.name, redirectUris });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('created sign-in client External application (client-1)\nsecret (shown once): new-client-test-secret');
+  });
+  it('rotates a sign-in client secret only with an expected integer version', async () => {
+    const client = { id: 'client-1', credentialVersion: 2 };
+    h.rotateSignInClientSecret.mockReset().mockResolvedValue(ok({ client, secret: 'replacement-test-secret' }));
+    await run('sign-in-clients', 'rotate-secret', client.id, '--if-version', '1', '--json');
+    expect(h.rotateSignInClientSecret).toHaveBeenCalledExactlyOnceWith({ id: client.id, expectedCredentialVersion: 1 });
+    expect(soleJson()).toEqual({ ok: true, data: { client, secret: 'replacement-test-secret' } });
+  });
+  it('refuses an invalid version before rotating a sign-in client secret', async () => {
+    h.rotateSignInClientSecret.mockReset();
+    await run('sign-in-clients', 'rotate-secret', 'client-1', '--if-version', '1.5', '--json');
+    expect(h.rotateSignInClientSecret).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+  it('lists sign-in clients with a bounded page request and prints the next cursor', async () => {
+    h.listSignInClients.mockReset().mockResolvedValue(ok({ clients: [], nextCursor: 'cursor-1' }));
+    await run('sign-in-clients', 'list', '--limit', '20', '--cursor', 'cursor-0');
+    expect(h.listSignInClients).toHaveBeenCalledExactlyOnceWith({ limit: 20, cursor: 'cursor-0' });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('no sign-in clients\nnext cursor: cursor-1');
+  });
+  it('disables a sign-in client by ID and prints only its confirmation', async () => {
+    h.disableSignInClient.mockReset().mockResolvedValue(ok({ client: { id: 'client-1', state: 'retired' } }));
+    await run('sign-in-clients', 'disable', 'client-1');
+    expect(h.disableSignInClient).toHaveBeenCalledExactlyOnceWith({ id: 'client-1' });
+    expect(logSpy).toHaveBeenCalledExactlyOnceWith('disabled sign-in client client-1');
   });
   it('creates a shop management key under the shop-management group with scopes and expiry', async () => {
     h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Shop' }, secret: 'shop-secret' }));

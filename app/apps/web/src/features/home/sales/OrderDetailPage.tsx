@@ -2,11 +2,14 @@ import { OfferLines } from '../../../components/ui/OfferLines.js';
 import { DownloadCopies } from '../downloads/DownloadCopies.js';
 import { Alert, AlertTitle, Box, Button, Chip, Link, Stack, Typography, useMediaQuery, useTheme } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   SALES_LINK_TIME_ZONE,
+  SHIPX_STATUS_CANCELED,
   capabilitiesForPrincipal,
   isActiveStaffRefundStatus,
+  orderFulfilmentDisplay,
+  orderLabel,
   orderLineLabel,
   staffRefundPreviewReadable,
   type OrderLine,
@@ -90,14 +93,26 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
   });
   const inpostOrder = detail.data?.order.shipping?.carrier === 'inpost';
   const shipx = useQuery({ ...actions[canShip ? 'shipxRefreshedShipment' : 'shipxShipment'](orderId), enabled: inpostOrder });
+  const shipxShipment = shipx.data?.shipment;
+  const queriedLabel = orderLabel(shipxShipment);
+  const detailLabel = detail.data?.order.label;
+  const discoveredTracking = detail.data !== undefined && detailLabel == null ? queriedLabel?.trackingNumber : undefined;
+  const lastInvalidatedLabel = useRef<string | null>(null);
+  useEffect(() => {
+    if (discoveredTracking === undefined) return;
+    const labelKey = `${orderId}:${discoveredTracking}`;
+    if (lastInvalidatedLabel.current === labelKey) return;
+    lastInvalidatedLabel.current = labelKey;
+    void queryClient.invalidateQueries(actions.ordersInvalidates('list'));
+  }, [discoveredTracking, orderId, queryClient]);
   const createShipment = useMutation({
     ...actions.shipxCreate,
     onSettled: async () => {
       await queryClient.invalidateQueries(actions.ordersInvalidates());
     },
   });
-  const createShipmentWith = (parcelTemplate: ParcelTemplate | undefined) => {
-    createShipment.mutate({ orderId, ...(parcelTemplate === undefined ? {} : { parcelTemplate }) });
+  const createShipmentWith = (parcelTemplate: ParcelTemplate | undefined, markShipped = false) => {
+    createShipment.mutate({ orderId, markShipped, ...(parcelTemplate === undefined ? {} : { parcelTemplate }) });
   };
   const recreateTemplate = useRef<ParcelTemplate | undefined>(undefined);
   const discardShipment = useMutation({
@@ -139,7 +154,8 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     );
   }
 
-  const order = detail.data.order;
+  const order = { ...detail.data.order, label: shipxShipment?.status === SHIPX_STATUS_CANCELED ? null : queriedLabel ?? detailLabel };
+  const fulfilmentDisplay = orderFulfilmentDisplay(order);
   const attributionRows = [
     [t.sales.utmSource, order.attribution?.utmSource],
     [t.sales.utmMedium, order.attribution?.utmMedium],
@@ -199,11 +215,11 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
       )}
     </Stack>
   );
-  const fulfilmentChip = order.fulfilmentStatus == null
+  const fulfilmentChip = fulfilmentDisplay == null
     ? offPackingRefund === null ? undefined : <Chip size="small" variant="outlined" label={t.sales.staffRefund.offPackingChip} data-testid="order-off-packing-chip" />
     : (
-      <Chip size="small" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
-        label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid={`order-${order.fulfilmentStatus.replace('_', '-')}`} />
+      <Chip size="small" color={fulfilmentDisplay === 'to_pack' ? 'warning' : fulfilmentDisplay === 'label_ready' ? 'info' : 'success'}
+        label={t.shipping.fulfilmentStatuses[fulfilmentDisplay]} data-testid={`order-${fulfilmentDisplay.replace('_', '-')}`} />
     );
   const preview = refundAction.kind === 'ready' ? refundAction.preview : null;
   const detailsCard = (
@@ -433,10 +449,10 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
                     error={createShipment.error ?? discardShipment.error ?? downloadLabel.error}
                     discarding={discardShipment.isPending}
                     downloading={downloadLabel.isPending}
-                    onCreate={(parcelTemplate) => {
+                    onCreate={(parcelTemplate, markShipped) => {
                       downloadLabel.reset();
                       discardShipment.reset();
-                      createShipmentWith(parcelTemplate);
+                      createShipmentWith(parcelTemplate, markShipped);
                     }}
                     onDiscard={(parcelTemplate) => {
                       createShipment.reset();

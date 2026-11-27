@@ -1022,7 +1022,7 @@ export interface Messages {
     toPack: string;
     fulfilmentFilter: string;
     fulfilmentAll: string;
-    fulfilmentStatuses: { to_pack: string; shipped: string };
+    fulfilmentStatuses: { to_pack: string; label_ready: string; shipped: string };
     fulfilmentColumn: string;
     packingListDownload: string;
     packingListDownloading: string;
@@ -1073,7 +1073,10 @@ export interface Messages {
     create: string;
     creating: string;
     createConfirmTitle: string;
-    createConfirmBody: (params: { service: string; size: string; email: string }) => string;
+    markShipped: string;
+    markShippedTest: string;
+    createConfirmBody: (params: { service: string; size: string }) => string;
+    createConfirmBodyShipped: (params: { service: string; size: string; email: string }) => string;
     createConfirmBodyTest: (params: { service: string; size: string }) => string;
     createConfirm: string;
     parcelTemplateOverrideLabel: string;
@@ -1082,6 +1085,8 @@ export interface Messages {
     downloadingLabel: string;
     shipmentStatus: (params: { status: string }) => string;
     paymentPending: string;
+    labelCanceled: string;
+    labelCanceledEarlier: string;
     attemptUnconfirmed: string;
     discardAttempt: string;
     discardConfirmTitle: string;
@@ -1098,6 +1103,7 @@ export interface Messages {
       lostLock: string;
       leaseHeld: string;
       manualShipped: (params: { trackingNumber: string }) => string;
+      orderLeftPackingList: (params: { trackingNumber: string }) => string;
       environmentMismatch: (params: { environment: string; settingsEnvironment: string }) => string;
       organizationMismatch: string;
       receiverInvalid: { phone: string; name: string; building_number: string; locker_code: string };

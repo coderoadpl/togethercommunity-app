@@ -169,11 +169,13 @@ const fetchImpl: typeof fetch = async (input, init) => {
 
 const originalArgv = process.argv;
 
-const run = async (...args: string[]): Promise<void> => {
-  process.argv = ['node', 'together', '--json', ...args];
+const runPlain = async (...args: string[]): Promise<void> => {
+  process.argv = ['node', 'together', ...args];
   vi.resetModules();
   await import('./main.js');
 };
+
+const run = (...args: string[]) => runPlain('--json', ...args);
 
 const soleJson = (): unknown => {
   expect(logSpy).toHaveBeenCalledTimes(1);
@@ -336,7 +338,8 @@ describe('shop orders CLI', () => {
     [['shop', 'orders', 'issue', 'order-1', 'product-1'], 'POST', '/api/m2m/shop/orders/order-1/lines/product-1/issue', '', { orderId: 'order-1', productId: 'product-1' }],
     [['shop', 'orders', 'issue', 'order-1', 'product-1', '--count', '2'], 'POST', '/api/m2m/shop/orders/order-1/lines/product-1/issue', '', { orderId: 'order-1', productId: 'product-1', count: 2 }],
     [['shop', 'orders', 'shipx', 'show', 'order-1'], 'GET', '/api/m2m/shop/orders/order-1/shipx', '', null],
-    [['shop', 'orders', 'shipx', 'create', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', {}],
+    [['shop', 'orders', 'shipx', 'create', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', { markShipped: false }],
+    [['shop', 'orders', 'shipx', 'create', 'order-1', '--mark-shipped'], 'POST', '/api/m2m/shop/orders/order-1/shipx', '', { markShipped: true }],
     [['shop', 'orders', 'shipx', 'refresh', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx/refresh', '', {}],
     [['shop', 'orders', 'shipx', 'discard', 'order-1'], 'POST', '/api/m2m/shop/orders/order-1/shipx/discard', '', {}],
   ])('sends %j to the shop order route with the env key only', async (args, method, path, search, body) => {
@@ -346,6 +349,27 @@ describe('shop orders CLI', () => {
     expect(calls[0]).toMatchObject({ method, path, search, body });
     expect(calls[0]?.headers.get('x-api-key')).toBe('shop-secret-from-env');
     expect(calls[0]?.headers.has('authorization')).toBe(false);
+  });
+
+  it('prints label_ready in the plain order list', async () => {
+    h.fetchImpl = async () => Response.json({ ok: true, data: {
+      orders: [{ ...order, fulfilmentStatus: 'to_pack', shipment: null, label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }],
+      sources: [], total: 1, page: 1, pageSize: 20,
+    } });
+    await runPlain('shop', 'orders', 'list', '--fulfilment', 'to_pack');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tlabel_ready\t'));
+  });
+
+  it.each([
+    ['to_pack', null, { carrier: 'inpost', trackingNumber: 'LABEL1234' }, 'LABEL1234', 'label ready; order still to pack: order-1 (inpost LABEL1234)'],
+    ['to_pack', null, undefined, ' LABEL1234 ', 'label ready; order still to pack: order-1 (inpost LABEL1234)'],
+    ['to_pack', null, undefined, 'T1', 'label bought; order still to pack: order-1 (inpost T1)'],
+    ['to_pack', null, null, 'T1', 'label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: order-1 (inpost T1)'],
+    ['shipped', { ...order.shipment, carrier: 'inpost', trackingNumber: 'LABEL1234 ' }, null, ' LABEL1234', 'shipped: order-1 (inpost LABEL1234)'],
+  ])('describes a bought label for fulfilment status %s', async (fulfilmentStatus, dispatchedShipment, label, trackingNumber, expected) => {
+    h.fetchImpl = async () => Response.json({ ok: true, data: { order: { ...order, fulfilmentStatus, shipment: dispatchedShipment, label }, shipment: { ...shipment, trackingNumber } } });
+    await runPlain('shop', 'orders', 'shipx', 'create', 'order-1');
+    expect(logSpy).toHaveBeenCalledWith(expected);
   });
 
   it('names the connection of the order in the plain ShipX view', async () => {

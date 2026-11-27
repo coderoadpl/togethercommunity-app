@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#core/client/index.js';
@@ -33,13 +33,13 @@ const props = {
 };
 
 describe('OrderShipx', () => {
-  it('creates the shipment after a confirmation that names the service, size and buyer', async () => {
+  it('creates the shipment after a confirmation with the one-step checkbox off by default', async () => {
     const onCreate = vi.fn();
     renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(/Parcel locker shipment, size Large/)).toBeVisible();
-    expect(within(dialog).getByText(/buyer@example\.org/)).toBeVisible();
+    expect(within(dialog).getByText('InPost creates and charges a Parcel locker shipment, size Large (C, 41 × 38 × 64 cm). The label will be ready to print; the order stays to pack until you mark it as shipped.')).toBeVisible();
+    expect(within(dialog).getByRole('checkbox', { name: 'Mark as shipped right away and e-mail the buyer' })).not.toBeChecked();
     expect(onCreate).not.toHaveBeenCalled();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
     expect(onCreate).toHaveBeenCalledTimes(1);
@@ -52,13 +52,17 @@ describe('OrderShipx', () => {
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).queryByRole('combobox', { name: 'Parcel size for this shipment' })).toBeNull();
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
-    expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined);
+    expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined, false);
   });
 
-  it('says that a test order is created in the InPost sandbox', async () => {
+  it('keeps the sandbox confirmation with or without the one-step opt-in', async () => {
     renderWithProviders(<OrderShipx {...props} order={{ ...toPack, mode: 'test' }} view={{ ...ready, environment: 'sandbox' }} />);
     await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
-    expect(within(await screen.findByRole('dialog')).getByText(/InPost sandbox creates/)).toBeVisible();
+    const dialog = within(await screen.findByRole('dialog'));
+    const body = 'Test order: the InPost sandbox creates a Parcel locker shipment, size Large (C, 41 × 38 × 64 cm). Nothing is charged and no e-mail is sent.';
+    expect(dialog.getByText(body)).toBeVisible();
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Mark as shipped right away (no e-mail is sent)' }));
+    expect(dialog.getByText(body)).toBeVisible();
   });
 
   it('downloads the label of a bought shipment through the API client', async () => {
@@ -69,6 +73,54 @@ describe('OrderShipx', () => {
     expect(onDownloadLabel).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
     expect(screen.getByText('InPost shipment status: confirmed')).toBeVisible();
+  });
+
+  it.each([false, true])('warns about a canceled label without offering print or create (with conflict: %s)', (hasConflict) => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, label: { carrier: 'inpost', trackingNumber: '520000011395200025754311' } }}
+      view={{ ...ready, shipment: shipment({ status: 'canceled' }) }}
+      error={hasConflict ? new ApiError({ code: 'conflict', message: 'Label canceled', details: { state: 'label_canceled', trackingNumber: '520000011395200025754311', shipxShipmentId: '1001' } }) : null}
+    />);
+    expect(screen.getByRole('alert')).toHaveTextContent('This InPost label was canceled in Manager Paczek. Create a new label there and mark the order as shipped by hand.');
+    expect(screen.queryByRole('button', { name: 'Print label' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
+    expect(screen.queryByTestId('order-shipx-pending')).toBeNull();
+  });
+
+  it('only notes a canceled original label on an order that was shipped by hand', () => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, fulfilmentStatus: 'shipped', shipment: { carrier: 'other', trackingNumber: 'NEWLABEL1', shippedAt: '2026-11-08T10:00:00.000Z', shippedBy: 'staff' } }}
+      view={{ ...ready, available: false, reason: 'not_to_pack', shipment: shipment({ status: 'canceled' }) }}
+    />);
+    expect(screen.getByTestId('order-shipx-label-canceled')).toHaveTextContent('The original InPost label for this order was canceled in Manager Paczek.');
+    expect(screen.queryByRole('button', { name: 'Print label' })).toBeNull();
+  });
+
+  it('prints from the order label while the ShipX view has no shipment yet', () => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, fulfilmentStatus: 'shipped', label: { carrier: 'inpost', trackingNumber: '520000011395200025754311' }, shipment: { carrier: 'inpost', trackingNumber: '520000011395200025754311', shippedAt: '2026-11-08T10:00:00.000Z', shippedBy: 'staff' } }}
+      view={{ ...ready, available: false, reason: 'not_to_pack', shipment: null }}
+    />);
+    expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
+  });
+
+  it.each([
+    ['matching InPost dispatch', { carrier: 'inpost', trackingNumber: ' 520000011395200025754311 ' }, true],
+    ['different InPost tracking', { carrier: 'inpost', trackingNumber: 'LABEL1234' }, false],
+    ['different carrier', { carrier: 'other', trackingNumber: '520000011395200025754311' }, false],
+    ['missing dispatch', null, false],
+  ] as const)('shows print only for the matching ShipX parcel: %s', (_name, dispatch, canPrint) => {
+    renderWithProviders(<OrderShipx
+      {...props}
+      order={{ ...toPack, fulfilmentStatus: 'shipped', shipment: dispatch === null ? null : { ...dispatch, shippedAt: '2026-11-08T10:00:00.000Z', shippedBy: 'staff' } }}
+      view={{ ...ready, available: false, reason: 'not_to_pack', shipment: shipment({ trackingNumber: '520000011395200025754311  ' }) }}
+    />);
+    const print = screen.queryByRole('button', { name: 'Print label' });
+    if (canPrint) expect(print).toBeVisible();
+    else expect(print).toBeNull();
   });
 
   it('warns about an unconfirmed attempt and discards it only after a confirmation', async () => {
@@ -163,6 +215,8 @@ describe('OrderShipx', () => {
       ['lost lock', failed('fulfilment_conflict', 'Another request took over the InPost shipment for this order; refresh the order in a moment', { state: 'lost_lock' }), pl.shipx.failures.lostLock],
       ['lease held', failed('fulfilment_conflict', 'Another request is creating the InPost shipment for this order; refresh the order in a moment', { state: 'lease_held' }), pl.shipx.failures.leaseHeld],
       ['manual ship', failed('fulfilment_conflict', 'The order was marked as shipped meanwhile; the InPost shipment 520000011395200025754311 exists as well, reconcile it in Manager Paczek', { state: 'manual_shipped', trackingNumber: '520000011395200025754311', shipxShipmentId: '1001' }), pl.shipx.failures.manualShipped({ trackingNumber: '520000011395200025754311' })],
+      ['canceled label', failed('conflict', 'The InPost label LABEL1234 was canceled in Manager Paczek; create a new label there and mark the order as shipped by hand', { state: 'label_canceled', trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }), pl.shipx.labelCanceled],
+      ['off packing list', failed('conflict', 'The order left the packing list meanwhile; cancel the InPost label LABEL1234 in Manager Paczek', { trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }), pl.shipx.failures.orderLeftPackingList({ trackingNumber: 'LABEL1234' })],
       ['environment mismatch', failed('conflict', 'The InPost shipment was created in the ShipX sandbox environment, but this order uses the production connection; finish the shipment in Manager Paczek', { state: 'environment_mismatch', environment: 'sandbox', settingsEnvironment: 'production' }), pl.shipx.failures.environmentMismatch({ environment: pl.shipx.environments.sandbox, settingsEnvironment: pl.shipx.environments.production })],
       ['organization mismatch', failed('conflict', 'The InPost shipment belongs to a different ShipX organization than the one in the settings; restore it or finish the shipment in Manager Paczek', { state: 'organization_mismatch' }), pl.shipx.failures.organizationMismatch],
       ['missing sandbox connection', failed('integration_not_configured', 'Save the InPost ShipX sandbox organization id and token in Settings → Shipping', { state: 'setup_missing', reason: 'credentials_missing', environment: 'sandbox' }), pl.shipx.unavailableReasons.credentials_missing.sandbox],
@@ -194,4 +248,41 @@ describe('OrderShipx', () => {
     renderWithProviders(<OrderShipx {...props} canCreate={false} />);
     expect(screen.queryByTestId('order-shipx')).toBeNull();
   });
+});
+
+it('passes the one-step opt-in only when checked', async () => {
+  const onCreate = vi.fn();
+  renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Create InPost shipment' }));
+  const dialog = await screen.findByRole('dialog');
+  await userEvent.click(within(dialog).getByRole('checkbox'));
+  expect(within(dialog).getByText(`InPost creates and charges a Parcel locker shipment, size Large (C, 41 × 38 × 64 cm). The order is then marked as shipped and ${toPack.memberEmail} receives the tracking e-mail.`)).toBeVisible();
+  expect(within(dialog).queryByText(/order stays to pack/)).toBeNull();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Create shipment' }));
+  expect(onCreate).toHaveBeenCalledExactlyOnceWith(undefined, true);
+});
+
+it('never offers another create for a bought label on an order still to pack', () => {
+  renderWithProviders(<OrderShipx {...props} view={{ ...ready, shipment: shipment() }} />);
+  expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
+});
+
+it('honours a bought label on the order even when the ShipX view offers create', () => {
+  renderWithProviders(<OrderShipx {...props} order={{ ...toPack, label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }} />);
+  expect(screen.queryByRole('button', { name: 'Create InPost shipment' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Print label' })).toBeVisible();
+});
+
+it.each(['Create InPost shipment', 'Discard the attempt and create again'])('does not reopen the confirmation for %s when create becomes available again', async (action) => {
+  const view = { ...ready, shipment: shipment({ shipxShipmentId: null, status: 'creating', trackingNumber: null, boughtAt: null }) };
+  const renderOrder = (availableView: ShipxOrderView | undefined) => <OrderShipx {...props} view={availableView} />;
+  const { rerender } = render(renderOrder(view));
+  await userEvent.click(screen.getByRole('button', { name: action }));
+  expect(await screen.findByRole('dialog')).toBeVisible();
+  rerender(renderOrder(action === 'Create InPost shipment' ? { ...view, available: false } : undefined));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  rerender(renderOrder(view));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(screen.getByRole('button', { name: action })).toBeVisible();
 });

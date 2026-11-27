@@ -152,7 +152,7 @@ describe('SalesPanel', () => {
     expect(salesRow).toHaveTextContent('Workshop');
     expect(salesRow).toHaveTextContent('meta / paid');
     expect(screen.getByTestId('sales-row')).toHaveTextContent('Ada');
-    expect(screen.getByRole('link', { name: 'Ada' }))
+    expect(screen.getByRole('link', { name: en.sales.openMemberAccount({ member: 'Ada (member@example.com)' }) }))
       .toHaveAttribute('href', '/panel/members/m1');
 
     await user.click(screen.getByLabelText(en.sales.status));

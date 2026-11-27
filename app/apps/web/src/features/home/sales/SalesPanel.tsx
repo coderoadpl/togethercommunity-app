@@ -1,5 +1,7 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
+import { OrderMemberIdentity, orderMemberTitle } from './OrderMemberIdentity.js';
+import { OrderProductSummary } from './OrderProductSummary.js';
 import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
 import { ChevronIcon } from './refund-icons.js';
@@ -12,7 +14,6 @@ import {
   Checkbox,
   FormControl,
   InputLabel,
-  Link as MuiLink,
   MenuItem,
   Select,
   Stack,
@@ -35,8 +36,8 @@ import { actions } from '../../../api.js';
 import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatDateTime, formatPrice } from '../../../lib/format.js';
-import { SalesCardAmount, SalesCardControl, SalesCardMemberLink, SalesCardOrderLink, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesTable } from '../../../theme.js';
+import { formatDate, formatDateTime, formatPrice, formatTime } from '../../../lib/format.js';
+import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesCouponCode, SalesDateLink, SalesDateTime, SalesFitCell, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesProductCell, SalesTable } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -156,23 +157,13 @@ export const SalesPanel = () => {
   } as const;
 
   const orderLink = (order: OrderListItem) => (
-    <MuiLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`}>
-      {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
-    </MuiLink>
-  );
-  const memberLink = (order: OrderListItem) => (
-    <MuiLink component={Link} to={`/panel/members/${order.memberId}`}>{order.memberName ?? order.memberEmail}</MuiLink>
+    <SalesDateLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`} aria-label={formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)} data-testid="sales-order-link">
+      <span>{formatDate(order.createdAt, language, SALES_LINK_TIME_ZONE)}</span>
+      <SalesDateTime>{formatTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}</SalesDateTime>
+    </SalesDateLink>
   );
   const orderSource = (order: OrderListItem) => [order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ');
-  const productCell = (order: OrderListItem) => (
-    <>
-      {order.lines?.map((line) => line.name).join(' · ') || order.productTitle}
-      {order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null}
-      {' '}
-      {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
-      {order.lines?.some((line) => line.personalization !== undefined) === true ? <Chip size="small" variant="outlined" color="info" label={t.personalization.marker} data-testid="sales-personalization-chip" sx={{ ml: '0.25rem' }} /> : null}
-    </>
-  );
+  const productCell = (order: OrderListItem) => <OrderProductSummary order={order} />;
   const staffRefundChipLabel = (order: OrderListItem, state: string) => order.staffRefundAmountCents === undefined
     ? t.sales.staffRefund.stateChip({ state })
     : t.sales.staffRefund.listChip({ amount: formatPrice(order.staffRefundAmountCents, order.currency, language), state });
@@ -446,7 +437,7 @@ export const SalesPanel = () => {
                 <SalesOrderCard key={order.id} data-testid="sales-row">
                   <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                      <SalesCardMemberLink component={Link} to={`/panel/members/${order.memberId}`} underline="always">{order.memberName ?? order.memberEmail}</SalesCardMemberLink>
+                      <SalesCardControl><OrderMemberIdentity order={order} underline="always" /></SalesCardControl>
                     </Box>
                     <SalesCardAmount>{formatPrice(order.amountCents, order.currency, language)}</SalesCardAmount>
                   </Stack>
@@ -479,7 +470,7 @@ export const SalesPanel = () => {
                     <TableCell>{t.sales.product}</TableCell>
                     {narrow ? null : <TableCell>{t.sales.kind}</TableCell>}
                     <TableCell>{t.sales.amount}</TableCell>
-                    {narrow ? null : <TableCell>{t.sales.coupon}</TableCell>}
+                    {narrow ? null : <SalesFitCell>{t.sales.coupon}</SalesFitCell>}
                     {narrow ? null : <TableCell>{t.sales.source}</TableCell>}
                     <TableCell>{t.sales.status}</TableCell>
                     <TableCell>{t.shipping.fulfilmentColumn}</TableCell>
@@ -491,14 +482,14 @@ export const SalesPanel = () => {
                     <TableRow key={order.id} data-testid="sales-row">
                       {canWriteInvoice ? <TableCell padding="checkbox">{selectBox(order)}</TableCell> : null}
                       <SalesNoWrapCell>{orderLink(order)}</SalesNoWrapCell>
-                      <SalesMemberCell title={order.memberName ?? order.memberEmail}>{memberLink(order)}</SalesMemberCell>
-                      <TableCell sx={{ minWidth: '14rem' }}>
+                      <SalesMemberCell title={orderMemberTitle(order, t.deletedContent.member)}><OrderMemberIdentity order={order} /></SalesMemberCell>
+                      <SalesProductCell>
                         {productCell(order)}
                         {narrow && orderSource(order) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(order)}</Typography> : null}
-                      </TableCell>
+                      </SalesProductCell>
                       {narrow ? null : <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>}
                       <SalesNoWrapCell>{formatPrice(order.amountCents, order.currency, language)}</SalesNoWrapCell>
-                      {narrow ? null : <TableCell>{order.couponCode ?? '—'}</TableCell>}
+                      {narrow ? null : <SalesFitCell data-testid="sales-row-coupon"><SalesCouponCode>{order.couponCode ?? '—'}</SalesCouponCode></SalesFitCell>}
                       {narrow ? null : <TableCell>{orderSource(order) || '—'}</TableCell>}
                       <TableCell>
                         <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem' }}>{statusChips(order)}</Stack>

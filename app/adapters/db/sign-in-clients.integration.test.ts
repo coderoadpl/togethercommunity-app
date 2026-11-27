@@ -40,7 +40,7 @@ let observer: pg.Client;
 
 beforeAll(async () => {
   database = await createTestDatabase('together_sign_in_clients', process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together');
-  await database.db.insert(tenants).values([workspaceA, workspaceB, listWorkspace, suspendedWorkspace].map((id) => ({
+  await database.db.insert(tenants).values([workspaceA, workspaceB, listWorkspace, suspendedWorkspace].map<typeof tenants.$inferInsert>((id) => ({
     id, slug: id, name: id, createdAt: now, status: id === suspendedWorkspace ? 'suspended' : 'active',
   })));
   left = createDb('node-postgres', database.url, { max: 1 });
@@ -150,6 +150,16 @@ it('rolls back the reservation if event append fails and does not expose bound v
   expect(await repository(right).create(workspaceB, draft(aborted.redirectHost))).toMatchObject({ ok: true });
 });
 
+it('leaves no reservation and no bound digest in the error when projection insertion fails', async () => {
+  const input = draft('failed-projection.example.org', { secretHash: 'invalid-digest-fixture' });
+  const attempt = repository(left).create(workspaceA, input);
+  await expect(attempt).rejects.toEqual(new Error('Sign-in client registry database operation failed'));
+  await expect(attempt).rejects.not.toHaveProperty('cause');
+  expect(await reservationsFor(input.redirectHost)).toEqual([]);
+  expect(await rowsOf(input.id)).toEqual([]);
+  expect(await eventsOf(input.id)).toEqual([]);
+});
+
 it('stores one concurrent rotation and its event, and does not overlap old and new hashes', async () => {
   const created = draft('rotation.example.org');
   const first = rotation();
@@ -232,6 +242,20 @@ describe('sign-in client database checks', () => {
       redirectHost: input.redirectHost, redirectUris: input.redirectUris, name: input.name,
       createdAt: now, updatedAt: now, secretHash: input.secretHash, secretExpiresAt: expiry, ...patch,
     })).rejects.toMatchObject({ cause: { code: '23514', constraint: `sign_in_clients_${check}_check` } });
+  });
+
+  it('binds events to their own workspace and limits their state, actor and version', async () => {
+    const input = draft('event-constraints.example.org');
+    expect(await repository(left).create(workspaceA, input)).toMatchObject({ ok: true });
+    const event = { id: 'invalid-event', tenantId: workspaceA, clientId: input.id, kind: 'created', actorKind: 'direct_owner', credentialVersion: 1, occurredAt: now };
+    for (const [constraint, patch] of [
+      ['client_fk', { tenantId: workspaceB }], ['kind_check', { kind: 'activated' }],
+      ['actor_check', { actorKind: 'operator' }], ['version_check', { credentialVersion: 0 }],
+    ] as const) {
+      await expect(database.db.insert(signInClientEvents).values({ ...event, ...patch }))
+        .rejects.toMatchObject({ cause: { constraint: `sign_in_client_events_${constraint}` } });
+    }
+    expect(await eventsOf(input.id)).toHaveLength(1);
   });
 });
 

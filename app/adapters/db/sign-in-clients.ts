@@ -80,9 +80,9 @@ export const createSignInClientRepository = (db: Db, baseDomain: string): SignIn
         eq(tenantDomains.domain, input.redirectHost), eq(tenantDomains.kind, 'custom'), eq(tenantDomains.verified, true),
       ));
       const reservation = tx.select({
-        hostname: sql<string>`${input.redirectHost}`,
-        clientId: sql<string>`${input.id}`,
-        reservedAt: sql<string>`${input.at}::timestamptz`,
+        hostname: sql<string>`${input.redirectHost}`.as('hostname'),
+        clientId: sql<string>`${input.id}`.as('client_id'),
+        reservedAt: sql<string>`${input.at}::timestamptz`.as('reserved_at'),
       }).from(tenants).where(and(eq(tenants.id, tenantId), notExists(verifiedDomain)));
       const [reserved] = await tx.insert(signInClientHostReservations).select(reservation)
         .onConflictDoNothing({ target: signInClientHostReservations.hostname })

@@ -19,7 +19,7 @@ export const createTestPasskey = (rpId: string) => {
   const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
   const { x, y } = jwkCoordinates.parse(publicKey.export({ format: 'jwk' }));
   const rpHash = hash(rpId);
-  const credential = { id, rawId: id, type: 'public-key', clientExtensionResults: {} };
+  const credential = { id, rawId: id, type: 'public-key' as const, clientExtensionResults: {} };
   let counter = 0;
 
   const clientData = (type: string, input: Ceremony) => Buffer.from(JSON.stringify({

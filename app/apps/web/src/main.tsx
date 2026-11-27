@@ -87,6 +87,7 @@ import {
   SendDetailPage,
   SendsPanel,
   validateSendsSearch,
+  validateOrdersSearch,
   PanelCourseDetailRoute,
   PanelCourseCreateRoute,
   PanelModuleCreateRoute,
@@ -414,6 +415,7 @@ const panelEventEditRoute = createRoute({
 const panelSalesRoute = createRoute({
   getParentRoute: () => panelLayoutRoute,
   path: 'sales',
+  validateSearch: validateOrdersSearch,
   component: PanelSalesRoute,
 });
 const panelOrderVerificationRoute = createRoute({

@@ -11,6 +11,7 @@ import {
   SHIPX_SLOT_SECRET_KEYS,
   shipxCreateInputSchema,
   shipxEnvironmentForMode,
+  shipxLabelUsable,
   shipxOfferToBuy,
   shipxPurchaseFailure,
   shipxReference,
@@ -49,10 +50,12 @@ describe('ShipX domain', () => {
   });
 
   it('accepts an optional parcel template from the known templates when creating a shipment', () => {
-    expect(shipxCreateInputSchema.parse({ orderId: 'order-1' })).toEqual({ orderId: 'order-1' });
-    expect(shipxCreateInputSchema.parse({ orderId: 'order-1', parcelTemplate: 'large' })).toEqual({ orderId: 'order-1', parcelTemplate: 'large' });
+    expect(shipxCreateInputSchema.parse({ orderId: 'order-1' })).toEqual({ orderId: 'order-1', markShipped: false });
+    expect(shipxCreateInputSchema.parse({ orderId: 'order-1', parcelTemplate: 'large' })).toEqual({ orderId: 'order-1', parcelTemplate: 'large', markShipped: false });
     expect(shipxCreateInputSchema.safeParse({ orderId: 'order-1', parcelTemplate: 'huge' }).success).toBe(false);
     expect(shipxCreateInputSchema.safeParse({ orderId: 'order-1', parcelTemplate: null }).success).toBe(false);
+    expect(shipxCreateInputSchema.parse({ orderId: 'order-1', markShipped: true }).markShipped).toBe(true);
+    expect(shipxCreateInputSchema.safeParse({ orderId: 'order-1', markShipped: 'true' }).success).toBe(false);
   });
 
   it('derives the service from the carrier and pickup point', () => {
@@ -67,6 +70,14 @@ describe('ShipX domain', () => {
     expect(normalizeShipxPhone('500-600-700')).toBe('500600700');
     expect(normalizeShipxPhone('+49 1512 3456789')).toBeNull();
     expect(normalizeShipxPhone('12345')).toBeNull();
+    expect(normalizeShipxPhone('500000000')).toBe('500000000');
+    expect(normalizeShipxPhone('+48 500 000 000')).toBe('500000000');
+    expect(normalizeShipxPhone('0048500000000')).toBe('500000000');
+    expect(normalizeShipxPhone('48 500-000-000')).toBe('500000000');
+    expect(normalizeShipxPhone('+44 7700 900000')).toBeNull();
+    expect(normalizeShipxPhone('50000000')).toBeNull();
+    expect(normalizeShipxPhone('+44 7700900')).toBeNull();
+    expect(normalizeShipxPhone('abc500000000')).toBeNull();
   });
 
   it('splits names and street lines', () => {
@@ -147,6 +158,14 @@ describe('ShipX domain', () => {
     expect(shipxShipmentBought(remote({ status: 'confirmed', trackingNumber: '6001' }))).toBe(true);
     expect(shipxShipmentBought(remote({ status: 'offer_selected', trackingNumber: '6001' }))).toBe(false);
     expect(shipxShipmentBought(remote({ status: 'confirmed' }))).toBe(false);
+  });
+
+  it('keeps a canceled label bought but not usable', () => {
+    const canceled = remote({ status: 'canceled', trackingNumber: '6001' });
+    expect(shipxShipmentBought(canceled)).toBe(true);
+    expect(shipxLabelUsable(canceled)).toBe(false);
+    expect(shipxLabelUsable({ ...canceled, status: 'confirmed' })).toBe(true);
+    expect(shipxLabelUsable({ ...canceled, status: 'offer_selected' })).toBe(false);
   });
 
   it('chooses an offer to buy only when no purchase is running', () => {

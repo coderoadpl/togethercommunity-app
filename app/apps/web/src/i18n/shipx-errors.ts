@@ -1,4 +1,5 @@
 import {
+  shipxBoughtLabelDetailsSchema,
   shipxErrorDetailsSchema,
   shipxErrorStateSchema,
   shipxRejectionErrorSchema,
@@ -21,6 +22,8 @@ const stateMessage = (state: ShipxErrorState, code: ErrorCode | null, t: Message
       return failures.lostLock;
     case 'lease_held':
       return failures.leaseHeld;
+    case 'label_canceled':
+      return t.shipx.labelCanceled;
     case 'manual_shipped':
       return failures.manualShipped({ trackingNumber: state.trackingNumber });
     case 'environment_mismatch':
@@ -54,6 +57,8 @@ export const localizeShipxError = (error: unknown, t: Messages): { message: stri
   const details = errorDetailsOf(error);
   const state = shipxErrorStateSchema.safeParse(details);
   if (state.success) return { message: stateMessage(state.data, code, t), detail: null };
+  const boughtLabel = code === 'conflict' ? shipxBoughtLabelDetailsSchema.safeParse(details) : null;
+  if (boughtLabel?.success === true) return { message: t.shipx.failures.orderLeftPackingList(boughtLabel.data), detail: null };
   const rejection = code === 'shipx_rejected' ? shipxErrorDetailsSchema.safeParse(details) : null;
   if (rejection?.success !== true) return { message: localizePanelError(error, t), detail: null };
   return { message: rejectionMessage(rejection.data, t), detail: vendorDetail(rejection.data) };

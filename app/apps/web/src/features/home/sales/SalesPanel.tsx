@@ -1,9 +1,13 @@
 import { ConsumerSalesCard } from './ConsumerSalesCard.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
+import { OrderBillingState, OrderInvoiceState } from './OrderInvoiceCells.js';
+import { OrderMemberIdentity, orderMemberTitle } from './OrderMemberIdentity.js';
+import { OrderProductSummary } from './OrderProductSummary.js';
 import { RejectedPaymentsSection } from './RejectedPaymentsSection.js';
 import { RefundStatusChip } from './OrderRefundJob.js';
 import { ChevronIcon } from './refund-icons.js';
-import { useState, type ReactNode } from 'react';
+import { hasOrderFilters, ORDER_FILTER_KEYS, ORDER_FILTER_VALIDATORS, normalizeOrdersSearchText, orderListFilters, validateOrdersSearch, type OrderFilterKey, type OrderFilters, type OrderSort } from './order-filters.js';
+import { lazy, Suspense, useState } from 'react';
 import {
   Alert,
   Box,
@@ -12,34 +16,52 @@ import {
   Checkbox,
   FormControl,
   InputLabel,
-  Link as MuiLink,
   MenuItem,
   Select,
+  Skeleton,
   Stack,
-  TableBody,
-  TableCell,
-  TableHead,
   TablePagination,
-  TableRow,
   Typography,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 
-import type { FulfilmentStatus, OrderExportFile, OrderExportFormat, OrderListItem, OrderStatus, PriceKind } from '#core/domain/index.js';
-import { SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import type { FulfilmentStatus, ListLayout, OrderExportFile, OrderExportFormat, OrderListItem } from '#core/domain/index.js';
+import { ORDER_SOURCE_FILTER_PREFIX, SALES_LINK_TIME_ZONE, orderFulfilmentDisplay } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
-import { ListSection, PanelPage, ResponsiveTable, StatusView } from '../../../components/layout/index.js';
+import { GridColumnsDialog } from '../../../components/ui/data-grid/GridColumnsDialog.js';
+import { GridFilterBar, type GridFilterChip } from '../../../components/ui/data-grid/GridFilterBar.js';
+import type { StudioDataGridProps, StudioGridColumn, StudioGridLeadingColumn } from '../../../components/ui/data-grid/StudioDataGrid.js';
+import { loadStudioDataGrid, reloadStudioGridPage } from '../../../components/ui/data-grid/load-studio-data-grid.js';
+import { GRID_PAGE_SIZE_OPTIONS, validGridFilters, type GridLayoutSchema } from '../../../components/ui/data-grid/grid-layout.js';
+import { useSavedGridLayout } from '../data-grid/use-saved-grid-layout.js';
+import { ListSection, PanelPage, StatusView } from '../../../components/layout/index.js';
+import { ErrorBoundary } from '../../../components/ui/ErrorBoundary.js';
 import { SearchField, useDebouncedValue } from '../../../components/ui/SearchField.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
-import { formatDateTime, formatPrice } from '../../../lib/format.js';
-import { SalesCardAmount, SalesCardControl, SalesCardMemberLink, SalesCardOrderLink, SalesMemberCell, SalesNoWrapCell, SalesOrderCard, SalesOrderCardList, SalesTable } from '../../../theme.js';
+import { formatDate, formatDateTime, formatPrice, formatTime } from '../../../lib/format.js';
+import { SalesCardAmount, SalesCardControl, SalesCardOrderLink, SalesDateLink, SalesDateTime, SalesGridMember, SalesOrderCard, SalesOrderCardList, STUDIO_GRID_CONTROL_CLASS, STUDIO_GRID_WRAP_CHIPS_CLASS, StudioGridCellStack, StudioGridChipRow, StudioGridEllipsis, StudioGridNoWrap, StudioGridSkeleton, StudioGridSkeletonFooter, StudioGridSkeletonHeader, StudioGridSkeletonRow, VisuallyHidden } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const ORDER_COLUMNS = ['date', 'member', 'product', 'kind', 'amount', 'coupon', 'source', 'status', 'fulfilment', 'invoice', 'billing'] as const;
+type OrderColumn = (typeof ORDER_COLUMNS)[number];
+const NARROW_HIDDEN: readonly OrderColumn[] = ['kind', 'coupon', 'source', 'billing'];
+const SORT_FIELDS = { date: 'createdAt', amount: 'amountCents' } as const;
+
+const ordersLayoutSchema = (narrow: boolean): GridLayoutSchema => ({
+  columns: ORDER_COLUMNS.map((field) => ({ field, visible: !(narrow && NARROW_HIDDEN.includes(field)) })),
+  sortFields: Object.keys(SORT_FIELDS),
+  filters: ORDER_FILTER_VALIDATORS,
+});
+
+const orderSort = (layout: ListLayout): OrderSort | null => {
+  const sort = layout.sort;
+  if (sort === null) return null;
+  return sort.field === 'date' || sort.field === 'amount' ? { field: SORT_FIELDS[sort.field], direction: sort.direction } : null;
+};
 
 const saveFile = (file: OrderExportFile) => {
   const url = URL.createObjectURL(new Blob([file.content], { type: file.mimeType }));
@@ -50,46 +72,118 @@ const saveFile = (file: OrderExportFile) => {
   URL.revokeObjectURL(url);
 };
 
+const createLazyOrdersGrid = () => lazy(async () => {
+  const { StudioDataGrid } = await loadStudioDataGrid();
+  return { default: StudioDataGrid<OrderListItem> };
+});
+
+const OrdersGridSkeleton = ({ rowCount }: { rowCount: number }) => {
+  const t = useTranslations();
+  const cells = [12, 34, 18, 12].map((width, index) => (
+    <Skeleton key={index} width={`${width}%`} animation={false} />
+  ));
+  return (
+    <StudioGridSkeleton role="status">
+      <VisuallyHidden>{t.dataGrid.loading}</VisuallyHidden>
+      <StudioGridSkeletonHeader aria-hidden>{cells}</StudioGridSkeletonHeader>
+      {Array.from({ length: Math.min(rowCount, 3) }, (_, index) => (
+        <StudioGridSkeletonRow key={index} aria-hidden>{cells}</StudioGridSkeletonRow>
+      ))}
+      <StudioGridSkeletonFooter aria-hidden><Skeleton width="20%" animation={false} /></StudioGridSkeletonFooter>
+    </StudioGridSkeleton>
+  );
+};
+
+const OrdersGridLoadError = () => {
+  const t = useTranslations();
+  return <StatusView state={{ kind: 'error', message: t.dataGrid.loadFailed, retry: { label: t.dataGrid.reloadPage, onRetry: reloadStudioGridPage } }} />;
+};
+
+const renderOrdersGridLoadError = () => <OrdersGridLoadError />;
+
+const LazyOrdersGrid = (props: StudioDataGridProps<OrderListItem>) => {
+  const [OrdersGrid] = useState(createLazyOrdersGrid);
+  return (
+    <ErrorBoundary fallback={renderOrdersGridLoadError}>
+      <Suspense fallback={<OrdersGridSkeleton rowCount={props.rows.length} />}>
+        <OrdersGrid {...props} />
+      </Suspense>
+    </ErrorBoundary>
+  );
+};
+
 export const SalesPanel = () => {
   const t = useTranslations();
   const { language } = useLanguage();
   const queryClient = useQueryClient();
-  const { tenant } = usePanelContext();
+  const navigate = useNavigate();
+  const { tenant, userId, impersonating = false } = usePanelContext();
   const theme = useTheme();
   const phone = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   const narrow = useMediaQuery(theme.breakpoints.down('xl'), { noSsr: true });
   const canWriteInvoice = tenant.staffRole === 'owner' || tenant.staffRole === 'admin';
+  const urlSearch = validateOrdersSearch(useSearch({ strict: false }));
+  const schema = ordersLayoutSchema(narrow);
+  const saved = useSavedGridLayout({ tenantId: tenant.id, userId, listId: 'orders', schema, readOnly: impersonating });
+  const layout = saved.layout;
   const [selected, setSelected] = useState<string[]>([]);
   const [sendingSelected, setSendingSelected] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
   const products = useQuery(actions.products);
   const coupons = useQuery(actions.couponOptions);
-  const [search, setSearch] = useState('');
-  const [mode, setMode] = useState<'all' | 'live' | 'test'>('all');
-  const [status, setStatus] = useState<OrderStatus | 'all'>('all');
-  const [productId, setProductId] = useState('all');
-  const [kind, setKind] = useState<PriceKind | 'all'>('all');
-  const [couponId, setCouponId] = useState('all');
-  const [source, setSource] = useState('');
-  const [fulfilment, setFulfilment] = useState<FulfilmentStatus | 'all'>('all');
+  const urlSearchText = urlSearch.search ?? '';
+  const [searchDraft, setSearchDraft] = useState({ url: urlSearchText, value: urlSearchText });
+  const search = searchDraft.url === urlSearchText || normalizeOrdersSearchText(searchDraft.value) === urlSearchText
+    ? searchDraft.value
+    : urlSearchText;
   const [packing, setPacking] = useState(false);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [exporting, setExporting] = useState<OrderExportFormat | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const debouncedSearch = useDebouncedValue(search);
+  const debouncedSearch = useDebouncedValue(urlSearchText);
+  const [pageSearch, setPageSearch] = useState(debouncedSearch);
+  const searchPending = debouncedSearch !== urlSearchText;
+  if (searchDraft.url !== urlSearchText) {
+    setSearchDraft({ url: urlSearchText, value: search });
+  }
+  if (searchDraft.url !== urlSearchText || pageSearch !== debouncedSearch) {
+    setPageSearch(debouncedSearch);
+    setPage(0);
+    setSelected([]);
+  }
 
-  const filters = {
-    ...(mode === 'all' ? {} : { mode }),
-    ...(status === 'all' ? {} : { status }),
-    ...(productId === 'all' ? {} : { productId }),
-    ...(kind === 'all' ? {} : { kind }),
-    ...(couponId === 'all' ? {} : { couponId }),
-    ...(source === '' ? {} : source === 'none' ? { source } : { source: source.slice(6), sourceMatch: 'exact' as const }),
-    ...(fulfilment === 'all' ? {} : { fulfilmentStatus: fulfilment }),
-    ...(debouncedSearch.length === 0 ? {} : { search: debouncedSearch }),
-  };
-  const orders = useQuery(actions.orders({ ...filters, page: page + 1, pageSize }));
+  const filters: OrderFilters = hasOrderFilters(urlSearch)
+    ? Object.fromEntries(ORDER_FILTER_KEYS.flatMap((key) => (urlSearch[key] === undefined ? [] : [[key, urlSearch[key]]])))
+    : validGridFilters(layout.filters, schema);
+  const sort = orderSort(layout);
+  const listFilters = orderListFilters(filters, debouncedSearch, sort);
+  const orders = useQuery({ ...actions.orders({ ...listFilters, page: page + 1, pageSize }), placeholderData: keepPreviousData });
   const reconciliation = useQuery(actions.orderReconciliation);
+
+  const resetPage = () => { setPage(0); setSelected([]); };
+  const writeUrl = (nextFilters: OrderFilters, nextSearch: string) => {
+    const value = normalizeOrdersSearchText(nextSearch);
+    void navigate({
+      to: '/panel/sales',
+      search: { ...nextFilters, ...(value === '' ? {} : { search: value }) },
+      replace: true,
+    });
+  };
+  const changeLayout = (next: ListLayout) => {
+    if (orderSort(next)?.field !== sort?.field || orderSort(next)?.direction !== sort?.direction) resetPage();
+    saved.change({ ...next, filters });
+  };
+  const setFilters = (next: OrderFilters) => {
+    const clean = validGridFilters(next, schema);
+    writeUrl(clean, search);
+    saved.change({ ...layout, filters: clean });
+    resetPage();
+  };
+  const setFilter = (key: OrderFilterKey, value: string) => {
+    const rest = Object.fromEntries(Object.entries(filters).filter(([candidate]) => candidate !== key));
+    setFilters(value === '' ? rest : { ...rest, [key]: value });
+  };
 
   const sendInvoice = useMutation({
     ...actions.sendInvoice,
@@ -110,16 +204,16 @@ export const SalesPanel = () => {
       setSendingSelected(false);
     }
   };
-  const selectedHeld = (orders.data?.orders ?? [])
+  const rows = orders.data?.orders ?? [];
+  const selectedHeld = rows
     .filter((order) => order.invoice?.ksef?.state === 'held' && selected.includes(order.id))
     .map((order) => order.id);
   const sending = sendInvoice.isPending || sendingSelected;
-  const resetPage = () => { setPage(0); setSelected([]); };
   const download = async (format: OrderExportFormat) => {
     setExporting(format);
     setExportError(null);
     try {
-      saveFile(await queryClient.fetchQuery(actions.ordersExport({ format, ...filters })));
+      saveFile(await queryClient.fetchQuery(actions.ordersExport({ format, ...listFilters })));
     } catch (error) {
       setExportError(localizePanelError(error, t));
     } finally {
@@ -131,7 +225,7 @@ export const SalesPanel = () => {
     setPacking(true);
     setExportError(null);
     try {
-      saveFile(await queryClient.fetchQuery(actions.packingList({ format: 'csv', fulfilmentStatus, mode: mode === 'all' ? 'live' : mode })));
+      saveFile(await queryClient.fetchQuery(actions.packingList({ format: 'csv', fulfilmentStatus, mode: listFilters.mode ?? 'live' })));
     } catch (error) {
       setExportError(localizePanelError(error, t));
     } finally {
@@ -155,24 +249,70 @@ export const SalesPanel = () => {
     partially_refunded: 'default',
   } as const;
 
+  const filterLabels: Record<OrderFilterKey, string> = {
+    mode: t.sales.mode,
+    status: t.sales.status,
+    productId: t.sales.product,
+    kind: t.sales.kind,
+    couponId: t.sales.coupon,
+    source: t.sales.source,
+    fulfilmentStatus: t.shipping.fulfilmentFilter,
+    invoice: t.sales.invoiceColumn,
+    billing: t.sales.invoiceData,
+  };
+  const filterOptions = (key: OrderFilterKey): { value: string; label: string }[] => {
+    switch (key) {
+      case 'mode': return [{ value: 'live', label: t.integrations.stripeLiveMode }, { value: 'test', label: t.integrations.stripeTestMode }];
+      case 'status': return Object.entries(statusLabels).map(([value, label]) => ({ value, label }));
+      case 'productId': return (products.data?.products ?? []).map((product) => ({ value: product.id, label: product.title }));
+      case 'kind': return [{ value: 'one_time', label: t.sales.oneTime }, { value: 'recurring', label: t.sales.recurring }];
+      case 'couponId': return (coupons.data?.coupons ?? []).map((coupon) => ({ value: coupon.id, label: coupon.code }));
+      case 'source': return [{ value: 'none', label: t.sales.noSource }, ...(orders.data?.sources ?? []).map((value) => ({ value: `${ORDER_SOURCE_FILTER_PREFIX}${value}`, label: value }))];
+      case 'fulfilmentStatus': return [{ value: 'to_pack', label: t.shipping.fulfilmentStatuses.to_pack }, { value: 'shipped', label: t.shipping.fulfilmentStatuses.shipped }];
+      case 'invoice': return [{ value: 'with', label: t.sales.invoiceWith }, { value: 'without', label: t.sales.invoiceWithout }];
+      case 'billing': return [
+        { value: 'requested', label: t.sales.withBillingData },
+        { value: 'company', label: t.sales.billings.company },
+        { value: 'private', label: t.sales.billings.private },
+        { value: 'none', label: t.sales.billings.none },
+      ];
+    }
+  };
+  const filterValueLabel = (key: OrderFilterKey, value: string): string =>
+    filterOptions(key).find((option) => option.value === value)?.label ?? (key === 'source' && value.startsWith(ORDER_SOURCE_FILTER_PREFIX) ? value.slice(ORDER_SOURCE_FILTER_PREFIX.length) : value);
+  const isFilterKey = (key: string): key is OrderFilterKey => ORDER_FILTER_KEYS.some((candidate) => candidate === key);
+  const renderFilters = (keys: readonly string[]) => keys.filter(isFilterKey).map((key) => {
+    const value = filters[key] ?? '';
+    const options = filterOptions(key);
+    const labelId = `sales-filter-${key}-label`;
+    return (
+      <FormControl key={key} size="small" fullWidth>
+        <InputLabel id={labelId} shrink>{filterLabels[key]}</InputLabel>
+        <Select labelId={labelId} label={filterLabels[key]} displayEmpty notched value={options.some((option) => option.value === value) || value === '' ? value : ''}
+          onChange={(event) => setFilter(key, event.target.value)} data-testid={`sales-filter-${key}`}>
+          <MenuItem value="">{key === 'fulfilmentStatus' ? t.shipping.fulfilmentAll : key === 'invoice' ? t.sales.invoiceAny : t.sales.all}</MenuItem>
+          {options.map((option) => <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>)}
+        </Select>
+      </FormControl>
+    );
+  });
+  const chips: GridFilterChip[] = ORDER_FILTER_KEYS.flatMap((key) => {
+    const value = filters[key];
+    return value === undefined ? [] : [{
+      key,
+      label: t.dataGrid.filterChip({ label: filterLabels[key], value: filterValueLabel(key, value) }),
+      onRemove: () => setFilter(key, ''),
+    }];
+  });
+  const withBillingData = filters.billing === 'requested';
+
   const orderLink = (order: OrderListItem) => (
-    <MuiLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`}>
-      {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
-    </MuiLink>
-  );
-  const memberLink = (order: OrderListItem) => (
-    <MuiLink component={Link} to={`/panel/members/${order.memberId}`}>{order.memberName ?? order.memberEmail}</MuiLink>
+    <SalesDateLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`} aria-label={formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)} data-testid="sales-order-link">
+      <StudioGridNoWrap>{formatDate(order.createdAt, language, SALES_LINK_TIME_ZONE)}</StudioGridNoWrap>
+      <SalesDateTime>{formatTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}</SalesDateTime>
+    </SalesDateLink>
   );
   const orderSource = (order: OrderListItem) => [order.attribution?.utmSource, order.attribution?.utmMedium].filter(Boolean).join(' / ');
-  const productCell = (order: OrderListItem) => (
-    <>
-      {order.lines?.map((line) => line.name).join(' · ') || order.productTitle}
-      {order.salesLinkId ? <Typography variant="caption" sx={{ display: 'block' }}>{t.salesLinks.salesLink}: {order.salesLinkTitle ?? order.salesLinkId}</Typography> : null}
-      {' '}
-      {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
-      {order.lines?.some((line) => line.personalization !== undefined) === true ? <Chip size="small" variant="outlined" color="info" label={t.personalization.marker} data-testid="sales-personalization-chip" sx={{ ml: '0.25rem' }} /> : null}
-    </>
-  );
   const staffRefundChipLabel = (order: OrderListItem, state: string) => order.staffRefundAmountCents === undefined
     ? t.sales.staffRefund.stateChip({ state })
     : t.sales.staffRefund.listChip({ amount: formatPrice(order.staffRefundAmountCents, order.currency, language), state });
@@ -189,33 +329,91 @@ export const SalesPanel = () => {
       )}
     </>
   );
-  const fulfilmentChip = (order: OrderListItem) => order.fulfilmentStatus == null ? null : (
-    <Chip size="small" variant="outlined" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
-      label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid="sales-fulfilment-chip" />
-  );
+  const fulfilmentChip = (order: OrderListItem) => {
+    const state = orderFulfilmentDisplay(order);
+    return state == null ? null : (
+      <Chip size="small" variant="outlined" color={state === 'to_pack' ? 'warning' : state === 'label_ready' ? 'info' : 'success'}
+        label={t.shipping.fulfilmentStatuses[state]} data-testid="sales-fulfilment-chip" />
+    );
+  };
   const selectBox = (order: OrderListItem) => order.invoice?.ksef?.state === 'held' ? (
     <SalesCardControl data-testid="sales-ksef-control">
-      <Checkbox checked={selected.includes(order.id)} disabled={sending}
+      <Checkbox checked={selected.includes(order.id)} disabled={sending || searchPending}
         slotProps={{ input: { 'aria-label': `${t.sales.sendSelectedToKsef}: ${order.id}` } }}
         onChange={(event) => setSelected((current) => event.target.checked
           ? [...current, order.id] : current.filter((id) => id !== order.id))} />
     </SalesCardControl>
   ) : null;
-  const invoiceCell = (order: OrderListItem): ReactNode => order.invoice == null ? null : (
-    <Stack useFlexGap spacing="0.5rem">
-      <Typography variant="body2">{order.invoice.ksef == null
-        ? t.sales.invoiceStatuses[order.invoice.status]
-        : t.sales.ksefStates[order.invoice.ksef.state]}</Typography>
-      {order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
-      {canWriteInvoice && order.invoice.ksef?.state === 'held' ? (
+  const billingVisible = layout.columns.some((column) => column.field === 'billing' && column.visible);
+  const invoiceCell = (order: OrderListItem, billingCaption = false) => (
+    <StudioGridCellStack>
+      <OrderInvoiceState order={order} />
+      {billingCaption ? <OrderBillingState order={order} caption /> : null}
+      {order.invoice != null && order.mode === 'test' ? <Chip size="small" label={t.sales.testChip} /> : null}
+      {canWriteInvoice && order.invoice?.ksef?.state === 'held' ? (
         <SalesCardControl data-testid="sales-ksef-control">
-          <Button disabled={sending} onClick={() => sendInvoice.mutate(order.id)}>
+          <Button size="small" disabled={sending} onClick={() => sendInvoice.mutate(order.id)}>
             {t.sales.sendToKsef}
           </Button>
         </SalesCardControl>
       ) : null}
-    </Stack>
+    </StudioGridCellStack>
   );
+  const sourceVisible = layout.columns.some((column) => column.field === 'source' && column.visible);
+
+  const columnLabels: Record<OrderColumn, string> = {
+    date: t.sales.date,
+    member: t.sales.member,
+    product: t.sales.product,
+    kind: t.sales.kind,
+    amount: t.sales.amount,
+    coupon: t.sales.coupon,
+    source: t.sales.source,
+    status: t.sales.status,
+    fulfilment: t.shipping.fulfilmentColumn,
+    invoice: t.sales.invoiceColumn,
+    billing: t.sales.invoiceData,
+  };
+  const column = (field: OrderColumn, definition: Omit<StudioGridColumn<OrderListItem>, 'field' | 'headerName'>): StudioGridColumn<OrderListItem> =>
+    ({ field, headerName: columnLabels[field], sortable: false, ...definition });
+  const columns: StudioGridColumn<OrderListItem>[] = [
+    column('date', { width: 104, sortable: true, renderCell: ({ row }) => orderLink(row) }),
+    column('member', { flex: 1, minWidth: 140, maxWidth: 240, renderCell: ({ row }) => (
+      <SalesGridMember title={orderMemberTitle(row, t.deletedContent.member)}><OrderMemberIdentity order={row} /></SalesGridMember>
+    ) }),
+    column('product', { flex: 3, minWidth: 200, filterKeys: ['productId'], renderCell: ({ row }) => (
+      <Box sx={{ minWidth: 0, width: '100%' }}>
+        <OrderProductSummary order={row} />
+        {!sourceVisible && orderSource(row) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(row)}</Typography> : null}
+      </Box>
+    ) }),
+    column('kind', { width: 108, filterKeys: ['kind'], renderCell: ({ row }) => <StudioGridNoWrap>{row.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</StudioGridNoWrap> }),
+    column('amount', { width: 108, sortable: true, filterKeys: ['mode'], renderCell: ({ row }) => <StudioGridNoWrap>{formatPrice(row.amountCents, row.currency, language)}</StudioGridNoWrap> }),
+    column('coupon', { flex: 0.6, minWidth: 104, maxWidth: 180, filterKeys: ['couponId'], renderCell: ({ row }) => <StudioGridEllipsis title={row.couponCode ?? undefined} data-testid="sales-row-coupon">{row.couponCode ?? '—'}</StudioGridEllipsis> }),
+    column('source', { flex: 0.6, minWidth: 96, maxWidth: 200, filterKeys: ['source'], renderCell: ({ row }) => <StudioGridEllipsis title={orderSource(row) || undefined}>{orderSource(row) || '—'}</StudioGridEllipsis> }),
+    column('status', { width: 108, cellClassName: STUDIO_GRID_WRAP_CHIPS_CLASS, filterKeys: ['status'], renderCell: ({ row }) => <StudioGridChipRow>{statusChips(row)}</StudioGridChipRow> }),
+    column('fulfilment', { width: 128, filterKeys: ['fulfilmentStatus'], renderCell: ({ row }) => fulfilmentChip(row) ?? '—' }),
+    column('invoice', { width: 140, filterKeys: billingVisible ? ['invoice'] : ['invoice', 'billing'], renderCell: ({ row }) => invoiceCell(row, !billingVisible) }),
+    column('billing', { width: 108, filterKeys: ['billing'], renderCell: ({ row }) => <OrderBillingState order={row} /> }),
+  ];
+  const leadingColumns: StudioGridLeadingColumn<OrderListItem>[] = canWriteInvoice ? [{
+    field: '__ksef',
+    headerName: t.sales.sendSelectedToKsef,
+    width: 44,
+    minWidth: 44,
+    cellClassName: STUDIO_GRID_CONTROL_CLASS,
+    headerClassName: STUDIO_GRID_CONTROL_CLASS,
+    sortable: false,
+    resizable: false,
+    hideable: false,
+    disableColumnMenu: true,
+    renderHeader: () => <VisuallyHidden>{t.sales.sendSelectedToKsef}</VisuallyHidden>,
+    renderCell: ({ row }) => selectBox(row),
+  }] : [];
+
+  const filterKeysWithoutMode = ORDER_FILTER_KEYS.filter((key) => key !== 'mode');
+  const isEmpty = orders.isSuccess && orders.data.total === 0 && filterKeysWithoutMode.every((key) => filters[key] === undefined) && debouncedSearch.length === 0;
+  const fulfilment = filters.fulfilmentStatus === 'to_pack' ? 'to_pack' : null;
 
   return (
     <PanelPage title={t.sections.sales} width="detail" action={<Button href="/panel/orders/verify" variant="outlined">{t.orderVerification.title}</Button>}>
@@ -245,138 +443,18 @@ export const SalesPanel = () => {
             <SearchField
               value={search}
               onChange={(value) => {
-                setSearch(value);
-                resetPage();
+                setSearchDraft({ url: urlSearchText, value });
+                if (normalizeOrdersSearchText(value) !== urlSearchText) writeUrl(filters, value);
               }}
               label={t.sales.searchPlaceholder}
               placeholder={t.sales.searchPlaceholder}
               testId="sales-search"
             />
           ),
-          filters: (
-            <Stack direction={{ xs: 'column', md: 'row' }} useFlexGap spacing="0.5rem" sx={{ flexWrap: { md: 'wrap' } }}>
-              <FormControl size="small">
-                <InputLabel id="sales-mode-label">{t.sales.mode}</InputLabel>
-                <Select labelId="sales-mode-label" label={t.sales.mode} value={mode}
-                  onChange={(event) => { const value = event.target.value; setMode(value === 'test' || value === 'live' ? value : 'all'); resetPage(); }}>
-                  <MenuItem value="all">{t.sales.all}</MenuItem>
-                  <MenuItem value="live">{t.integrations.stripeLiveMode}</MenuItem>
-                  <MenuItem value="test">{t.integrations.stripeTestMode}</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: '8rem' }}>
-                <InputLabel id="sales-status-label">{t.sales.status}</InputLabel>
-                <Select
-                  labelId="sales-status-label"
-                  label={t.sales.status}
-                  value={status}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setStatus(value === 'paid' || value === 'pending' || value === 'failed' || value === 'refunded' || value === 'partially_refunded' ? value : 'all');
-                    resetPage();
-                  }}
-                  data-testid="sales-status-filter"
-                >
-                  <MenuItem value="all">{t.sales.all}</MenuItem>
-                  <MenuItem value="paid">{t.sales.paid}</MenuItem>
-                  <MenuItem value="pending">{t.sales.pending}</MenuItem>
-                  <MenuItem value="failed">{t.sales.failed}</MenuItem>
-                  <MenuItem value="refunded">{t.sales.refunded}</MenuItem>
-                  <MenuItem value="partially_refunded">{t.sales.partially_refunded}</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: '9rem' }}>
-                <InputLabel id="sales-source-label">{t.sales.source}</InputLabel>
-                <Select labelId="sales-source-label" label={t.sales.source} value={source}
-                  onChange={(event) => { setSource(event.target.value); resetPage(); }}
-                  data-testid="sales-source-filter">
-                  <MenuItem value="">{t.sales.all}</MenuItem>
-                  <MenuItem value="none">{t.sales.noSource}</MenuItem>
-                  {(orders.data?.sources ?? []).map((value) => (
-                    <MenuItem key={value} value={`value:${value}`}>{value}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: '9rem' }}>
-                <InputLabel id="sales-coupon-label">{t.sales.coupon}</InputLabel>
-                <Select
-                  labelId="sales-coupon-label"
-                  label={t.sales.coupon}
-                  value={couponId}
-                  onChange={(event) => {
-                    setCouponId(event.target.value);
-                    resetPage();
-                  }}
-                  data-testid="sales-coupon-filter"
-                >
-                  <MenuItem value="all">{t.sales.all}</MenuItem>
-                  {(coupons.data?.coupons ?? []).map((coupon) => (
-                    <MenuItem key={coupon.id} value={coupon.id}>
-                      {coupon.code}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: '9rem' }}>
-                <InputLabel id="sales-product-label">{t.sales.product}</InputLabel>
-                <Select
-                  labelId="sales-product-label"
-                  label={t.sales.product}
-                  value={productId}
-                  onChange={(event) => {
-                    setProductId(event.target.value);
-                    resetPage();
-                  }}
-                  data-testid="sales-product-filter"
-                >
-                  <MenuItem value="all">{t.sales.all}</MenuItem>
-                  {(products.data?.products ?? []).map((product) => (
-                    <MenuItem key={product.id} value={product.id}>{product.title}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: '8rem' }}>
-                <InputLabel id="sales-kind-label">{t.sales.kind}</InputLabel>
-                <Select
-                  labelId="sales-kind-label"
-                  label={t.sales.kind}
-                  value={kind}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setKind(value === 'one_time' || value === 'recurring' ? value : 'all');
-                    resetPage();
-                  }}
-                  data-testid="sales-kind-filter"
-                >
-                  <MenuItem value="all">{t.sales.all}</MenuItem>
-                  <MenuItem value="one_time">{t.sales.oneTime}</MenuItem>
-                  <MenuItem value="recurring">{t.sales.recurring}</MenuItem>
-                </Select>
-              </FormControl>
-              <FormControl size="small" sx={{ minWidth: '9rem' }}>
-                <InputLabel id="sales-fulfilment-label">{t.shipping.fulfilmentFilter}</InputLabel>
-                <Select
-                  labelId="sales-fulfilment-label"
-                  label={t.shipping.fulfilmentFilter}
-                  value={fulfilment}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setFulfilment(value === 'to_pack' || value === 'shipped' ? value : 'all');
-                    resetPage();
-                  }}
-                  data-testid="sales-fulfilment-filter"
-                >
-                  <MenuItem value="all">{t.shipping.fulfilmentAll}</MenuItem>
-                  <MenuItem value="to_pack">{t.shipping.fulfilmentStatuses.to_pack}</MenuItem>
-                  <MenuItem value="shipped">{t.shipping.fulfilmentStatuses.shipped}</MenuItem>
-                </Select>
-              </FormControl>
-            </Stack>
-          ),
           actions: (
             <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ flexWrap: 'wrap' }}>
               {canWriteInvoice ? (
-                <Button variant="contained" disabled={sending || selectedHeld.length === 0}
+                <Button variant="contained" disabled={sending || searchPending || selectedHeld.length === 0}
                   onClick={() => void sendSelected(selectedHeld)}>
                   {t.sales.sendSelectedToKsef}
                 </Button>
@@ -386,29 +464,30 @@ export const SalesPanel = () => {
                   <Button variant="outlined" disabled={packing} onClick={() => void downloadPackingList(fulfilment)} data-testid="sales-packing-list">
                     {packing ? t.shipping.packingListDownloading : t.shipping.packingListDownload}
                   </Button>
-                  {mode === 'all' ? (
+                  <Typography variant="caption" color="text.secondary">{t.shipping.packingListFilterHint}</Typography>
+                  {listFilters.mode === undefined ? (
                     <Typography variant="caption" color="text.secondary" data-testid="sales-packing-list-live-only">{t.shipping.packingListLiveOnly}</Typography>
                   ) : null}
                 </Stack>
               ) : null}
-              <Button variant="outlined" disabled={exporting !== null || mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
+              <Button variant="outlined" disabled={exporting !== null || searchPending || listFilters.mode === 'test'} onClick={() => void download('csv')} data-testid="sales-export-csv">
                 {exporting === 'csv' ? t.sales.exporting : t.sales.exportCsv}
               </Button>
-              <Button variant="outlined" disabled={exporting !== null || mode === 'test'} onClick={() => void download('json')} data-testid="sales-export-json">
+              <Button variant="outlined" disabled={exporting !== null || searchPending || listFilters.mode === 'test'} onClick={() => void download('json')} data-testid="sales-export-json">
                 {exporting === 'json' ? t.sales.exporting : t.sales.exportJson}
               </Button>
             </Stack>
           ),
         }}
         pagination={
-          orders.isSuccess && orders.data.total > 0 ? (
+          phone && orders.isSuccess && orders.data.total > 0 ? (
             <TablePagination
               component="div"
-              sx={phone ? { '& .MuiTablePagination-toolbar': { flexWrap: 'wrap', justifyContent: 'flex-end', px: '0.5rem' }, '& .MuiTablePagination-spacer': { display: 'none' } } : undefined}
+              sx={{ '& .MuiTablePagination-toolbar': { flexWrap: 'wrap', justifyContent: 'flex-end', px: '0.5rem' }, '& .MuiTablePagination-spacer': { display: 'none' } }}
               count={orders.data.total}
               page={page}
               rowsPerPage={pageSize}
-              rowsPerPageOptions={PAGE_SIZE_OPTIONS}
+              rowsPerPageOptions={GRID_PAGE_SIZE_OPTIONS}
               onPageChange={(_event, nextPage) => setPage(nextPage)}
               onRowsPerPageChange={(event) => {
                 setPageSize(Number.parseInt(event.target.value, 10));
@@ -419,7 +498,7 @@ export const SalesPanel = () => {
             />
           ) : undefined
         }
-        isEmpty={orders.isSuccess && orders.data.total === 0 && status === 'all' && productId === 'all' && kind === 'all' && couponId === 'all' && source === '' && fulfilment === 'all' && debouncedSearch.length === 0}
+        isEmpty={isEmpty}
         empty={
           <StatusView
             state={{
@@ -430,86 +509,88 @@ export const SalesPanel = () => {
             }}
           />
         }
-        noMatches={orders.isSuccess && orders.data.total === 0 ? <Typography>{t.sales.noMatches}</Typography> : undefined}
       >
+        <GridFilterBar
+          count={orders.isSuccess ? t.sales.orderCount({ count: orders.data.total }) : null}
+          chips={chips}
+          onClearAll={() => setFilters({})}
+          quickActions={(
+            <Chip
+              label={t.sales.withBillingData}
+              color={withBillingData ? 'primary' : 'default'}
+              variant={withBillingData ? 'filled' : 'outlined'}
+              aria-pressed={withBillingData}
+              onClick={() => setFilter('billing', withBillingData ? '' : 'requested')}
+              data-testid="sales-quick-invoice"
+            />
+          )}
+          renderAllFilters={() => renderFilters(ORDER_FILTER_KEYS)}
+          {...(phone ? {} : { onOpenColumns: () => setColumnsOpen(true) })}
+        />
         {orders.isPending ? (
           <StatusView state={{ kind: 'loading', label: t.sales.loading }} />
         ) : orders.isError ? (
           <StatusView state={{ kind: 'error', message: localizePanelError(orders.error, t), retry: { label: t.common.retry, onRetry: () => void orders.refetch() } }} />
+        ) : orders.data.total === 0 ? (
+          <Typography>{t.sales.noMatches}</Typography>
+        ) : phone ? (
+          <SalesOrderCardList data-testid="sales-cards">
+            {orders.data.orders.map((order) => (
+              <SalesOrderCard key={order.id} data-testid="sales-row">
+                <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                    <SalesCardControl><OrderMemberIdentity order={order} underline="always" /></SalesCardControl>
+                  </Box>
+                  <SalesCardAmount>{formatPrice(order.amountCents, order.currency, language)}</SalesCardAmount>
+                </Stack>
+                <Typography variant="body2" component="div"><OrderProductSummary order={order} /></Typography>
+                <SalesCardOrderLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`} variant="body2" underline="none" data-testid="sales-card-order-link">
+                  {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
+                  <ChevronIcon />
+                </SalesCardOrderLink>
+                <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem', mt: '0.15rem' }}>
+                  {statusChips(order)}
+                  {fulfilmentChip(order)}
+                </Stack>
+                <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+                  {canWriteInvoice ? selectBox(order) : null}
+                  <SalesCardControl>{invoiceCell(order)}</SalesCardControl>
+                  <SalesCardControl><OrderBillingState order={order} /></SalesCardControl>
+                </Stack>
+              </SalesOrderCard>
+            ))}
+          </SalesOrderCardList>
         ) : (
-          phone ? (
-            <SalesOrderCardList data-testid="sales-cards">
-              {orders.data.orders.map((order) => (
-                <SalesOrderCard key={order.id} data-testid="sales-row">
-                  <Stack direction="row" useFlexGap spacing="0.75rem" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-                    <Box sx={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-                      <SalesCardMemberLink component={Link} to={`/panel/members/${order.memberId}`} underline="always">{order.memberName ?? order.memberEmail}</SalesCardMemberLink>
-                    </Box>
-                    <SalesCardAmount>{formatPrice(order.amountCents, order.currency, language)}</SalesCardAmount>
-                  </Stack>
-                  <Typography variant="body2" component="div">{productCell(order)}</Typography>
-                  <SalesCardOrderLink component={Link} to={`/panel/sales/${encodeURIComponent(order.id)}`} variant="body2" underline="none" data-testid="sales-card-order-link">
-                    {formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)}
-                    <ChevronIcon />
-                  </SalesCardOrderLink>
-                  <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem', mt: '0.15rem' }}>
-                    {statusChips(order)}
-                    {fulfilmentChip(order)}
-                  </Stack>
-                  {order.invoice == null ? null : (
-                    <Stack direction="row" useFlexGap spacing="0.5rem" sx={{ alignItems: 'center' }}>
-                      {canWriteInvoice ? selectBox(order) : null}
-                      {invoiceCell(order)}
-                    </Stack>
-                  )}
-                </SalesOrderCard>
-              ))}
-            </SalesOrderCardList>
-          ) : (
-            <ResponsiveTable>
-              <SalesTable>
-                <TableHead>
-                  <TableRow>
-                    {canWriteInvoice ? <TableCell padding="checkbox" aria-label={t.sales.sendSelectedToKsef} /> : null}
-                    <TableCell>{t.sales.date}</TableCell>
-                    <TableCell>{t.sales.member}</TableCell>
-                    <TableCell>{t.sales.product}</TableCell>
-                    {narrow ? null : <TableCell>{t.sales.kind}</TableCell>}
-                    <TableCell>{t.sales.amount}</TableCell>
-                    {narrow ? null : <TableCell>{t.sales.coupon}</TableCell>}
-                    {narrow ? null : <TableCell>{t.sales.source}</TableCell>}
-                    <TableCell>{t.sales.status}</TableCell>
-                    <TableCell>{t.shipping.fulfilmentColumn}</TableCell>
-                    <SalesNoWrapCell>{t.sales.invoiceStatus}</SalesNoWrapCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {orders.data.orders.map((order) => (
-                    <TableRow key={order.id} data-testid="sales-row">
-                      {canWriteInvoice ? <TableCell padding="checkbox">{selectBox(order)}</TableCell> : null}
-                      <SalesNoWrapCell>{orderLink(order)}</SalesNoWrapCell>
-                      <SalesMemberCell title={order.memberName ?? order.memberEmail}>{memberLink(order)}</SalesMemberCell>
-                      <TableCell sx={{ minWidth: '14rem' }}>
-                        {productCell(order)}
-                        {narrow && orderSource(order) !== '' ? <Typography variant="caption" color="textSecondary" sx={{ display: 'block' }} data-testid="sales-row-source">{t.sales.source}: {orderSource(order)}</Typography> : null}
-                      </TableCell>
-                      {narrow ? null : <TableCell>{order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring}</TableCell>}
-                      <SalesNoWrapCell>{formatPrice(order.amountCents, order.currency, language)}</SalesNoWrapCell>
-                      {narrow ? null : <TableCell>{order.couponCode ?? '—'}</TableCell>}
-                      {narrow ? null : <TableCell>{orderSource(order) || '—'}</TableCell>}
-                      <TableCell>
-                        <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem' }}>{statusChips(order)}</Stack>
-                      </TableCell>
-                      <TableCell>{fulfilmentChip(order) ?? '—'}</TableCell>
-                      <TableCell>{invoiceCell(order)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </SalesTable>
-            </ResponsiveTable>
-          )
+          <LazyOrdersGrid
+            data-testid="sales-grid"
+            rowTestId="sales-row"
+            label={t.sections.sales}
+            rows={orders.data.orders}
+            getRowId={(order) => order.id}
+            leadingColumns={leadingColumns}
+            columns={columns}
+            layout={layout}
+            onLayoutChange={changeLayout}
+            rowCount={orders.data.total}
+            paginationModel={{ page, pageSize }}
+            onPaginationModelChange={(model) => {
+              if (model.pageSize !== pageSize) { setPageSize(model.pageSize); setPage(0); } else setPage(model.page);
+            }}
+            loading={orders.isPlaceholderData}
+            onOpenColumns={() => setColumnsOpen(true)}
+            renderFilters={renderFilters}
+          />
         )}
       </ListSection>
+      <GridColumnsDialog
+        open={columnsOpen}
+        onClose={() => setColumnsOpen(false)}
+        labels={columnLabels}
+        layout={layout}
+        onChange={changeLayout}
+        onReset={() => { saved.reset(); writeUrl({}, search); resetPage(); }}
+      />
+      {saved.saveError === null ? null : <Alert severity="warning">{t.dataGrid.layoutSaveFailed({ message: localizePanelError(saved.saveError, t) })}</Alert>}
       {sendInvoice.isError ? <Alert severity="error">{localizeInvoiceError(sendInvoice.error, t)}</Alert> : null}
       {exportError === null ? null : <Alert severity="error">{exportError}</Alert>}
     </PanelPage>

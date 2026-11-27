@@ -77,6 +77,24 @@ const written = (() => {
 })();
 
 describe('stored pickup point rollback compatibility', () => {
+  it('preserves the Stripe phone when the previous release completes a new snapshot', () => {
+    const snapshot = previousRelease.checkoutShippingSnapshotSchema.parse({ ...selection, phone: '+48600000000' });
+    expect(snapshot).not.toHaveProperty('phone');
+    const completed = orderShippingFrom(snapshot, SIMULATED_SHIPPING_DETAILS);
+    expect(completed).toMatchObject({ ok: true, value: { phone: SIMULATED_SHIPPING_DETAILS.phone } });
+    if (!completed.ok) throw new Error('Expected shipping');
+    expect(previousRelease.orderShippingSchema.parse(completed.value).phone).toBe('+48500000000');
+  });
+  it('lets the previous release read a corrected order and strip its staff audit', () => {
+    const corrected = { ...written.order, phone: '+48500000000', corrections: [
+      { field: 'phone', from: null, to: '+48500000000', at: '2026-11-25T10:00:00.000Z', byUserId: 'staff', byEmail: 'staff@example.org' },
+    ] };
+    expect(previousRelease.orderShippingSchema.parse(corrected)).toEqual(previousRelease.orderShippingSchema.parse({ ...written.order, phone: '+48500000000' }));
+    expect(orderSchema.extend({ shipping: previousRelease.orderShippingSchema }).safeParse({
+      id: 'order', tenantId: 'workspace', memberId: 'buyer', productId: 'book', priceId: null, kind: 'one_time', status: 'paid',
+      amountCents: 1200, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0, shipping: corrected, createdAt: '2026-11-25T09:00:00.000Z',
+    }).success).toBe(true);
+  });
   it('writes the unverified mark as one optional key that this release reads back', () => {
     expect(written.snapshot.pickupPoint).toEqual({ provider: 'inpost', code: 'WAW01M', name: null, address: null, verified: false });
     expect(written.order.pickupPoint).toEqual({ provider: 'inpost', code: 'WAW01M', name: null, address: null, verified: false });

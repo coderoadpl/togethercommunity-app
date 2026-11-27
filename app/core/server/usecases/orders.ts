@@ -9,6 +9,7 @@ import {
   orderRefundJobView,
   validation,
   type AppError,
+  type OrderListFilters,
   type OrderListItem,
   type OrderRefundJobView,
   type OrderRefundTotals,
@@ -25,6 +26,7 @@ import type {
   MemberSubscriptionRepository,
   OrderDetailRepository,
   OrderRefundJobRepository,
+  OrderListQuery,
   OrderRepository,
   OrderStaffRefundRepository,
   InvoiceRepository,
@@ -57,6 +59,23 @@ const withStaffRefundStatus = async (
   });
 };
 
+const orderListFilters = (
+  query: OrderListFilters,
+): Omit<OrderListQuery, 'mode' | 'page' | 'pageSize'> => ({
+  ...(query.status === undefined ? {} : { status: query.status }),
+  ...(query.productId === undefined ? {} : { productId: query.productId }),
+  ...(query.kind === undefined ? {} : { kind: query.kind }),
+  ...(query.couponId === undefined ? {} : { couponId: query.couponId }),
+  ...(query.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: query.fulfilmentStatus }),
+  ...(query.search === undefined ? {} : { search: query.search }),
+  ...(query.source === undefined ? {} : { source: query.source }),
+  ...(query.sourceMatch === undefined ? {} : { sourceMatch: query.sourceMatch }),
+  ...(query.invoice === undefined ? {} : { invoice: query.invoice }),
+  ...(query.billing === undefined ? {} : { billing: query.billing }),
+  ...(query.sortBy === undefined ? {} : { sortBy: query.sortBy }),
+  ...(query.sortDirection === undefined ? {} : { sortDirection: query.sortDirection }),
+});
+
 export const listOrders = async (
   ctx: Ctx,
   query: unknown,
@@ -72,14 +91,7 @@ export const listOrders = async (
     ...(parsed.data.mode === undefined ? {} : { mode: parsed.data.mode }),
     page: parsed.data.page,
     pageSize: parsed.data.pageSize,
-    ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
-    ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
-    ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
-    ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
-    ...(parsed.data.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: parsed.data.fulfilmentStatus }),
-    ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
-    ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
-    ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
+    ...orderListFilters(parsed.data),
   });
   const listed = deps.staffRefunds === undefined || ctx.machineActor !== undefined ? orders : await withStaffRefundStatus(tenant.value, orders, deps.staffRefunds);
   return ok({ orders: listed, total, sources: sources ?? [], page: parsed.data.page, pageSize: parsed.data.pageSize });
@@ -237,14 +249,7 @@ export const exportOrders = async (
     mode: 'live',
     page: 1,
     pageSize,
-    ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
-    ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
-    ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
-    ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
-    ...(parsed.data.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: parsed.data.fulfilmentStatus }),
-    ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
-    ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
-    ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
+    ...orderListFilters(parsed.data),
   });
   const pageCount = Math.ceil(first.total / pageSize);
   const remaining = await Promise.all(
@@ -253,14 +258,7 @@ export const exportOrders = async (
         mode: 'live',
         page: index + 2,
         pageSize,
-        ...(parsed.data.status === undefined ? {} : { status: parsed.data.status }),
-        ...(parsed.data.productId === undefined ? {} : { productId: parsed.data.productId }),
-        ...(parsed.data.kind === undefined ? {} : { kind: parsed.data.kind }),
-        ...(parsed.data.couponId === undefined ? {} : { couponId: parsed.data.couponId }),
-        ...(parsed.data.fulfilmentStatus === undefined ? {} : { fulfilmentStatus: parsed.data.fulfilmentStatus }),
-        ...(parsed.data.search === undefined ? {} : { search: parsed.data.search }),
-        ...(parsed.data.source === undefined ? {} : { source: parsed.data.source }),
-        ...(parsed.data.sourceMatch === undefined ? {} : { sourceMatch: parsed.data.sourceMatch }),
+        ...orderListFilters(parsed.data),
       }),
     ),
   );

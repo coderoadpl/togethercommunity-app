@@ -174,6 +174,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/sales-links' || path.startsWith('/api/sales-links/')) return method === 'GET' ? 'product:read' : 'product:write';
   if (path.startsWith('/api/public/surveys/')) return 'offer:read';
   if (path === '/api/surveys' || path.startsWith('/api/surveys/')) return method === 'GET' ? 'survey:read' : 'survey:write';
+  if (path === '/api/panel/list-layouts/:listId') return 'order:read';
   if (path.startsWith('/legal/')) return 'legal:read';
   if (path.startsWith('/courses/')) return 'offer:read';
   if (
@@ -300,6 +301,7 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path === '/api/orders/:orderId/lines/:productId/issue') return 'order:write';
   if (path === '/api/orders/:orderId/ship') return 'order:write';
   if (path === '/api/orders/:orderId/personalization') return 'order:write';
+  if (path === '/api/orders/:orderId/delivery-details') return 'order:write';
   if (path === '/api/orders/packing-list') return 'order:export';
   if (['/api/orders/:orderId/refund-preview', '/api/orders/:orderId/refunds', '/api/orders/:orderId/packing-list'].includes(path)) return 'order:refund';
   if (path === '/api/orders/changes') return 'order:read';

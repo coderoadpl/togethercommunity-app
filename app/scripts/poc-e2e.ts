@@ -652,7 +652,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   expectError(
     await cli([
       '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
-      '--shipping-rate', 'locker', '--pickup-point', 'not-a-locker',
+      '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'not-a-locker',
     ], buyerHome),
     'shipped purchase with a malformed locker code',
     EXIT_CODE_BY_ERROR_CODE.validation,
@@ -661,7 +661,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const shippedPurchase = expectOk(
     await cli([
       '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipped@together.dev', '--product', shippedProduct.id,
-      '--shipping-rate', 'locker', '--pickup-point', 'waw01m',
+      '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'waw01m',
     ], buyerHome),
     'shipped purchase',
     simulatePurchaseOutputSchema,
@@ -755,7 +755,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const shipxPurchase = expectOk(
     await cli([
       '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipx@together.dev', '--product', shippedProduct.id,
-      '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
+      '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'WAW02M',
     ], buyerHome),
     'InPost purchase',
     simulatePurchaseOutputSchema,
@@ -787,10 +787,12 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   );
   const shipxCreated = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'create', shipxOrderId], alfaHome), 'InPost shipment', shipxContracts.shipxCreate.output);
   assert(
-    shipxCreated.order.fulfilmentStatus === 'shipped' && shipxCreated.order.shipment?.carrier === 'inpost'
-      && shipxCreated.shipment.trackingNumber !== null && shipxCreated.order.shipment.trackingNumber === shipxCreated.shipment.trackingNumber,
-    `InPost shipment should ship the order with its tracking number: ${JSON.stringify(shipxCreated)}`,
+    shipxCreated.order.fulfilmentStatus === 'to_pack' && shipxCreated.order.label?.carrier === 'inpost'
+      && shipxCreated.shipment.trackingNumber !== null && shipxCreated.order.label.trackingNumber === shipxCreated.shipment.trackingNumber,
+    `InPost label should leave the order to pack: ${JSON.stringify(shipxCreated)}`,
   );
+  const marked = expectOk(await cli(['--tenant', 'alfa', 'order', 'ship', shipxOrderId, '--carrier', 'inpost', '--tracking', shipxCreated.shipment.trackingNumber ?? ''], alfaHome), 'mark labelled order shipped', orderFulfilmentContracts.shipOrder.output);
+  assert(marked.order.fulfilmentStatus === 'shipped', 'Mark as shipped should dispatch the labelled order');
   const shipxRefreshed = expectOk(await cli(['--tenant', 'alfa', 'order', 'shipx', 'refresh', shipxOrderId], alfaHome), 'InPost refresh', shipxContracts.shipxRefresh.output);
   assert(
     shipxRefreshed.reason === 'not_to_pack' && shipxRefreshed.shipment?.trackingNumber === shipxCreated.shipment.trackingNumber,
@@ -810,6 +812,18 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
     'fulfilment_conflict',
   );
   steps += 1;
+
+  const oneStepPurchase = expectOk(await cli([
+    '--tenant', 'alfa', 'simulate-purchase', '--email', 'shipx-dispatch@example.org', '--product', shippedProduct.id,
+    '--shipping-rate', 'locker', '--pickup-point', 'WAW02M', '--shipping-phone', '+48 500 000 000',
+  ], buyerHome), 'one-step InPost purchase', simulatePurchaseOutputSchema);
+  assert(oneStepPurchase.orderId !== null, 'The one-step purchase should return its order id');
+  const oneStepShipment = expectOk(await cli([
+    '--tenant', 'alfa', 'order', 'shipx', 'create', oneStepPurchase.orderId, '--mark-shipped',
+  ], alfaHome), 'one-step InPost dispatch', shipxContracts.shipxCreate.output);
+  assert(oneStepShipment.order.fulfilmentStatus === 'shipped'
+    && oneStepShipment.order.shipment?.trackingNumber === oneStepShipment.shipment.trackingNumber,
+  'The explicit one-step flow should dispatch with the stored tracking number');
 
   const engraving = {
     label: 'Add an engraving',
@@ -860,7 +874,7 @@ const driveCli = async (port: number, homes: string[]): Promise<number> => {
   const engravingText = 'For Ann & Bo <3';
   const buyBook = (extra: string[]) => cli([
     '--tenant', 'alfa', 'simulate-purchase', '--sales-link', bookLink.id, '--product', book.id, '--email', 'engraving@together.dev',
-    '--shipping-rate', 'locker', '--pickup-point', 'WAW03M', '--personalization', `${book.id}:${engravingText}`, ...extra,
+    '--shipping-phone', '+48 500 000 000', '--shipping-rate', 'locker', '--pickup-point', 'WAW03M', '--personalization', `${book.id}:${engravingText}`, ...extra,
   ], buyerHome);
   expectError(await buyBook([]), 'personalisation without the accepted condition', EXIT_CODE_BY_ERROR_CODE.validation, 'validation');
   const bookPurchase = expectOk(await buyBook(['--accept-condition']), 'personalised purchase', simulatePurchaseOutputSchema);

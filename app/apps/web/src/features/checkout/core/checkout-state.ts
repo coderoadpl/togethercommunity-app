@@ -1,9 +1,11 @@
 import {
   inpostGeowidgetPointSchema,
   normalizePickupPointCode,
+  normalizeLockerPhone,
   pickupPointCodeValid,
   pickupPointDetails,
   pickupPointRejectionReason,
+  rateNeedsPolishMobile,
   type CheckoutShippingInput,
   type ParcelLockerLookup,
   type PublicShippingRate,
@@ -17,6 +19,8 @@ export interface CheckoutState {
   couponCode: string;
   shippingRateId: string | null;
   pickupPointCode: string;
+  lockerPhone: string;
+  lockerPhoneValidationFailed: boolean;
   pickupPoint: PickedPickupPoint | null;
   lockerCheck: LockerCheck | null;
 }
@@ -27,6 +31,8 @@ export const createCheckoutState = (couponCode: string): CheckoutState => ({
   couponCode,
   shippingRateId: null,
   pickupPointCode: '',
+  lockerPhone: '',
+  lockerPhoneValidationFailed: false,
   pickupPoint: null,
   lockerCheck: null,
 });
@@ -49,6 +55,10 @@ export const reduceCheckoutState = (
       return { ...state, couponVisible: event.visible };
     case 'couponCodeChanged':
       return { ...state, couponCode: event.couponCode };
+    case 'lockerPhoneChanged':
+      return { ...state, lockerPhone: event.phone, lockerPhoneValidationFailed: false };
+    case 'lockerPhoneValidationFailed':
+      return event.phone === state.lockerPhone ? { ...state, lockerPhoneValidationFailed: true } : state;
     case 'shippingRateSelected':
       return { ...state, shippingRateId: event.rateId };
     case 'pickupPointCodeChanged':
@@ -93,7 +103,7 @@ export const lockerRefusal = (code: string, details: unknown): LockerCheck | nul
 
 export type DeliverySelection =
   | { status: 'not_required' }
-  | { status: 'incomplete'; missing: 'rate' | 'pickup_point' | 'pickup_point_rejected' }
+  | { status: 'incomplete'; missing: 'rate' | 'pickup_point' | 'pickup_point_rejected' | 'locker_phone' }
   | { status: 'ready'; shipping: CheckoutShippingInput };
 
 export const selectDelivery = (
@@ -103,23 +113,24 @@ export const selectDelivery = (
   if (!input.required) return { status: 'not_required' };
   const rate = input.rates.find((candidate) => candidate.id === state.shippingRateId);
   if (rate === undefined) return { status: 'incomplete', missing: 'rate' };
-  if (rate.pickupPoint === 'none') return { status: 'ready', shipping: { rateId: rate.id } };
-  if (!pickupPointCodeValid(state.pickupPointCode)) return { status: 'incomplete', missing: 'pickup_point' };
-  const code = normalizePickupPointCode(state.pickupPointCode);
-  const picked = pickedPickupPoint(state);
-  if (lockerRejection(state) !== null) return { status: 'incomplete', missing: 'pickup_point_rejected' };
-  return {
-    status: 'ready',
-    shipping: {
-      rateId: rate.id,
-      pickupPoint: {
-        provider: 'inpost',
-        code,
-        ...(picked?.name == null ? {} : { name: picked.name }),
-        ...(picked?.address == null ? {} : { address: picked.address }),
-      },
-    },
-  };
+  const shipping: CheckoutShippingInput = { rateId: rate.id };
+  if (rate.pickupPoint !== 'none') {
+    if (!pickupPointCodeValid(state.pickupPointCode)) return { status: 'incomplete', missing: 'pickup_point' };
+    if (lockerRejection(state) !== null) return { status: 'incomplete', missing: 'pickup_point_rejected' };
+    const picked = pickedPickupPoint(state);
+    shipping.pickupPoint = {
+      provider: 'inpost',
+      code: normalizePickupPointCode(state.pickupPointCode),
+      ...(picked?.name == null ? {} : { name: picked.name }),
+      ...(picked?.address == null ? {} : { address: picked.address }),
+    };
+  }
+  if (rateNeedsPolishMobile(rate)) {
+    const phone = normalizeLockerPhone(state.lockerPhone);
+    if (phone === null || state.lockerPhoneValidationFailed) return { status: 'incomplete', missing: 'locker_phone' };
+    shipping.phone = phone;
+  }
+  return { status: 'ready', shipping };
 };
 
 export const deliveryPickupPointCode = (delivery: DeliverySelection): string | null =>

@@ -260,6 +260,7 @@ export const orderListItemSchema = orderSchema.extend({
     issuedByDisplayName: z.string().min(1).optional(),
   })).optional(),
   shipment: orderShipmentSchema.extend({ shippedByDisplayName: z.string().min(1).optional() }).nullable().optional(),
+  label: z.object({ carrier: z.literal('inpost'), trackingNumber: z.string() }).nullable().optional(),
   salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),
   memberName: z.string().nullable(),
@@ -287,8 +288,22 @@ export const orderExportFileSchema = z.object({
 
 export type OrderExportFile = z.infer<typeof orderExportFileSchema>;
 
+export const orderInvoiceFilterSchema = z.enum(['with', 'without']);
+export const orderBillingFilterSchema = z.enum(['requested', 'company', 'private', 'none']);
+export const orderSortFieldSchema = z.enum(['createdAt', 'amountCents']);
+export const orderSortDirectionSchema = z.enum(['asc', 'desc']);
+
+export type OrderInvoiceFilter = z.infer<typeof orderInvoiceFilterSchema>;
+export type OrderBillingFilter = z.infer<typeof orderBillingFilterSchema>;
+export type OrderSortField = z.infer<typeof orderSortFieldSchema>;
+export type OrderSortDirection = z.infer<typeof orderSortDirectionSchema>;
+
+export const ORDER_SOURCE_MAX_LENGTH = 200;
+export const ORDER_SOURCE_FILTER_PREFIX = 'value:';
+export const ORDER_SEARCH_MAX_LENGTH = 200;
+
 export const listOrdersQuerySchema = z.object({
-  source: z.string().trim().min(1).max(200).optional(),
+  source: z.string().trim().min(1).max(ORDER_SOURCE_MAX_LENGTH).optional(),
   sourceMatch: z.literal('exact').optional(),
   mode: stripeModeSchema.optional(),
   status: orderStatusSchema.optional(),
@@ -296,7 +311,11 @@ export const listOrdersQuerySchema = z.object({
   kind: priceKindSchema.optional(),
   couponId: z.string().min(1).optional(),
   fulfilmentStatus: fulfilmentStatusSchema.optional(),
-  search: z.string().trim().min(1).max(200).optional(),
+  search: z.string().trim().min(1).max(ORDER_SEARCH_MAX_LENGTH).optional(),
+  invoice: orderInvoiceFilterSchema.optional(),
+  billing: orderBillingFilterSchema.optional(),
+  sortBy: orderSortFieldSchema.optional(),
+  sortDirection: orderSortDirectionSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
@@ -304,6 +323,8 @@ export const listOrdersQuerySchema = z.object({
 export const exportOrdersQuerySchema = listOrdersQuerySchema
   .omit({ page: true, pageSize: true })
   .extend({ format: orderExportFormatSchema });
+
+export type OrderListFilters = Omit<z.output<typeof exportOrdersQuerySchema>, 'format'>;
 
 export const paidWithoutGrantRowSchema = z.object({
   orderId: z.string(),

@@ -1,9 +1,10 @@
-import type { Language } from '#core/domain/index.js';
+import type { Language, ListLayout, ListLayoutId } from '#core/domain/index.js';
 import type { AddTenantAdminInput, RemoveTenantAdminInput } from '#core/domain/index.js';
 import type { StripeProbePermissionsInput } from '#core/domain/index.js';
 import type { ConsumerSalesQuery } from '#core/domain/index.js';
 import { DOWNLOAD_COPY_PAGE_SIZE } from '#core/domain/index.js';
 import type { AdoptStripeSubscriptionInput } from '#core/domain/index.js';
+import { skipToken } from '@tanstack/query-core';
 import type {
   DefaultError,
   FetchQueryOptions,
@@ -295,9 +296,11 @@ const imageAssetsScopes = {
   all: () => ['image-assets'] as const,
 };
 
+const orderListsScope = ['sales', 'orders'] as const;
+
 const salesScopes = {
   all: () => ['sales'] as const,
-  orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
+  orders: (input: OrdersListQueryInput) => [...orderListsScope, input] as const,
   order: (id: string) => ['sales', 'order', id] as const,
   refundPreview: (id: string) => ['sales', 'order', id, 'refund-preview'] as const,
   export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
@@ -947,7 +950,7 @@ export const memberBillingOrdersQuery = (api: ApiClient) =>
     call: ({ signal }) => api.listMemberBillingOrders(1, 25, signal),
   });
 
-export const ordersInvalidates = () => ({ queryKey: salesScopes.all() });
+export const ordersInvalidates = (scope: 'all' | 'list' = 'all') => ({ queryKey: scope === 'list' ? orderListsScope : salesScopes.all() });
 
 export const orderQuery = (api: ApiClient, id: string) =>
   defineQuery({
@@ -2348,6 +2351,27 @@ export const surveyActions = (api: ApiClient) => ({
   preview: defineMutation({ mutationKey: ['surveys', 'preview'], call: (input: Parameters<ApiClient['previewSurveyEnding']>[0]) => api.previewSurveyEnding(input) }),
   invalidates: (tenantId: string) => ({ queryKey: ['surveys', tenantId] as const }),
 });
+
+interface ListLayoutScope {
+  tenantId: string;
+  userId: string | undefined;
+  listId: ListLayoutId;
+}
+
+export const listLayoutActions = (api: ApiClient, { tenantId, userId, listId }: ListLayoutScope) => {
+  const queryKey = ['list-layouts', tenantId, userId, listId] as const;
+  const invalidates = { queryKey };
+  if (userId === undefined) return { get: { queryKey, queryFn: skipToken } as const, write: null, invalidates };
+  const input = { listId, expectedUserId: userId };
+  return {
+    get: defineQuery({ queryKey, call: ({ signal }) => api.getListLayout(input, signal) }),
+    write: {
+      save: async (layout: ListLayout) => unwrap(await api.saveListLayout({ ...input, layout })),
+      reset: async () => unwrap(await api.resetListLayout(input)),
+    },
+    invalidates,
+  };
+};
 
 export const probeStripePermissionsMutation = (api: ApiClient) =>
   defineMutation({

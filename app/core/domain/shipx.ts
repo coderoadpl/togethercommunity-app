@@ -3,8 +3,10 @@ import { z } from 'zod';
 import { appError, validation, type AppError, type ErrorCode } from './errors.js';
 import type { StripeMode } from './integration.js';
 import { err, ok, type Result } from './result.js';
-import type { OrderShipping } from './shipping.js';
+import { normalizeShipxPhone, type OrderShipping } from './shipping.js';
 import type { TenantSecretKey } from './tenant-secret.js';
+
+export { normalizeShipxPhone } from './shipping.js';
 
 export const PARCEL_TEMPLATES = ['small', 'medium', 'large'] as const;
 
@@ -66,14 +68,12 @@ export const SHIPX_PARCEL_DIMENSIONS_MM: Record<ParcelTemplate, { length: number
   large: { length: 640, width: 380, height: 410 },
 };
 
-const SHIPX_PHONE_PATTERN = /^\d{9}$/;
-
-export const normalizeShipxPhone = (raw: string): string | null => {
+export const normalizeShipxSenderPhone = (raw: string): string | null => {
   const digits = raw.replace(/\D/g, '');
   const local = digits.length === 11 && digits.startsWith('48')
     ? digits.slice(2)
     : digits.length === 13 && digits.startsWith('0048') ? digits.slice(4) : digits;
-  return SHIPX_PHONE_PATTERN.test(local) ? local : null;
+  return /^\d{9}$/.test(local) ? local : null;
 };
 
 const POST_CODE_PATTERN = /^\d{2}-\d{3}$/;
@@ -82,7 +82,7 @@ export const shipxSenderSchema = z.object({
   name: z.string().trim().min(1).max(100),
   company: z.string().trim().min(1).max(100).nullable().default(null),
   email: z.string().trim().email().max(200),
-  phone: z.string().trim().refine((phone) => normalizeShipxPhone(phone) !== null, 'Phone must be a Polish 9-digit number'),
+  phone: z.string().trim().refine((phone) => normalizeShipxSenderPhone(phone) !== null, 'Phone must be a Polish 9-digit number'),
   street: z.string().trim().min(1).max(100),
   buildingNumber: z.string().trim().min(1).max(20),
   city: z.string().trim().min(1).max(100),
@@ -126,6 +126,7 @@ export const shipxSettingsViewSchema = z.object({
 export type ShipxSettingsView = z.infer<typeof shipxSettingsViewSchema>;
 
 export const SHIPX_STATUS_CREATING = 'creating';
+export const SHIPX_STATUS_CANCELED = 'canceled';
 export const SHIPX_STATUS_UNCONFIRMED = 'unknown';
 
 export const SHIPX_SHIPMENT_EVENT_TYPES = [
@@ -174,19 +175,22 @@ export const shipxOrderViewSchema = z.object({
   environment: shipxEnvironmentSchema,
   service: shipxServiceSchema.nullable(),
   parcelTemplate: parcelTemplateSchema,
-  shipment: shipxShipmentSchema.nullable(),
+  shipment: shipxShipmentSchema.extend({ operationClaimed: z.boolean().optional() }).nullable(),
 });
 
 export type ShipxOrderView = z.infer<typeof shipxOrderViewSchema>;
 
 const SHIPX_RECEIVER_GAPS = ['phone', 'name', 'building_number', 'locker_code'] as const;
 
+export const shipxBoughtLabelDetailsSchema = z.strictObject({ trackingNumber: z.string(), shipxShipmentId: z.string() });
+
 export const shipxErrorStateSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('pending'), shipmentId: z.string().nullable(), status: z.string().nullable() }),
   z.object({ state: z.literal('unconfirmed'), attemptedAt: z.string().optional(), cause: z.string().optional() }),
   z.object({ state: z.literal('lost_lock') }),
   z.object({ state: z.literal('lease_held') }),
-  z.object({ state: z.literal('manual_shipped'), trackingNumber: z.string(), shipxShipmentId: z.string() }),
+  z.object({ state: z.literal('manual_shipped'), ...shipxBoughtLabelDetailsSchema.shape }),
+  z.object({ state: z.literal('label_canceled'), trackingNumber: z.string().nullable(), shipxShipmentId: z.string() }),
   z.object({ state: z.literal('environment_mismatch'), environment: shipxEnvironmentSchema, settingsEnvironment: shipxEnvironmentSchema }),
   z.object({ state: z.literal('organization_mismatch') }),
   z.object({ state: z.literal('setup_missing'), reason: z.enum(SHIPX_SETUP_GAPS), environment: shipxEnvironmentSchema }),
@@ -202,7 +206,7 @@ const receiverInvalid = (field: (typeof SHIPX_RECEIVER_GAPS)[number], message: s
 
 export const shipxOrderInputSchema = z.object({ orderId: z.string().min(1) }).strict();
 
-export const shipxCreateInputSchema = shipxOrderInputSchema.extend({ parcelTemplate: parcelTemplateSchema.optional() }).strict();
+export const shipxCreateInputSchema = shipxOrderInputSchema.extend({ parcelTemplate: parcelTemplateSchema.optional(), markShipped: z.boolean().optional().default(false) }).strict();
 
 export const shipxDiscardOutputSchema = z.object({ discarded: z.literal(true) });
 
@@ -227,6 +231,9 @@ const PRE_PURCHASE_STATUSES: ReadonlySet<string> = new Set(['created', 'offers_p
 
 export const shipxShipmentBought = (shipment: Pick<ShipxRemoteShipment, 'status' | 'trackingNumber'>): boolean =>
   shipment.trackingNumber !== null && !PRE_PURCHASE_STATUSES.has(shipment.status);
+
+export const shipxLabelUsable = (shipment: Pick<ShipxRemoteShipment, 'status' | 'trackingNumber'>): boolean =>
+  shipxShipmentBought(shipment) && shipment.status !== SHIPX_STATUS_CANCELED;
 
 const paymentRunning = (shipment: ShipxRemoteShipment): boolean =>
   shipment.transactions.some((transaction) => transaction.status === 'initiated' || transaction.status === 'success');

@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createBrowserHistory, createMemoryHistory, createRootRoute, createRoute, createRouter, Outlet, RouterProvider } from '@tanstack/react-router';
 import { http, HttpResponse } from 'msw';
@@ -29,27 +29,30 @@ const offer = (deliveryMethod: 'pickup' | 'shipping') => ({
 const shippingRates = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, carrier: 'inpost', pickupPoint: 'inpost_locker', deliveryEstimateDays: { min: 1, max: 2 } },
   { id: 'courier', label: 'Courier', amountCents: 1999, carrier: 'other', pickupPoint: 'none' },
+  { id: 'inpost-courier', label: 'InPost courier', amountCents: 1999, carrier: 'inpost', pickupPoint: 'none' },
 ];
 
 const serve = (input: {
   deliveryMethod?: 'pickup' | 'shipping';
+  inpostOnly?: boolean;
   token?: string | null;
   withheld?: boolean;
   canTest?: boolean;
   testEnabled?: boolean;
   onSession?: (body: unknown) => void;
   sessionError?: string;
+  sessionErrorCode?: 'validation' | 'locker_phone_invalid';
 }) => {
   server.use(
     anonymousMe(),
     http.get('/api/public/offer', () => HttpResponse.json({ ok: true, data: offer(input.deliveryMethod ?? 'shipping') })),
     http.get('/api/public/payment-config', () => HttpResponse.json({ ok: true, data: {
-      stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates, inpostGeowidgetToken: input.token ?? null, inpostGeowidgetWithheld: input.withheld ?? false,
+      stripeConfigured: true, simulatedPaymentsEnabled: false, shippingRates: input.inpostOnly ? shippingRates.filter((rate) => rate.carrier === 'inpost') : shippingRates, inpostGeowidgetToken: input.token ?? null, inpostGeowidgetWithheld: input.withheld ?? false,
       canTest: input.canTest ?? false, testConfigured: input.canTest === true || input.testEnabled === true, testEnabled: input.testEnabled ?? false,
     } })),
     http.post('/api/public/checkout/session', async ({ request }) => {
       input.onSession?.(await request.json());
-      return HttpResponse.json({ ok: false, error: { code: 'validation', message: input.sessionError ?? 'Stop before redirect' } }, { status: 400 });
+      return HttpResponse.json({ ok: false, error: { code: input.sessionErrorCode ?? 'validation', message: input.sessionError ?? 'Stop before redirect' } }, { status: 400 });
     }),
   );
 };
@@ -69,6 +72,97 @@ describe('checkout delivery step', () => {
     document.getElementById('inpost-geowidget-style')?.remove();
   });
 
+  it('does not validate the first typed digit before blur', async () => {
+    serve({}); renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+    await userEvent.type(phone, '5');
+    expect(phone).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.blur(phone);
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+  });
+  it.each(['insertFromPaste', 'insertReplacementText', 'insertText'])('validates a multi-character %s immediately without unavailable courier advice', async (inputType) => {
+    serve({ inpostOnly: true }); renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+    fireEvent.input(phone, { inputType, target: { value: '+44 7700 900000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.inpostPhoneInvalid);
+    expect(screen.getByRole('alert')).not.toHaveTextContent('courier');
+  });
+  it('validates the phone on its first blur and every subsequent change', async () => {
+    serve({});
+    renderCheckout();
+    await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+    fireEvent.change(phone, { target: { value: '50000000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'false');
+    fireEvent.blur(phone);
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.change(phone, { target: { value: '500000000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'false');
+    fireEvent.change(phone, { target: { value: '+44 7700 900000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('rejects foreign autofill immediately, validates on blur and change, and preserves the typed phone across rates', async () => {
+    const bodies: unknown[] = [];
+    serve({ onSession: (body) => bodies.push(body) });
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    fireEvent.change(screen.getByLabelText(en.shipping.lockerCodeLabel), { target: { value: 'ABC01M' } });
+    const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+    expect(phone).toHaveAttribute('type', 'tel');
+    expect(phone).toHaveAttribute('inputmode', 'tel');
+    expect(phone).toHaveAttribute('autocomplete', 'tel-national');
+    expect(phone).toBeRequired();
+    expect(screen.getByText('+48')).toBeVisible();
+    expect(phone).toHaveAccessibleDescription(en.shipping.lockerPhoneHint);
+    expect(screen.queryByText(en.shipping.lockerPhoneInvalid)).not.toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    expect(screen.getByTestId('checkout-pay-reason')).toHaveTextContent(en.checkout.payBlockedLockerPhone);
+    fireEvent.input(phone, { target: { value: '+44 7700 900000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.lockerPhoneInvalid);
+    expect(screen.getByText(en.shipping.lockerPhoneHint)).toBeVisible();
+    fireEvent.change(phone, { target: { value: '500000000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+    fireEvent.change(phone, { target: { value: '' } });
+    fireEvent.blur(phone);
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.change(phone, { target: { value: '500 000 000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'false');
+    await userEvent.click(screen.getByRole('radio', { name: /^Courier/u }));
+    expect(screen.queryByLabelText(en.shipping.lockerPhoneLabel)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    expect(screen.getByLabelText(en.shipping.lockerPhoneLabel)).toHaveValue('500 000 000');
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toMatchObject({ shipping: { phone: '+48500000000' } });
+  });
+
+  it('shows the server phone refusal inline and allows a corrected phone', async () => {
+    const bodies: unknown[] = [];
+    serve({ onSession: (body) => bodies.push(body), sessionErrorCode: 'locker_phone_invalid' });
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    fireEvent.change(screen.getByLabelText(en.shipping.lockerCodeLabel), { target: { value: 'ABC01M' } });
+    const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+    fireEvent.change(phone, { target: { value: '500000000' } });
+    await userEvent.click(screen.getByTestId('checkout-pay-cta'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.shipping.lockerPhoneInvalid);
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByTestId('checkout-pay-cta')).toBeDisabled();
+    expect(bodies).toHaveLength(1);
+    fireEvent.change(phone, { target: { value: '+48 500 000 000' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByTestId('checkout-pay-cta')).toBeEnabled();
+  });
+
   it('keeps the pay button disabled until a rate and a valid locker code are chosen, then sends the delivery selection', async () => {
     const bodies: unknown[] = [];
     serve({ onSession: (body) => bodies.push(body) });
@@ -81,6 +175,7 @@ describe('checkout delivery step', () => {
     expect(screen.getByText(en.shipping.deliveryEstimate({ min: 1, max: 2 }))).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('radio', { name: new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u') }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(payButton()).toBeDisabled();
     const code = screen.getByLabelText(en.shipping.lockerCodeLabel);
     await userEvent.type(code, 'waw-1');
@@ -99,23 +194,53 @@ describe('checkout delivery step', () => {
     expect(bodies[0]).toMatchObject({ productId: 'accessory', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
   });
 
-  it('hides the locker input for a courier rate and sends only the rate', async () => {
+  it('requires a Polish phone for an InPost courier without suggesting another courier', async () => {
+    const bodies: unknown[] = [];
+    serve({ onSession: (body) => bodies.push(body), sessionErrorCode: 'locker_phone_invalid' });
+    renderCheckout();
+    await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.click(screen.getByRole('radio', { name: /^InPost courier/u }));
+    expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+    const phone = screen.getByLabelText(en.shipping.courierPhoneLabel);
+    const pay = screen.getByTestId('checkout-pay-cta');
+    expect(phone).toHaveAttribute('autocomplete', 'tel-national');
+    expect(phone).toBeRequired();
+    expect(screen.getByText('+48')).toBeVisible();
+    expect(phone).toHaveAccessibleDescription(en.shipping.courierPhoneHint);
+    expect(pay).toBeDisabled();
+    fireEvent.input(phone, { target: { value: '+44 7700 900000' } });
+    expect(phone).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alert')).toHaveTextContent(en.shipping.inpostPhoneInvalid);
+    expect(pay).toBeDisabled();
+    expect(bodies).toEqual([]);
+    fireEvent.change(phone, { target: { value: '+48 500 000 000' } });
+    expect(pay).toBeEnabled();
+    await userEvent.click(pay);
+    expect(await screen.findByRole('alert')).toHaveTextContent(en.shipping.inpostPhoneInvalid);
+    expect(pay).toBeDisabled();
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toHaveProperty('shipping', { rateId: 'inpost-courier', phone: '+48500000000' });
+  });
+
+  it('hides the Together phone and locker inputs for another carrier and sends only the rate', async () => {
     const bodies: unknown[] = [];
     serve({ onSession: (body) => bodies.push(body) });
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByLabelText(exact(`Courier — ${pln(1999)}`)));
     expect(screen.queryByLabelText(en.shipping.lockerCodeLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.shipping.lockerPhoneLabel)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(en.shipping.courierPhoneLabel)).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'courier' } });
-    expect(bodies[0]).not.toHaveProperty('shipping.pickupPoint');
+    expect(bodies[0]).toHaveProperty('shipping', { rateId: 'courier' });
   });
 
   it('loads the parcel locker map in the picker on demand and fills the code from the point chosen on the map', async () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
     const host = await screen.findByTestId('checkout-inpost-geowidget');
@@ -140,6 +265,7 @@ describe('checkout delivery step', () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     const option = screen.getByTestId('checkout-delivery-option-locker');
     const picker = screen.getByTestId('checkout-locker-picker');
     expect(option.nextElementSibling).toBe(picker);
@@ -155,6 +281,7 @@ describe('checkout delivery step', () => {
     serve({});
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(screen.getByText(en.shipping.lockerCodeHint)).toHaveStyle({ marginLeft: '0px', marginRight: '0px' });
   });
 
@@ -165,6 +292,7 @@ describe('checkout delivery step', () => {
     expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
     await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
     expect(await screen.findByTestId('checkout-inpost-geowidget')).toBeInTheDocument();
@@ -182,6 +310,7 @@ describe('checkout delivery step', () => {
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(await screen.findByTestId('checkout-locker-map-staff-hint')).toHaveTextContent(exact(en.shipping.lockerMapStaffHint));
     expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
     expect(document.querySelector('inpost-geowidget')).toBeNull();
@@ -200,6 +329,7 @@ describe('checkout delivery step', () => {
     serve({ token: null, withheld: true, canTest });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(await screen.findByTestId('checkout-locker-map-staff-hint')).toHaveTextContent(exact(en.shipping.lockerMapStaffHint));
     expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
@@ -211,6 +341,7 @@ describe('checkout delivery step', () => {
     serve({ token: 'public-map-token' });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerKnowCode }));
     expect(screen.getByLabelText(en.shipping.lockerCodeLabel)).toHaveAccessibleDescription(en.shipping.lockerCodeHint);
   });
@@ -222,6 +353,7 @@ describe('checkout delivery step', () => {
     serve({ token, canTest });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     const code = await screen.findByLabelText(en.shipping.lockerCodeLabel);
     expect(code).toHaveAccessibleDescription(en.shipping.lockerCodeHint);
     expect(en.shipping.lockerCodeHint).not.toMatch(/map/u);
@@ -246,6 +378,7 @@ describe('checkout delivery step', () => {
     serve({ token: null });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     expect(await screen.findByLabelText(en.shipping.lockerCodeLabel)).toBeInTheDocument();
     expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
     expect(screen.queryByTestId('checkout-locker-map-staff-hint')).not.toBeInTheDocument();
@@ -267,6 +400,7 @@ describe('checkout delivery step', () => {
     try {
       renderWithProviders(<RouterProvider router={router} />);
       await userEvent.click(await screen.findByRole('radio', { name: new RegExp(`^Parcel locker — ${pln(1499).replace('.', '\\.')}`, 'u') }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
       await screen.findByTestId('checkout-inpost-geowidget');
       await userEvent.click(screen.getByRole('button', { name: en.common.close }));

@@ -80,11 +80,15 @@ prints the hosted checkout URL; `simulate-purchase` calls the dev purchase
 endpoint for the selected tenant. A workspace with a terms or privacy URL
 refuses either request until the buyer accepts the terms: pass
 `--accept-terms` to send `termsAccepted: true`. Without the flag the request
-carries no terms field.
+carries no terms field. For single-product, sales-link, cart and simulated
+checkout, pass `--shipping-rate` for products that ship and `--shipping-phone`
+for every InPost rate, including courier. The phone must be a Polish mobile
+number; `locker_phone_invalid` exits with code 33 (HTTP 400). A locker rate
+also needs `--pickup-point`.
 
 ```bash
 pnpm --silent run cli --tenant studio checkout session --product product-id \
-  --email buyer@example.test --shipping-rate courier --accept-terms
+  --email buyer@example.test --shipping-rate courier --shipping-phone "+48 500 000 000" --accept-terms
 pnpm --silent run cli --tenant studio simulate-purchase --product product-id \
   --email buyer@example.test --accept-terms
 ```
@@ -119,6 +123,61 @@ with `images.json`:
 With a [shop management key](shop-management-keys.md#product-covers-gallery-images-and-sales-links)
 the same steps are `shop images upload <file>` and
 `shop products create|update --images-file <path>`.
+
+## Correct order delivery details
+
+`order delivery <orderId>` (also `orders delivery <orderId>`) needs an owner
+or admin session. Use `--phone`, `--recipient-name`, `--locker` or address
+flags. Give `--line1`, `--postal-code` and `--city` together. Omitting
+`--line2` leaves it unchanged; `--line2 ''` clears it. The command reads the
+order first and sends the previous values it expects to replace. If the order
+changes before the correction is saved, it exits with code 38
+(`delivery_correction_conflict`). See
+[Correct delivery details](shop.md#correct-delivery-details) for other refusals.
+
+## InPost labels and dispatch
+
+`order shipx create <orderId>` creates and pays for the label, stores the
+tracking number and leaves the order **to pack**. This default changed: label
+creation no longer marks an order as shipped or e-mails the buyer.
+`order shipx create <orderId> --mark-shipped` restores the one-step flow.
+The shop management key command has the same opt-in:
+`shop orders shipx create <orderId> --mark-shipped`.
+
+In plain mode both create commands print one line on success, based on the
+returned order:
+
+- `shipped: <orderId> (<dispatch carrier> <dispatch tracking>)`
+- `label ready; order still to pack: <orderId> (inpost <label tracking>)`
+- `label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: <orderId> (inpost <shipment tracking>)` when the order explicitly returns `label: null`.
+
+If an older server omits `label`, the CLI derives it from the returned ShipX
+shipment. If no usable label can be derived, it reports
+`label bought; order still to pack: <orderId> (inpost <shipment tracking>)`.
+
+If another request dispatched the order with the same InPost label, the
+command reports `shipped` and does not send another e-mail. If the order was
+shipped meanwhile with a different carrier or tracking number, the command
+fails with `fulfilment_conflict` (`details.state: 'manual_shipped'`, exit 27).
+If the order left the packing list while the label was being bought, the
+command fails with `conflict` (exit 6). In plain mode both errors go to stderr;
+with `--json` they are returned in the error envelope on stdout.
+
+The plain session `orders list` output has a fulfilment column immediately
+after the status column. Scripts that read columns by position must adjust.
+Plain `shop orders list` keeps its existing fulfilment column. Both show
+`label_ready` in that column for a to-pack order with a bought label. Use
+`--fulfilment to_pack` to include these orders; the stored status is still
+`to_pack`.
+
+Without the `--mark-shipped` flag, dispatch the parcel later with
+`order ship <orderId> --carrier inpost --tracking <storedTrackingNumber>`
+(or `shop orders ship` with a key). Only dispatch writes the fulfilment event
+and queues the buyer's shipment e-mail; test orders never send it. Repeating
+label creation on an already bought label makes no second carrier call or
+purchase, and `--mark-shipped` can dispatch that label once. Both actions
+require `order:write`, or `shop:fulfilment:write` for a shop key. See
+[Creating the shipment](shop.md#creating-the-shipment) for retries and leases.
 
 ## Staff refunds
 

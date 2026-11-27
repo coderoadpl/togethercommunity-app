@@ -14,6 +14,13 @@ import {
 } from './body-limits.js';
 
 describe('request body limits', () => {
+  it('caps the layout PUT separately from other API requests', () => {
+    expect(requestBodyLimit('PUT', '/api/panel/list-layouts/orders')).toBe(17 * 1024);
+    expect(requestBodyLimit('PUT', '/api/panel/list-layouts/unknown')).toBe(17 * 1024);
+    expect(requestBodyLimit('GET', '/api/panel/list-layouts/orders')).toBeUndefined();
+    expect(requestBodyLimit('PUT', '/api/panel/list-layouts/orders/other')).toBe(DEFAULT_API_BODY_LIMIT);
+  });
+
   it('bounds directory CSV multipart and JSON chunks separately', () => {
     expect(requestBodyLimit('POST', API_PATHS.marketingContactImportUpload)).toBe(4 * 1024 * 1024);
     expect(requestBodyLimit('POST', '/api/marketing/contact-imports/batch/rows')).toBe(1024 * 1024);

@@ -36,6 +36,7 @@ const course: Product = { ...accessory, id: 'course', slug: 'course', title: 'Co
 const rates: ShippingRate[] = [
   { id: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'inpost_locker', active: true, deliveryEstimateDays: { min: 1, max: 2 } },
   { id: 'courier', label: 'Courier', amountCents: 1999, vatRatePercent: 8, carrier: 'other', pickupPoint: 'none', active: true },
+  { id: 'inpost-courier', label: 'InPost courier', amountCents: 1999, vatRatePercent: 23, carrier: 'inpost', pickupPoint: 'none', active: true },
   { id: 'retired', label: 'Retired option', amountCents: 999, vatRatePercent: 23, carrier: 'other', pickupPoint: 'none', active: false },
 ];
 
@@ -145,8 +146,8 @@ describe('checkout delivery selection', () => {
     ['an inactive rate', accessory.id, { rateId: 'retired' }, 'validation'],
     ['a locker rate without a locker', accessory.id, { rateId: 'locker' }, 'validation'],
     ['a courier rate with a locker', accessory.id, { rateId: 'courier', pickupPoint: { provider: 'inpost' as const, code: 'WAW01M' } }, 'validation'],
-    ['a malformed locker code', accessory.id, { rateId: 'locker', pickupPoint: { provider: 'inpost' as const, code: 'WAW-01' } }, 'validation'],
-    ['a too short locker code', accessory.id, { rateId: 'locker', pickupPoint: { provider: 'inpost' as const, code: 'ab1' } }, 'validation'],
+    ['a malformed locker code', accessory.id, { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost' as const, code: 'WAW-01' } }, 'validation'],
+    ['a too short locker code', accessory.id, { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost' as const, code: 'ab1' } }, 'validation'],
   ])('rejects a delivery selection that is %s', async (_case, productId, shipping, code) => {
     const h = harness();
     const result = await validateCheckoutSelection(tenant.id, { productId, ...(shipping === undefined ? {} : { shipping }) }, h.deps);
@@ -168,7 +169,7 @@ describe('checkout delivery selection', () => {
   it('normalizes the locker code, freezes the rate and stores the carrier name and address over the ones the client sent', async () => {
     const h = harness();
     const result = await validateCheckoutSelection(tenant.id, {
-      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: ' waw01m ', name: 'Locker', address: 'Somewhere else 9' } },
+      productId: accessory.id, shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: ' waw01m ', name: 'Locker', address: 'Somewhere else 9' } },
     }, h.deps);
     expect(result).toMatchObject({ ok: true, value: { shipping: {
       rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', allowedCountries: ['PL'],
@@ -186,7 +187,7 @@ describe('checkout delivery selection', () => {
   ])('refuses %s with a translatable reason', async (_case, code, reason, message) => {
     const h = harness();
     const result = await validateCheckoutSelection(tenant.id, {
-      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code } },
+      productId: accessory.id, shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code } },
     }, h.deps);
     expect(result).toEqual({ ok: false, error: { code: 'validation', message, details: { pickupPointReason: reason } } });
   });
@@ -194,7 +195,7 @@ describe('checkout delivery selection', () => {
   it('accepts the typed code and marks it unverified when the carrier cannot answer', async () => {
     const h = harness();
     const result = await validateCheckoutSelection(tenant.id, {
-      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable, name: 'Typed', address: 'Typed street 1' } },
+      productId: accessory.id, shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable, name: 'Typed', address: 'Typed street 1' } },
     }, h.deps);
     expect(result.ok && result.value.shipping?.pickupPoint).toEqual({
       provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable, name: 'Typed', address: 'Typed street 1', verified: false,
@@ -204,7 +205,7 @@ describe('checkout delivery selection', () => {
   it('accepts the typed code unverified when the carrier answers with a status it has not documented', async () => {
     const h = harness();
     const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
-      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unknownStatus } },
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unknownStatus } },
     }, h.deps);
     expect(result).toMatchObject({ ok: true });
     expect(h.pickupPoints.lookups).toEqual([TEST_PICKUP_POINTS.unknownStatus]);
@@ -215,7 +216,7 @@ describe('checkout delivery selection', () => {
     const h = harness();
     delete h.deps.pickupPoints;
     const result = await validateCheckoutSelection(tenant.id, {
-      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } },
+      productId: accessory.id, shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'WAW01M' } },
     }, h.deps);
     expect(result.ok && result.value.shipping?.pickupPoint).toEqual({ provider: 'inpost', code: 'WAW01M', name: null, address: null, verified: false });
   });
@@ -224,7 +225,7 @@ describe('checkout delivery selection', () => {
     const h = harness();
     expect(await validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: { rateId: 'courier' } }, h.deps)).toMatchObject({ ok: true });
     expect(await validateCheckoutSelection(tenant.id, {
-      productId: accessory.id, shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.notFound } },
+      productId: accessory.id, shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.notFound } },
     }, h.deps, { shipping: 'ignore' })).toMatchObject({ ok: true });
     expect(h.pickupPoints.lookups).toEqual([]);
   });
@@ -236,10 +237,54 @@ describe('checkout delivery selection', () => {
 });
 
 describe('checkout with shipping', () => {
+  it.each([undefined, '+44 7700 900000', '50000000'])('rejects the locker phone %s before creating a payment session', async (phone) => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', phone, pickupPoint: { provider: 'inpost', code: 'ABC01M' } },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
+    expect(h.calls).toEqual([]);
+    expect(h.snapshots).toEqual([]);
+    expect(h.pickupPoints.lookups).toEqual([]);
+  });
+
+  it.each([undefined, '+44 7700 900000'])('rejects the InPost courier phone %s before writing a snapshot or creating a payment session', async (phone) => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'inpost-courier', phone },
+    }, h.deps);
+    expect(result).toMatchObject({ ok: false, error: {
+      code: 'locker_phone_invalid', message: 'InPost deliveries need a Polish mobile number (9 digits, optional +48)',
+    } });
+    expect(h.calls).toEqual([]);
+    expect(h.snapshots).toEqual([]);
+  });
+
+  it('keeps Stripe phone collection during the rollback window and freezes the canonical phone for an InPost courier', async () => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'inpost-courier', phone: '+48 500 000 000' },
+    }, h.deps);
+    expect(result.ok).toBe(true);
+    expect(h.calls[0]?.shipping?.phone).toBe(true);
+    expect(h.snapshots[0]?.shipping).toMatchObject({ rateId: 'inpost-courier', pickupPoint: null, phone: '+48500000000' });
+    expect(h.pickupPoints.lookups).toEqual([]);
+  });
+
+  it.each([undefined, '+44 7700 900000'])('keeps Stripe phone collection and ignores input phone %s for another carrier', async (phone) => {
+    const h = harness();
+    const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'courier', phone },
+    }, h.deps);
+    expect(result.ok).toBe(true);
+    expect(h.calls[0]?.shipping?.phone).toBe(true);
+    expect(h.snapshots[0]?.shipping).not.toHaveProperty('phone');
+  });
+
   it('sends the fee as one Stripe shipping option and appends a shipping line last to the snapshot', async () => {
     const h = harness();
     const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
-      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } },
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'WAW01M' } },
     }, h.deps);
     expect(result).toMatchObject({ ok: true, value: { free: false } });
     expect(h.calls).toHaveLength(1);
@@ -254,7 +299,7 @@ describe('checkout with shipping', () => {
       vatRate: 23, vatExemptionBasis: null, vatExemptionBasisKind: null, issuedCount: null,
     });
     expect(h.snapshots[0]?.shipping).toEqual({
-      rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost',
+      rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23, carrier: 'inpost', phone: '+48500000000',
       pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' }, allowedCountries: ['PL'],
     });
   });
@@ -266,7 +311,7 @@ describe('checkout with shipping', () => {
     h.deps.stock = stock.repository;
     const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
       productId: accessory.id, email: 'buyer@example.org', couponCode: 'GIFT',
-      shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.notFound } },
+      shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.notFound } },
     }, h.deps);
     expect(result).toMatchObject({ ok: false, error: { code: 'validation', details: { pickupPointReason: 'not_found' } } });
     expect(h.pickupPoints.lookups).toEqual([TEST_PICKUP_POINTS.notFound]);
@@ -279,7 +324,7 @@ describe('checkout with shipping', () => {
   it('carries the unverified mark into the snapshot when the carrier is down', async () => {
     const h = harness();
     const result = await createCheckoutSession(tenant, 'https://alpha.example.com', {
-      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable } },
+      productId: accessory.id, email: 'buyer@example.org', shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: TEST_PICKUP_POINTS.unavailable } },
     }, h.deps);
     expect(result).toMatchObject({ ok: true });
     expect(h.calls).toHaveLength(1);
@@ -402,7 +447,7 @@ describe('checkout selection capture', () => {
 
 describe('parcel locker lookup on every checkout path', () => {
   const cartAccessory: Product = { ...accessory, id: '8d0f6c7e-2b1a-4c3d-9e8f-0a1b2c3d4e5f' };
-  const locker = (code: string) => ({ rateId: 'locker', pickupPoint: { provider: 'inpost' as const, code } });
+  const locker = (code: string) => ({ rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost' as const, code } });
   const paths = {
     'single product': async (h: ReturnType<typeof harness>, code: string) =>
       validateCheckoutSelection(tenant.id, { productId: accessory.id, shipping: locker(code) }, h.deps),

@@ -30,9 +30,11 @@ only. `scripts/storybook-page-screens.ts` maps screens to story IDs, including
 the original Start, LessonPlayer, SpaceFeed and hosted legal document IDs.
 Every mapped viewport must exist in Storybook's built index. Every committed
 PNG must be covered; a missing story, missing golden or unmapped golden fails.
-The inherited active-named DNS goldens repeat the pending DNS capture after a
-same-document navigation. Both map to the pending story to preserve that page
-state; verified DNS has separate Active stories.
+The two inherited active-named DNS goldens, which repeated the pending DNS
+capture after a same-document navigation, are retired; the pending DNS capture
+covers that page state, and verified DNS keeps separate Active stories without
+committed goldens. The orders grid (`panel-sales-grid`) takes their two slots
+as a component screen at desktop and mobile width.
 
 Settings security and team have separate desktop and mobile captures using the
 recorded owner fixture. The team story adds a synthetic pending invitation to

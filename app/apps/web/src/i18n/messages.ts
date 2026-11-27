@@ -370,6 +370,26 @@ export interface Messages {
     nextPage: string;
     previousPage: string;
   };
+  dataGrid: {
+    loading: string;
+    loadFailed: string;
+    reloadPage: string;
+    columns: string;
+    columnsDialogTitle: string;
+    columnsDialogHint: string;
+    moveUp: (params: { column: string }) => string;
+    moveDown: (params: { column: string }) => string;
+    resetLayout: string;
+    done: string;
+    filter: string;
+    addFilter: string;
+    filterTitle: (params: { column: string }) => string;
+    filterChip: (params: { label: string; value: string }) => string;
+    removeFilter: (params: { filter: string }) => string;
+    clearAll: string;
+    activeFilters: string;
+    layoutSaveFailed: (params: { message: string }) => string;
+  };
   refresh: {
     failed: (params: { message: string }) => string;
   };
@@ -960,6 +980,12 @@ export interface Messages {
     deliveryHeading: string;
     deliveryOptionsLabel: string;
     deliveryEstimate: (params: { min: number; max: number }) => string;
+    lockerPhoneLabel: string;
+    lockerPhoneHint: string;
+    lockerPhoneInvalid: string;
+    courierPhoneLabel: string;
+    courierPhoneHint: string;
+    inpostPhoneInvalid: string;
     lockerCodeLabel: string;
     lockerCodeHint: string;
     lockerChoose: string;
@@ -1022,11 +1048,12 @@ export interface Messages {
     toPack: string;
     fulfilmentFilter: string;
     fulfilmentAll: string;
-    fulfilmentStatuses: { to_pack: string; shipped: string };
+    fulfilmentStatuses: { to_pack: string; label_ready: string; shipped: string };
     fulfilmentColumn: string;
     packingListDownload: string;
     packingListDownloading: string;
     packingListLiveOnly: string;
+    packingListFilterHint: string;
     markShipped: string;
     shipCarrier: string;
     shipTracking: string;
@@ -1073,7 +1100,10 @@ export interface Messages {
     create: string;
     creating: string;
     createConfirmTitle: string;
-    createConfirmBody: (params: { service: string; size: string; email: string }) => string;
+    markShipped: string;
+    markShippedTest: string;
+    createConfirmBody: (params: { service: string; size: string }) => string;
+    createConfirmBodyShipped: (params: { service: string; size: string; email: string }) => string;
     createConfirmBodyTest: (params: { service: string; size: string }) => string;
     createConfirm: string;
     parcelTemplateOverrideLabel: string;
@@ -1082,6 +1112,8 @@ export interface Messages {
     downloadingLabel: string;
     shipmentStatus: (params: { status: string }) => string;
     paymentPending: string;
+    labelCanceled: string;
+    labelCanceledEarlier: string;
     attemptUnconfirmed: string;
     discardAttempt: string;
     discardConfirmTitle: string;
@@ -1098,6 +1130,7 @@ export interface Messages {
       lostLock: string;
       leaseHeld: string;
       manualShipped: (params: { trackingNumber: string }) => string;
+      orderLeftPackingList: (params: { trackingNumber: string }) => string;
       environmentMismatch: (params: { environment: string; settingsEnvironment: string }) => string;
       organizationMismatch: string;
       receiverInvalid: { phone: string; name: string; building_number: string; locker_code: string };
@@ -1139,6 +1172,32 @@ export interface Messages {
     appliesTo: (params: { count: number }) => string;
     showMore: string;
     showLess: string;
+  };
+  deliveryCorrection: {
+    shipmentExists: string;
+    shipmentAttempt: string;
+    shipmentRefresh: string;
+    receiverEmailOrCountry: string;
+    memberErased: string;
+    conflict: string;
+    action: string;
+    save: string;
+    saved: string;
+    bought: string;
+    shipped: string;
+    history: string;
+    phone: string;
+    recipientName: string;
+    line1: string;
+    line2: string;
+    postalCode: string;
+    city: string;
+    country: string;
+    locker: string;
+    invalid: string;
+    postalInvalid: string;
+    fields: { phone: string; recipient_name: string; address: string; pickup_point: string };
+    reasons: { unchanged: string; history_full: string; country: string; postal_code: string; locker_not_allowed: string; locker_unavailable: string; locker_invalid: string };
   };
   personalization: {
     forLine: (params: { name: string }) => string;
@@ -1259,6 +1318,10 @@ export interface Messages {
     reconciliationHint: string;
     reconciliationEmpty: string;
     reconciliationAge: (params: { date: string }) => string;
+    moreItems: (params: { count: number }) => string;
+    moreItemsLabel: (params: { count: number }) => string;
+    orderLines: (params: { count: number }) => string;
+    openMemberAccount: (params: { member: string }) => string;
     rejectedPaymentsHeading: string;
     rejectedPaymentsHint: string;
     rejectedPaymentsReason: string;
@@ -1422,6 +1485,25 @@ export interface Messages {
       'requested' | 'queued' | 'submitting' | 'processing' | 'issued' | 'delivered' | 'failed' | 'conflict',
       string
     >;
+    invoiceStatusHints: Record<
+      'requested' | 'queued' | 'submitting' | 'processing' | 'issued' | 'delivered' | 'failed' | 'conflict',
+      string
+    >;
+    ksefStateHints: Record<
+      'held' | 'queued' | 'session_opened' | 'submitting' | 'processing' | 'awaiting_upo' | 'succeeded' | 'rejected' | 'numbering_conflict',
+      string
+    >;
+    orderCount: (params: { count: number }) => string;
+    invoiceColumn: string;
+    noInvoice: string;
+    noInvoiceHint: string;
+    invoiceAny: string;
+    invoiceWith: string;
+    invoiceWithout: string;
+    invoiceData: string;
+    billings: Record<'company' | 'private' | 'none', string>;
+    billingHints: Record<'company' | 'private' | 'none', string>;
+    withBillingData: string;
   };
   coupons: {
     title: string;
@@ -3401,6 +3483,7 @@ export interface Messages {
     emailHint: string;
     couponEmailHint: string;
     payBlockedDelivery: string;
+    payBlockedLockerPhone: string;
     payBlockedLocker: string;
     payBlockedLockerRejected: string;
     payBlockedPersonalizationText: string;

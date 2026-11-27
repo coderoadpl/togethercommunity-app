@@ -212,7 +212,7 @@ const record = async (api: ApiClient, scenario: Scenario, baseUrl: string): Prom
     if (!recordPasskeys) throw new Error('Missing passkey recorder');
     calls[fixtureKey('listPasskeys', [])] = await recordPasskeys();
   }
-  // Both inherited DNS goldens captured the pending response cached by the live app.
+  // The inherited DNS fixtures captured the pending response cached by the live app.
   if (scenario.page.startsWith('panel-settings-domains')) {
     calls[fixtureKey('getTenantRouting', [])] = { ok: true, value: { routing: domainChecklistRouting(scenario.page.endsWith('-verified')) } };
   }

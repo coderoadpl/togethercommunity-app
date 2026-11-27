@@ -8,7 +8,7 @@ import { erasedPersonalizationLines, erasedPurchasePersonalizations, linesHavePe
 import { DEFAULT_PARCEL_TEMPLATE, lessonEditionSchema, orderProviderIdentifiers, storedProductCompliance, type StoredProductCompliance } from '#core/domain/index.js';
 import { eraseMarketingDeliveryPayloads } from './marketing-delivery-erasure.js';
 import { eraseMarketingMemberContact } from './marketing-contact-erasure.js';
-import { and, asc, desc, eq, exists, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, getTableColumns, gt, gte, ilike, inArray, isNotNull, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 
 import migrationJournal from '../../drizzle/meta/_journal.json' with { type: 'json' };
 import committedFingerprint from '../../drizzle/meta/schema-fingerprint.json' with { type: 'json' };
@@ -43,6 +43,7 @@ import {
   notificationSchema,
   orderSchema,
   ok,
+  orderLabel,
   orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
@@ -226,6 +227,7 @@ import {
   salesLinks,
   products,
   spaces,
+  staffListLayouts,
   suppressions,
   spaceEventRsvps,
   spaceEvents,
@@ -247,6 +249,7 @@ import {
   twoFactor,
   user,
 } from './schema.js';
+import { orderShipments } from './shipx-schema.js';
 
 const parseStaffRole = (raw: string): StaffRole | null => {
   const parsed = staffRoleSchema.safeParse(raw);
@@ -2934,15 +2937,33 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
           eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), eq(orders.id, metaCapiOutbox.orderId),
         ))),
       ));
+      const snapshotOrder = and(
+        eq(orders.tenantId, tenantId),
+        eq(checkoutSnapshots.providerSessionId, sql`${orders.providerObjectIds}->>'checkoutSession'`),
+      );
+      await tx.update(checkoutSnapshots).set({ shipping: sql`${checkoutSnapshots.shipping} - 'phone'` }).where(and(
+        eq(checkoutSnapshots.tenantId, tenantId),
+        or(
+          exists(tx.select({ id: orders.id }).from(orders).where(and(snapshotOrder, eq(orders.memberId, input.memberId)))),
+          and(
+            notExists(tx.select({ id: orders.id }).from(orders).where(snapshotOrder)),
+            exists(tx.select({ id: couponCheckoutSessions.id }).from(couponCheckoutSessions).where(and(
+              eq(couponCheckoutSessions.tenantId, tenantId),
+              eq(couponCheckoutSessions.providerSessionId, checkoutSnapshots.providerSessionId),
+              sql`lower(${couponCheckoutSessions.memberEmail}) = lower(${member.email})`,
+            ))),
+          ),
+        ),
+      ));
       const erasedAddress = sql`jsonb_build_object('name', ${input.postAuthorDisplay}::text, 'line1', ${input.postAuthorDisplay}::text, 'line2', null)`;
       await tx.update(orders).set({
-        shipping: sql`case
+        shipping: sql`(case
           when jsonb_typeof(${orders.shipping}->'address') = 'object'
             then jsonb_set(${orders.shipping}, '{address}', (${orders.shipping}->'address') || ${erasedAddress})
           when jsonb_typeof(${orders.shipping}->'address') <> 'null'
             then jsonb_set(${orders.shipping}, '{address}', ${erasedAddress})
           else ${orders.shipping}
-        end || jsonb_build_object('phone', null)`,
+        end - 'corrections') || jsonb_build_object('phone', null)`,
       }).where(and(
         eq(orders.tenantId, tenantId), eq(orders.memberId, input.memberId), isNotNull(orders.shipping),
         sql`jsonb_typeof(${orders.shipping}) = 'object'`,
@@ -3074,6 +3095,11 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
             eq(providerCustomerOwners.customerId, stripeCustomerId),
           ),
         ),
+      ));
+
+      await tx.delete(staffListLayouts).where(and(
+        eq(staffListLayouts.tenantId, tenantId),
+        eq(staffListLayouts.userId, member.userId),
       ));
 
       await tx
@@ -3497,6 +3523,14 @@ export const createOrderRepository = (
       : sql`${orders.attribution}->>'utmSource' = ${query.source}`);
     if (query.couponId !== undefined) conditions.push(eq(orders.couponId, query.couponId));
     if (query.fulfilmentStatus !== undefined) conditions.push(eq(orders.fulfilmentStatus, query.fulfilmentStatus));
+    if (query.invoice !== undefined) {
+      const invoiced = sql`EXISTS (SELECT 1 FROM ${invoices} WHERE ${invoices.tenantId} = ${orders.tenantId} AND ${invoices.orderId} = ${orders.id})`;
+      conditions.push(query.invoice === 'with' ? invoiced : sql`NOT ${invoiced}`);
+    }
+    if (query.billing === 'requested') conditions.push(isNotNull(orders.billing));
+    if (query.billing === 'none') conditions.push(isNull(orders.billing));
+    if (query.billing === 'company') conditions.push(sql`${orders.billing} IS NOT NULL AND ${orders.billing}->>'nip' IS NOT NULL`);
+    if (query.billing === 'private') conditions.push(sql`${orders.billing} IS NOT NULL AND ${orders.billing}->>'nip' IS NULL`);
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
       const search = or(
@@ -3512,6 +3546,7 @@ export const createOrderRepository = (
   const selectListRows = () => db
     .select({
       order: orders,
+      labelShipment: { shipxShipmentId: orderShipments.providerShipmentId, status: orderShipments.status, trackingNumber: orderShipments.trackingNumber },
       memberEmail: members.email,
       memberName: members.displayName,
       productTitle: products.title,
@@ -3519,6 +3554,7 @@ export const createOrderRepository = (
       salesLinkTitle: salesLinks.title,
     })
     .from(orders)
+    .leftJoin(orderShipments, and(eq(orderShipments.tenantId, orders.tenantId), eq(orderShipments.orderId, orders.id)))
     .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
     .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
     .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
@@ -3535,6 +3571,7 @@ export const createOrderRepository = (
       .where(and(eq(orderRefundJobs.tenantId, tenantId), inArray(orderRefundJobs.orderId, cancelledOrderIds)));
     return rows.map((row) => orderListItemSchema.parse({
       ...normalizeOrderDates(row.order),
+      label: orderLabel(row.labelShipment),
       memberEmail: row.memberEmail,
       memberName: row.memberName,
       productTitle: row.productTitle,
@@ -3622,6 +3659,7 @@ export const createOrderRepository = (
       const rows = await db
         .select({
           order: orders,
+          labelShipment: { shipxShipmentId: orderShipments.providerShipmentId, status: orderShipments.status, trackingNumber: orderShipments.trackingNumber },
           memberEmail: members.email,
           memberName: members.displayName,
           productTitle: products.title,
@@ -3629,6 +3667,7 @@ export const createOrderRepository = (
           salesLinkTitle: salesLinks.title,
         })
         .from(orders)
+        .leftJoin(orderShipments, and(eq(orderShipments.tenantId, orders.tenantId), eq(orderShipments.orderId, orders.id)))
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
@@ -3637,7 +3676,7 @@ export const createOrderRepository = (
         .limit(1);
       const row = rows[0];
       if (row === undefined) return null;
-      const order = orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
+      const order = orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, label: orderLabel(row.labelShipment), salesLinkTitle: row.salesLinkTitle ?? undefined });
       const staffIds = [
         ...order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [],
         ...order.shipment == null ? [] : [order.shipment.shippedBy],
@@ -3656,9 +3695,11 @@ export const createOrderRepository = (
     },
     list: async (tenantId, query) => {
       const conditions = conditionsFor(tenantId, query);
+      const direction = query.sortDirection === 'asc' ? asc : desc;
+      const sortColumn = query.sortBy === 'amountCents' ? orders.amountCents : orders.createdAt;
       const rows = await selectListRows()
         .where(and(...conditions))
-        .orderBy(desc(orders.createdAt), desc(orders.id))
+        .orderBy(direction(sortColumn), ...(query.sortBy === 'amountCents' ? [direction(orders.createdAt)] : []), direction(orders.id))
         .limit(query.pageSize)
         .offset((query.page - 1) * query.pageSize);
       const totals = await db
@@ -3689,18 +3730,20 @@ export const createOrderRepository = (
       const rows = await db
         .select({
           order: orders,
+          labelShipment: { shipxShipmentId: orderShipments.providerShipmentId, status: orderShipments.status, trackingNumber: orderShipments.trackingNumber },
           memberEmail: members.email,
           memberName: members.displayName,
           productTitle: products.title,
           couponCode: coupons.code,
         })
         .from(orders)
+        .leftJoin(orderShipments, and(eq(orderShipments.tenantId, orders.tenantId), eq(orderShipments.orderId, orders.id)))
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
         .orderBy(desc(orders.createdAt), desc(orders.id));
-      return rows.map((row) => orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row }));
+      return rows.map((row) => orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, label: orderLabel(row.labelShipment) }));
     },
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
       const memberCondition = and(

@@ -57,12 +57,17 @@ follow the same member-erasure selection as live orders.
   orders and from checkout snapshots bound to those orders' checkout sessions;
   copies in Stripe Checkout Session and PaymentIntent metadata are not erased;
 - replaces the delivery name and street lines (`line1`, `line2`) in the
-  member's `orders.shipping` with `deletedMemberDisplay()` and clears the phone
-  number; the delivery option, amounts, parcel locker, postal code, city and
-  country stay with the order, like the billing fields, and the copy collected
-  by Stripe on the Checkout Session is not erased; a stored address that is not
-  an object is replaced by the erased name and street lines, and a missing or
-  null address is left as it is;
+  member's `orders.shipping` with `deletedMemberDisplay()` and removes the
+  delivery phone and staff delivery-correction audit; the delivery option,
+  amounts, parcel locker, postal code, city and country stay with the order,
+  like the billing fields, and the copy collected by Stripe on the Checkout
+  Session is not erased; a stored address that is not an object is replaced by
+  the erased name and street lines, and a missing or null address is left as
+  it is;
+- removes the delivery phone from checkout snapshots bound to the member's
+  orders. For a checkout without an order, it removes the phone if a coupon
+  checkout record links the session to the member's e-mail in the same
+  workspace. Without such a link, the abandoned snapshot is left unchanged;
 - applies the same replacement to the delivery address in the purchase
   confirmation payload (`payload.purchase.delivery.address`) of every
   tenant-scoped `email_outbox` row addressed to the member's e-mail; that
@@ -86,6 +91,8 @@ follow the same member-erasure selection as live orders.
   `external_customer_ids`, so that Stripe customer is unowned again and a later
   subscription adoption follows the normal ownership rules; rows of other
   tenants stay;
+- deletes the member's auth user's `staff_list_layouts` rows in the current
+  tenant before severing the user id;
 - replaces the member `userId` and e-mail with tombstone values;
 - clears the display name, tags, marketing-consent projection, external
   customer identifiers, legacy identifier, avatar URL, and ban state
@@ -106,6 +113,9 @@ administrator invitation. Migration
 `0147_tenant_admin_invitations.sql` creates the invitation table with an `ON DELETE CASCADE` foreign
 key as a safeguard for auth-user deletion through any other path. Invitation
 rows store pending state only; activation and revocation already remove them.
+Staff list layouts in other workspaces stay until their auth user is deleted,
+which cascades through the `user_id` foreign key in
+`0173_staff_list_layouts.sql`.
 
 The transaction returns the avatar URL it cleared, and `removeMember` then
 deletes the stored `image-assets/<tenantId>/avatar/<id>.webp` object through the

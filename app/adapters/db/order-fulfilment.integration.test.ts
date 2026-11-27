@@ -4,7 +4,7 @@ import { orderSchema, type OrderShipment } from '#core/domain/index.js';
 import type { OrderShipmentEmail } from '#core/server/index.js';
 import { createOrderFulfilmentRepository } from './order-fulfilment.js';
 import { createOrderRepository } from './repositories.js';
-import { emailOutbox, members, orderFulfilmentEvents, orders, products, tenantAdmins, tenants, user } from './schema.js';
+import { emailOutbox, members, orderFulfilmentEvents, orderShipments, orders, products, tenantAdmins, tenants, user } from './schema.js';
 import { createTestDatabase } from './test-database-name.js';
 
 const baseDatabaseUrl = process.env['DATABASE_URL'] ?? 'postgres://together:together@localhost:48912/together';
@@ -77,12 +77,31 @@ const outboxFor = async (ids: string[]) => (await database.db.select().from(emai
   .filter((row) => ids.includes(row.id));
 
 describe('order fulfilment storage', () => {
-  it('lets one of two concurrent shipments win and writes its projection, event and e-mail together', async () => {
+  it('builds delivery in the queued email from the locked row instead of a stale email payload', async () => {
+    await createOrderRepository(database.db).create('workspace', order('corrected-mail'));
+    const stale = email('corrected-mail', 'CORRECT01');
+    await database.db.update(orders).set({ shipping: orderSchema.shape.shipping.parse({ ...shipping, pickupPoint: { provider: 'inpost', code: 'ABC02M', name: 'Corrected locker', address: 'New Street 2' } }) }).where(and(eq(orders.tenantId, 'workspace'), eq(orders.id, 'corrected-mail')));
+    expect(await createOrderFulfilmentRepository(database.db).ship('workspace', { orderId: 'corrected-mail', eventId: 'corrected-mail-event', shipment: shipment('first-staff', 'CORRECT01'), email: stale })).toMatchObject({ ok: true });
+    expect((await outboxFor(['corrected-mail']))[0]?.payload).toMatchObject({ shipment: { delivery: { pickupPoint: { code: 'ABC02M', name: 'Corrected locker' } } } });
+    expect(stale.payload.shipment.delivery.pickupPoint?.code).toBe('WAW01M');
+  });
+
+  it('dispatches a ready label once under concurrent requests and writes one event and email', async () => {
     await createOrderRepository(database.db).create('workspace', order('concurrent'));
+    await database.db.insert(orderShipments).values({
+      id: 'label-concurrent', tenantId: 'workspace', orderId: 'concurrent', provider: 'inpost_shipx',
+      environment: 'production', organizationId: '1234', providerShipmentId: '1001', status: 'confirmed',
+      trackingNumber: 'LABEL1234', boughtAt: now, createdAt: now, updatedAt: now,
+    });
+    const ready = await createOrderRepository(database.db).findById('workspace', 'concurrent');
+    expect(ready).toMatchObject({ fulfilmentStatus: 'to_pack', label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } });
+    const listed = await createOrderRepository(database.db).list('workspace', { fulfilmentStatus: 'to_pack', page: 1, pageSize: 20 });
+    expect(listed.orders.find((item) => item.id === 'concurrent')?.label).toEqual(ready?.label);
+    expect(await createOrderRepository(database.db).findById('other', 'concurrent')).toBeNull();
     const repo = createOrderFulfilmentRepository(database.db);
     const attempts = [
-      { orderId: 'concurrent', eventId: 'event-first', shipment: shipment('first-staff', 'FIRST001'), email: email('mail-first', 'FIRST001') },
-      { orderId: 'concurrent', eventId: 'event-second', shipment: shipment('second-staff', 'SECOND02', '2026-11-05T10:00:01.000Z'), email: email('mail-second', 'SECOND02') },
+      { orderId: 'concurrent', eventId: 'event-first', shipment: shipment('first-staff', 'LABEL1234'), email: email('mail-first', 'LABEL1234') },
+      { orderId: 'concurrent', eventId: 'event-second', shipment: shipment('second-staff', 'LABEL1234', '2026-11-05T10:00:01.000Z'), email: email('mail-second', 'LABEL1234') },
     ];
     const results = await Promise.all(attempts.map((input) => repo.ship('workspace', input)));
     expect(results.filter((result) => result.ok)).toHaveLength(1);
@@ -142,6 +161,6 @@ describe('order fulfilment storage', () => {
 
   it('filters the order list by the shipped status', async () => {
     const listed = await createOrderRepository(database.db).list('workspace', { fulfilmentStatus: 'shipped', page: 1, pageSize: 20 });
-    expect(listed.orders.map((item) => item.id).sort()).toEqual(['concurrent', 'refunded', 'repeat']);
+    expect(listed.orders.map((item) => item.id).sort()).toEqual(['concurrent', 'corrected-mail', 'refunded', 'repeat']);
   });
 });

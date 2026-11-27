@@ -1781,14 +1781,14 @@ it('applies the direct checkout promotion and redemption metadata with manual co
   expect(params.metadata).toMatchObject({ directCheckout: 'true', salesLinkId: 'link-1', checkoutSnapshotId: 'snapshot-1', couponCheckoutSessionId: 'coupon-session-1' });
 });
 
-it('collects a Polish shipping address and phone with exactly one inclusive fixed shipping option', () => {
+it('collects a Polish shipping address with one fixed option and a phone only for couriers', () => {
   const params = stripeCheckoutSessionParams({
     tenantId: 'tenant-a', productId: 'accessory', productName: 'Printed accessory', priceCents: 4900, currency: 'PLN',
     successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/cancel', checkoutSnapshotId: 'snapshot-1',
-    shipping: { allowedCountries: ['PL'], phone: true, option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN', deliveryEstimateDays: { min: 1, max: 2 } } },
+    shipping: { allowedCountries: ['PL'], phone: false, option: { label: 'Parcel locker', amountCents: 1499, currency: 'PLN', deliveryEstimateDays: { min: 1, max: 2 } } },
   });
   expect(params.shipping_address_collection).toEqual({ allowed_countries: ['PL'] });
-  expect(params.phone_number_collection).toEqual({ enabled: true });
+  expect(params.phone_number_collection).toEqual({ enabled: false });
   expect(params.shipping_options).toEqual([{ shipping_rate_data: {
     type: 'fixed_amount', fixed_amount: { amount: 1499, currency: 'pln' }, display_name: 'Parcel locker', tax_behavior: 'inclusive',
     delivery_estimate: { minimum: { unit: 'business_day', value: 1 }, maximum: { unit: 'business_day', value: 2 } },
@@ -1800,6 +1800,7 @@ it('collects a Polish shipping address and phone with exactly one inclusive fixe
     successUrl: 'https://alpha.example.com/success', cancelUrl: 'https://alpha.example.com/cancel',
     shipping: { allowedCountries: ['PL'], phone: true, option: { label: 'Courier', amountCents: 1999, currency: 'PLN' } },
   });
+  expect(withoutEstimate.phone_number_collection).toEqual({ enabled: true });
   expect(withoutEstimate.shipping_options).toEqual([{ shipping_rate_data: {
     type: 'fixed_amount', fixed_amount: { amount: 1999, currency: 'pln' }, display_name: 'Courier', tax_behavior: 'inclusive',
   } }]);

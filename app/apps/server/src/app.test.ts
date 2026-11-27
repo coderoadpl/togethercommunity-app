@@ -41,6 +41,7 @@ import {
   envelopeSchema,
   healthOutputSchema,
   imageAssetUploadOutputSchema,
+  LIST_LAYOUT_EXPECTED_USER_HEADER,
   myProductsOutputSchema,
   ordersListOutputSchema,
   salesLinkContracts,
@@ -72,6 +73,7 @@ import { selfAuthenticatingRouteManifestEntry } from './self-authenticating-rout
 import {
   err,
   emailEventSchema,
+  listLayoutSchema,
   orderListItemSchema,
   salesLinkSchema,
   couponSchema,
@@ -558,6 +560,11 @@ const deps = (input: {
       record: async (tenantId, { seenAt, ...rejection }) => ({ tenantId, ...rejection, firstSeenAt: seenAt, lastSeenAt: seenAt, attempts: 1, resolvedAt: null }),
       resolve: async () => undefined,
       listUnresolved: async () => [],
+    },
+    listLayouts: {
+      get: async () => null,
+      put: async () => undefined,
+      delete: async () => undefined,
     },
     purchases: {
       createMemberGrant: async (purchase) => ({
@@ -1281,6 +1288,18 @@ describe('order list payment mode', () => {
     expect(payload.data.orders.map((row) => row.id)).toEqual(['acme-live', 'acme-test']);
     expect(payload.data.total).toBe(2);
     expect(h.list).toHaveBeenCalledExactlyOnceWith(acme.id, { page: 1, pageSize: 20 });
+  });
+
+  it('passes the invoice, billing and sort parameters of the list and the export to the repository', async () => {
+    const h = harness();
+    const search = 'invoice=without&billing=company&sortBy=amountCents&sortDirection=asc';
+    expect((await h.app.request(`/api/orders?${search}`, { headers: { host: 'acme.localhost' } })).status).toBe(200);
+    expect((await h.app.request(`/api/orders/export?format=csv&${search}`, { headers: { host: 'acme.localhost' } })).status).toBe(200);
+    const filters = { invoice: 'without', billing: 'company', sortBy: 'amountCents', sortDirection: 'asc' };
+    expect(h.list.mock.calls).toEqual([
+      [acme.id, { ...filters, page: 1, pageSize: 20 }],
+      [acme.id, { ...filters, mode: 'live', page: 1, pageSize: 100 }],
+    ]);
   });
 
   it.each(['staging', ''])('rejects invalid mode=%s before reading orders', async (mode) => {
@@ -11410,9 +11429,15 @@ it('asks the carrier once for the parcel locker of a simulated purchase through 
   ] });
   const directory = createPickupPointDirectoryFake();
   h.base.pickupPoints = directory;
-  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+  const missingPhone = await purchase(h.app, { host: 'acme.localhost' }, {
     productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
     shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+  });
+  expect(await missingPhone.json()).toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
+  expect(h.orders).toHaveLength(0);
+  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+    productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
+    shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
   });
   expect(await response.json()).toMatchObject({ ok: true, data: { orderId: expect.any(String) } });
   expect(directory.lookups).toHaveLength(1);
@@ -13369,5 +13394,64 @@ describe('checkout personalisation through the public routes', () => {
     expect(response.status).toBe(200);
     expect(h.orders[0]?.lines?.[0]).toMatchObject({ productId: 'print', personalization: { ...setting, text: 'For Alex', requestedAt: h.base.clock.nowIso(), conditionAcceptedAt: h.base.clock.nowIso() } });
     expect(h.orders[0]?.lines?.[1]).not.toHaveProperty('personalization');
+  });
+});
+
+describe('saved list layout routes', () => {
+  const headers = { host: 'acme.localhost:48730', origin: 'http://acme.localhost:48730', 'content-type': 'application/json', [LIST_LAYOUT_EXPECTED_USER_HEADER]: 'user-1' };
+  const path = API_PATHS.getListLayout.replace(':listId', 'orders');
+  const layout = { version: 1, columns: [{ field: 'createdAt', visible: true, width: 180 }], sort: null, filters: { billing: 'requested' } };
+  const storeApp = (scope: 'member' | 'staff') => {
+    const rows = new Map<string, unknown>();
+    const listLayouts: AppDeps['listLayouts'] = {
+      get: async (tenantId, userId, listId) => {
+        const stored = rows.get(`${tenantId}|${userId}|${listId}`);
+        return stored === undefined ? null : listLayoutSchema.parse(stored);
+      },
+      put: async (tenantId, userId, listId, value) => { rows.set(`${tenantId}|${userId}|${listId}`, value); },
+      delete: async (tenantId, userId, listId) => { rows.delete(`${tenantId}|${userId}|${listId}`); },
+    };
+    return { app: scopedApp(scope, { overrides: { listLayouts } }), rows };
+  };
+
+  it('saves, reads and resets the signed-in staff user\'s layout in this workspace', async () => {
+    const { app, rows } = storeApp('staff');
+    expect(await (await app.request(path, { headers })).json()).toEqual({ ok: true, data: { layout: null } });
+    const saved = await app.request(path, { method: 'PUT', headers, body: JSON.stringify({ layout }) });
+    expect(saved.status).toBe(200);
+    expect([...rows.keys()]).toHaveLength(1);
+    expect([...rows.keys()]).toEqual([`${acme.id}|user-1|orders`]);
+    expect(await (await app.request(path, { headers })).json()).toEqual({ ok: true, data: { layout } });
+    expect((await app.request(path, { method: 'DELETE', headers })).status).toBe(200);
+    expect(rows.size).toBe(0);
+  });
+
+  it('rejects every operation when the expected account does not match the signed-in user', async () => {
+    const { app, rows } = storeApp('staff');
+    const body = JSON.stringify({ layout });
+    expect((await app.request(path, { method: 'PUT', headers, body })).status).toBe(200);
+    const attemptedHeaders = { ...headers, [LIST_LAYOUT_EXPECTED_USER_HEADER]: 'user-2' };
+    const requests = [
+      { method: 'GET', headers: attemptedHeaders },
+      { method: 'PUT', headers: attemptedHeaders, body: JSON.stringify({ layout: { ...layout, filters: {} } }) },
+      { method: 'DELETE', headers: attemptedHeaders },
+    ];
+    for (const request of requests) {
+      const response = await app.request(path, request);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    }
+    expect([...rows.entries()]).toEqual([[`${acme.id}|user-1|orders`, layout]]);
+  });
+
+  it('refuses a member, an unknown list and a malformed layout', async () => {
+    const member = storeApp('member');
+    expect((await member.app.request(path, { headers })).status).toBe(403);
+    expect((await member.app.request(path, { method: 'PUT', headers, body: JSON.stringify({ layout }) })).status).toBe(403);
+    const staff = storeApp('staff');
+    expect((await staff.app.request(API_PATHS.getListLayout.replace(':listId', 'members'), { headers })).status).toBe(400);
+    expect((await staff.app.request(path, { method: 'PUT', headers, body: JSON.stringify({ layout: { ...layout, version: 2 } }) })).status).toBe(400);
+    expect((await staff.app.request(path, { method: 'PUT', headers: { ...headers, 'content-type': 'text/plain' }, body: JSON.stringify({ layout }) })).status).toBe(400);
+    expect(member.rows.size + staff.rows.size).toBe(0);
   });
 });

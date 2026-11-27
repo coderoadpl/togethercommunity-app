@@ -612,11 +612,11 @@ export const SCREENS: readonly ScreenSpec[] = [
       assert(hit.clear, `Dashboard member manage action must not be covered: ${JSON.stringify(hit)}`);
     },
   },
-  ...[false, true].map((active): ScreenSpec => ({
-    name: active ? 'panel-settings-domains-active' : 'panel-settings-domains',
+  {
+    name: 'panel-settings-domains',
     auth: 'creator',
     path: '/panel/settings#domains',
-    prepare: (page) => prepareDomainChecklist(page, active),
+    prepare: (page) => prepareDomainChecklist(page, false),
     ready: (page) => page.getByTestId('tenant-domain-courses.example.org').waitFor(visible),
     settled: async (page) => {
       // The initial hash jump can precede font layout and leave stale sticky-layer pixels.
@@ -624,7 +624,7 @@ export const SCREENS: readonly ScreenSpec[] = [
       await waitForPaint(page);
       await page.locator('#domains').evaluate((element) => element.scrollIntoView({ block: 'start' }));
     },
-  })),
+  },
   {
     name: 'panel-settings-security',
     auth: 'creator',

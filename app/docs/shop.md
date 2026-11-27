@@ -70,9 +70,12 @@ locker is chosen on the map the option shows a check with **Selected parcel
 locker**, the code, name and address and a **Change** button that reopens the
 picker, and the typed-code field closes. Without a map (no Geowidget token, a staff session or test mode, or
 a map that failed to load) the option shows the code input directly, with one
-short reason when there is one. The pay button stays disabled until an option,
-and a valid code when the option needs one, is chosen, and a line under the
-button says which of the two is missing.
+short reason when there is one. Both checkout layouts show a mobile phone
+field for any selected InPost rate. The pay button stays disabled until the
+buyer has chosen a delivery option and supplied a valid locker code and Polish
+mobile number when required. The single-product form names the missing
+requirement below the pay button; the cart form names a missing phone or a
+rejected locker.
 
 A typed code is checked at the carrier through the
 [parcel locker lookup](#parcel-locker-lookup-at-the-carrier) when the buyer
@@ -249,7 +252,15 @@ keeps that page's content security policy, the map does not load, the picker
 says so, and the code input remains the way to choose a locker.
 
 The checkout request carries
-`shipping: { rateId, pickupPoint?: { provider: 'inpost', code, name?, address? } }`.
+`shipping: { rateId, phone?, pickupPoint?: { provider: 'inpost', code, name?, address? } }`
+for both single-product and cart checkout. `shipping.phone` is required for
+every rate with `carrier: 'inpost'` (parcel locker and courier). Enter a Polish
+mobile number: nine digits, optionally prefixed with `+48`, `0048` or `48`;
+spaces and dashes are accepted. The phone string is limited to 40 characters
+after trimming. Together stores it as `+48XXXXXXXXX` and uses it on the order
+instead of the number entered in Stripe. Stripe still collects a phone for one
+release so a rollback can fulfil existing checkouts. Other carriers do not
+require `shipping.phone` and still use the number from Stripe.
 The server validates it again:
 
 | Situation | Result |
@@ -258,6 +269,7 @@ The server validates it again:
 | no selected product ships and `shipping` is present | `validation` |
 | unknown or inactive option | `validation` |
 | locker option without a locker, or address option with one | `validation` |
+| missing or invalid Polish mobile number for an InPost rate after schema validation | `locker_phone_invalid` (HTTP 400, CLI exit 33) |
 | locker code not matching `^[A-Z0-9]{4,12}$` after trimming and upper-casing | `validation` |
 | locker code the carrier does not know | `validation` with the message `No InPost parcel locker has this code` and `details.pickupPointReason: 'not_found'` |
 | carrier point that is not a parcel locker or cannot hold parcels for collection | `validation`, `This InPost point cannot hold parcels for collection`, `not_usable` |
@@ -379,8 +391,9 @@ The checkout snapshot appends a shipping line after the product lines:
 `productType: 'shipping'`, `productId: 'shipping:<rateId>'`, the option label as
 its name, gross, net and VAT split at the option's VAT rate and
 `issuedCount: null`. `checkout_snapshots.shipping` freezes the option
-(`rateId`, `label`, `amountCents`, `vatRatePercent`, `carrier`, `pickupPoint`)
-and the allowed countries at checkout start, so later edits to the option do not
+(`rateId`, `label`, `amountCents`, `vatRatePercent`, `carrier`, `pickupPoint`),
+the canonical `phone` for an InPost rate and the allowed countries at checkout
+start, so later edits to the option do not
 change an order in flight.
 
 When Stripe reports the completed session, the webhook requires a shipping fee
@@ -397,16 +410,18 @@ snapshot lines, shipping included. The paid order stores:
 - `orders.shipping`: the frozen option, the pickup point or `null` (with
   `verified: false` only when the carrier could not be asked), the
   delivery address (`name`, `line1`, `line2`, `postalCode`, `city`, `country`)
-  and the phone number collected by Stripe;
+  and the canonical phone from the checkout snapshot, falling back to the
+  Stripe phone for older snapshots without a stored phone and for other carriers;
 - `orders.fulfilment_status = 'to_pack'`. Orders without shipping keep `null`.
 
 Rollback: the unverified mark is one optional key, written only when the carrier
 could not be asked, in the same JSONB pickup point object of
-`checkout_snapshots.shipping` and `orders.shipping`; no migration adds it. Every
-schema the previous release uses to read stored orders, checkout snapshots,
-fulfilment views and e-mail payloads is non-strict, so that release reads such a
-row and drops the key, and e-mail payloads never carry it
-(`orderDeliveryDetails` copies only the code, name and address).
+`checkout_snapshots.shipping` and `orders.shipping`. This release also adds
+optional `checkout_snapshots.shipping.phone` and `orders.shipping.corrections`
+without a migration. The previous release can read the snapshots and orders,
+ignores these extra fields and continues to use the phone collected by Stripe
+when fulfilling a snapshot. E-mail payloads carry neither the pickup point's
+verification mark nor the correction history.
 `core/domain/shipping-rollback.test.ts` holds a literal copy of the previous
 release's shipping schemas and proves they parse what this release writes.
 
@@ -426,14 +441,16 @@ details because the session status endpoint returns no order data to buyers.
 
 Staff test purchases store the same snapshot and the pending test order
 receives the shipping data when the test session completes. Simulated
-purchases accept the same `shipping` input and use a fixed Polish address and
-phone number in place of the data Stripe would collect.
+purchases accept the same `shipping` input and use a fixed Polish address.
+They use the required checkout phone for InPost rates and a fixed phone for
+other carriers.
 
 Member erasure replaces the delivery name and street lines with the deleted
-member label and clears the phone number; the option, amounts, locker, postal
-code, city and country stay with the order. The delivery address in queued and
-sent purchase confirmation e-mails is pseudonymised the same way. See
-[Member erasure](member-erasure.md).
+member label and removes the order phone and delivery correction history. It
+also removes the checkout phone from snapshots linked to the erased member;
+the option, amounts, locker, postal code, city and country stay with the order.
+The delivery address in queued and sent purchase confirmation e-mails is
+pseudonymised the same way. See [Member erasure](member-erasure.md).
 
 My products shows a shipped physical purchase as "Will be shipped to" the
 locker code or, for address delivery, the city, until the order is shipped;
@@ -444,9 +461,11 @@ is shown below that line, see [Fulfilment](#fulfilment).
 
 The order detail page shows a **Delivery** card (option, price, locker,
 address, phone, and a **Locker not verified** warning for a pickup point stored
-with `verified: false`) and a fulfilment chip (**To pack** or **Shipped**). The orders
-list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
-`fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
+with `verified: false`) and a fulfilment chip (**To pack**, **Label ready** or **Shipped**). The orders
+list has a **Fulfilment** filter under **Add filter** (all orders, `to_pack` or
+`shipped`, sent as `fulfilmentStatus`), also offered in the **Fulfilment**
+column's menu while that grid column is visible, and shows the same chips in
+that column and on the phone order cards. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
 `shipping_country` and `fulfilment_status`, followed by `client_reference`
@@ -455,7 +474,53 @@ JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `out_of_stock` for an order cancelled because its goods sold out before the
 payment arrived, empty otherwise. `cancel_reason` is the last column so the
 earlier column positions stay unchanged, and `status` keeps the payment status.
-The JSON export carries the same value as `cancelReason`.
+The JSON export carries the same value as `cancelReason`. The staff JSON export
+also carries `shipping.corrections` (see
+[Correct delivery details](#correct-delivery-details)); shop-key exports omit it.
+
+### Correct delivery details
+
+An owner or admin with `order:write` can correct the phone, recipient name,
+address or existing parcel locker in the **Delivery** card before dispatch.
+The delivery option, price, country and member e-mail cannot be changed here.
+The replacement locker must be verified by InPost, and a replacement InPost
+phone follows the [checkout format](#checkout).
+
+`POST /api/orders/:orderId/delivery-details` is a staff-session route. The path
+supplies the order ID. Send at least one changed field and the corresponding
+previous value in `expected`, for example:
+
+```json
+{ "phone": "500 000 000", "expected": { "phone": null } }
+```
+
+Other editable fields are `recipientName`, `address` (any of `line1`,
+`line2`, `postalCode`, `city`) and `pickupPoint: { code }`. For a locker
+change, `expected.pickupPoint` is the stored locker code, not an object. For an
+address change, put the previous values for the same fields in
+`expected.address`. A `null` or empty `address.line2` clears that line.
+Success returns `data.order` with the updated delivery details and the staff
+history in `shipping.corrections`. The history is capped at 50 entries and is
+not returned to shop management keys. The correction does not send an e-mail
+or create a new label; subsequent dispatch uses the updated details.
+
+If an active shipment already has a provider ID, handle the change in InPost
+Manager. An active or unresolved creation attempt without an ID must be
+refreshed or discarded first. A recorded canceled label does not block a
+correction; saving does not replace it.
+
+| Situation | Error code | HTTP | CLI exit |
+|---|---|---|---|
+| Invalid InPost phone | `locker_phone_invalid` | 400 | 33 |
+| Order already dispatched | `delivery_correction_shipped` | 409 | 34 |
+| Non-canceled shipment already bought | `delivery_correction_shipment_bought` | 409 | 35 |
+| Non-canceled shipment exists or creation is active or unresolved | `delivery_correction_shipment_exists` | 409 | 36 |
+| Member erased | `delivery_correction_member_erased` | 409 | 37 |
+| Stored details differ from `expected`; reload the order before retrying | `delivery_correction_conflict` | 409 | 38 |
+| No field actually changes (`unchanged`), the history would exceed 50 entries (`history_full`), the address country is outside the allowed delivery countries (`country`), a Polish postal code is not in `00-000` form (`postal_code`), locker change on an address order (`locker_not_allowed`), InPost lookup unavailable (`locker_unavailable`) or locker unknown or unusable (`locker_invalid`) | `validation` with `details.deliveryCorrection` set to the reason | 400 | 2 |
+
+An order that is not paid, has nothing to pack or has no delivery details is a
+`validation` error (400, exit 2).
 
 ## Fulfilment
 
@@ -483,12 +548,20 @@ e-mail is queued. A unique index on the order and event type keeps one shipped
 event per order. Two concurrent requests serialize on the order row: one ships
 the order, the other returns `fulfilment_conflict` and queues nothing.
 
+A bought InPost label leaves the stored status `to_pack`; its derived
+**Label ready** display changes no fulfilment event. Use the same ship route
+with the label's stored tracking number when the parcel is dispatched.
+
 The tracking link is derived from the carrier and the number by
 `shipmentTrackingUrl` in `core/domain/fulfilment.ts`: InPost parcels link to
 `https://inpost.pl/sledzenie-przesylek?number=<trackingNumber>`; `other` shows
 the number without a link. A new carrier is one entry in that map.
 
 ### Shipment e-mail
+
+Creating or refreshing a label sends no buyer e-mail. The message below is
+queued only by **Mark as shipped**, including the explicit `markShipped`
+opt-in during label creation.
 
 The buyer receives the `order-shipped` e-mail at the member e-mail address:
 "Order shipped — <workspace> (#<reference>)", where the reference is the first
@@ -733,8 +806,9 @@ delivery option has the carrier `inpost`, when the staff role has `order:write`
 and the workspace is ready. The service follows the option: a parcel locker
 option sends `inpost_locker_standard` with the locker code as `target_point`,
 an address option sends `inpost_courier_standard` with the delivery address.
-The confirmation names the service, the parcel size and the buyer e-mail, and
-offers **Parcel size for this shipment**: **Automatic** (the largest product
+The confirmation names the service and parcel size. It offers an unchecked
+**Mark as shipped right away and e-mail the buyer** checkbox (test orders say
+that no e-mail is sent), and **Parcel size for this shipment**: **Automatic** (the largest product
 size, the default) or one of the three sizes. The chosen size is sent as the
 optional `parcelTemplate` (`small`, `medium` or `large`) in the body of
 `POST /api/orders/<orderId>/shipx`, or with
@@ -747,8 +821,9 @@ ShipX already has, and **Discard the attempt and create again** offers the same
 choice for the new shipment. The receiver is the delivery name (split into
 first and last name at the last space), the member e-mail and the delivery phone. For courier shipments the
 street line is split into street and building number; an address without a
-building number is refused with a validation message so staff can dispatch it
-manually. ShipX e-mail and SMS notifications (`additional_services`) stay off
+building number is refused with a validation message. Staff can
+[correct the delivery address](#correct-delivery-details) when no shipment
+blocks the change, or dispatch manually. ShipX e-mail and SMS notifications (`additional_services`) stay off
 because Together sends its own shipment e-mail. The ShipX `reference` is the
 order id (cut to 100 characters).
 
@@ -777,15 +852,56 @@ order id (cut to 100 characters).
    (`offers_prepared` or `offer_selected` without a running or successful
    transaction) is paid with the selected or the matching available offer
    (`POST /v1/shipments/<id>/buy`), at most once per request;
-4. stores the tracking number and the purchase time and calls the existing
-   **Mark as shipped** use-case with the carrier `inpost` and the tracking
-   number, so the fulfilment event, the shipment projection and the buyer
-   e-mail come from the same code path as a manual shipment. That step is a
-   conditional transition inside the fulfilment transaction: when staff marked
-   the order as shipped by hand in the meantime, the ShipX shipment stays
-   stored and the request answers `fulfilment_conflict` with the tracking
-   number in the message and in `details`, so staff can reconcile the two in
-   Manager Paczek.
+4. stores the tracking number and the purchase time, then returns `{ order,
+   shipment }`. **The default changed: creating a label no longer marks the
+   order as shipped.** The order stays `to_pack`, no fulfilment event is
+   written and no buyer e-mail is queued. `markShipped: true` in the API body
+   or `--mark-shipped` on `order shipx create` (also `shop orders shipx create`)
+   restores the one-step flow: the existing **Mark as shipped** use-case runs
+   with `inpost` and the stored tracking number. Its conditional transaction
+   writes the fulfilment event and queues the buyer e-mail. In either create
+   mode, if another request dispatched the same InPost label meanwhile, the
+   request returns the shipped order without queuing another e-mail. If the
+   other request used a different carrier or tracking number, create returns
+   `fulfilment_conflict` with `details.state: 'manual_shipped'`, `trackingNumber`
+   and `shipxShipmentId` for reconciliation in Manager Paczek. If the order
+   instead left the packing list while the shipment was bought, create returns
+   `conflict` with `details: { trackingNumber, shipxShipmentId }` and tells staff
+   to cancel the label in Manager Paczek. Both conflicts preserve the bought
+   shipment and record the operation outcome as `bought`. If the stored or
+   newly read status of the label is `canceled`, with or without a tracking
+   number, both create modes return `conflict` with
+   `details.state: 'label_canceled'`, `trackingNumber` (or `null`) and
+   `shipxShipmentId`, without waiting for a payment. The operation ends as `failed`, with no dispatch or
+   e-mail. Staff must create a new label in Manager Paczek and mark the order
+   as shipped by hand.
+
+**Label ready** is a display state, never a stored fulfilment status. It means
+`to_pack` with a stored ShipX id, valid tracking number and status past
+`offer_selected`, excluding a known `canceled` status. Order list and detail
+responses add an optional `label` object (`{ carrier: 'inpost', trackingNumber }`), or `null`;
+older clients can keep parsing the response. These orders stay in the `to_pack` filter and
+packing list. Studio shows an info-coloured chip, carrier status, tracking
+number, **Print label** and one primary **Mark as shipped** action. The
+shipping form prefills the carrier and tracking number. Staff can replace both
+if they canceled a label in Manager Paczek. The confirmation says that the
+buyer e-mail will be sent now (never for test orders). Studio shows no shipped
+date or staff name until dispatch, and no second **Create InPost shipment**
+button. A stale ShipX view cannot hide a label already stored on the order
+unless it reports `canceled`, in which case Studio warns staff and clears the
+tracking prefill; on an order that is no longer to pack the warning only says
+that the original label was canceled. Cancellation is only known here if a ShipX read recorded it
+before purchase completed in Together; status changes after purchase are not
+tracked yet.
+When the ShipX view discovers a label that the order detail did not have,
+Studio invalidates the sales order lists without calling the ShipX refresh
+again.
+
+A create request for an already bought label still takes and finishes its
+claim but makes no ShipX call or purchase. Unless the label is known to be
+canceled, the request returns the current order and shipment without writing
+fulfilment or sending e-mail by default; with `markShipped: true` it runs the
+same one-time dispatch transition.
 
 The request has one deadline, 20 seconds from its start, checked before the
 create, before each read and before the purchase, and once before the
@@ -797,7 +913,9 @@ attempt, and the last status, and the order stays to pack. A row that holds
 neither yet (the deadline passed before the create was recorded) is deleted,
 so the next click starts over with the current settings. `GET /api/orders/<orderId>/shipx`
 (`order:read`) returns the readiness and the stored shipment without calling
-ShipX or writing. `POST /api/orders/<orderId>/shipx/refresh` (`order:write`, CLI
+ShipX or writing. The stored shipment carries `operationClaimed: true` while a
+request holds its creation claim; such a shipment blocks a
+[delivery correction](#correct-delivery-details). `POST /api/orders/<orderId>/shipx/refresh` (`order:write`, CLI
 `order shipx refresh <orderId>`) returns the same view after reading the live
 ShipX status once for a stored shipment that is not bought yet and storing it.
 When staff who may ship open the order, Studio loads the view through the
@@ -873,6 +991,10 @@ concurrent click confirmed.
 
 ### Shipment history
 
+The `bought` operation outcome means the carrier label is paid, not that the
+order was dispatched. It stays `bought` for both label-only creation and the
+explicit one-step flow; no history enum or stored status changed.
+
 Every ShipX attempt step is recorded with the staff user who caused it in the
 append-only `order_shipment_events` table, written in the same transaction as
 the `order_shipments` change, so the row can be deleted on release or discard
@@ -912,7 +1034,11 @@ ShipX webhooks.
 
 ### Label
 
-**Print label** appears once the shipment has a tracking number. Studio calls
+**Print label** appears for a bought label with a tracking number unless its
+stored status is `canceled`. For an already shipped order, Studio shows it
+only if the actual dispatch is InPost with the same tracking number (ignoring
+surrounding whitespace). The download refuses a known canceled label with a
+`validation` error without calling ShipX. Otherwise Studio calls
 `POST /api/orders/<orderId>/shipx/label` (`order:write`) with the API client,
 checks that the answer is `application/pdf` and saves it as a file; an error
 answer is shown under the button instead of being saved. The route asks ShipX
@@ -931,7 +1057,8 @@ paid yet.
 | order not to pack, or already shipped | `validation` or `fulfilment_conflict` |
 | delivery option not InPost, phone not a Polish number, building number missing | `validation` |
 | another request holds the order's claim, or took it over during the request | `fulfilment_conflict` (HTTP 409, CLI exit 27) |
-| the order was marked as shipped by hand while the shipment was bought | `fulfilment_conflict` with the tracking number |
+| another request marked the order as shipped with a different carrier or tracking number while the shipment was bought | `fulfilment_conflict` with `details.state: 'manual_shipped'`, `trackingNumber` and `shipxShipmentId` |
+| the order left the packing list while the shipment was bought | `conflict` with `trackingNumber` and `shipxShipmentId`; cancel the label in Manager Paczek |
 | the stored shipment belongs to another connection than the order's mode uses, or to another organization | `conflict` (HTTP 409, CLI exit 6) |
 | an earlier attempt is unconfirmed and ShipX lists no shipment for the order | `conflict` |
 | ShipX refuses the request (4xx), the payment fails or the offer is unavailable or expired | `shipx_rejected` (HTTP 422, CLI exit 29) with the ShipX `error` key, a description of at most 300 characters and the field keys of `details`; the raw body is never stored or logged |
@@ -1278,7 +1405,8 @@ correction only and never overwritten, and `text`, `editedAt` and `editedBy`
 (the staff user id) are set. A line without a personalisation is `validation`,
 an unknown order `not_found`. The update of the order row produces an order
 change feed entry through the existing trigger. The condition and its
-acceptance cannot be edited.
+acceptance cannot be edited. To edit shipping rather than personalisation, use
+[Correct delivery details](#correct-delivery-details).
 
 ### Purchase confirmation
 
@@ -1316,8 +1444,9 @@ The page learns the last two from `GET /api/public/payment-config`: `canTest`
 is true for a signed-in owner or admin of the workspace, and `testEnabled` for
 the session-bound test-mode switch. Owners and admins, who use `/checkout/*`
 and `/offer/*?checkout=together` for test-mode purchases, never load the map:
-their delivery step shows only the locker code input with the hint "The
-parcel-locker map is available to buyers; enter the locker code." As defence in
+their delivery step uses the typed locker code input instead of the map, with
+the hint "The parcel-locker map is available to buyers; enter the locker
+code." The InPost mobile number is still required. As defence in
 depth the endpoint itself returns `inpostGeowidgetToken: null` with
 `inpostGeowidgetWithheld: true` to a staff session, and to an owner or admin
 viewing the workspace as a member (impersonation), so the page shows the same
@@ -1368,16 +1497,18 @@ pnpm --silent run cli --tenant acme product create --title 'Printed holder' \
   --type physical --delivery-method shipping --price-cents 4900
 pnpm --silent run cli --tenant acme product update <id> --delivery-method pickup
 pnpm --silent run cli --tenant acme checkout session --product <id> \
-  --shipping-rate locker --pickup-point WAW01M
+  --shipping-rate locker --pickup-point WAW01M --shipping-phone "+48 500 000 000"
 pnpm --silent run cli --tenant acme checkout session --line <id>:2 --line <other-id>:1 \
-  --shipping-rate locker --pickup-point WAW01M
+  --shipping-rate locker --pickup-point WAW01M --shipping-phone "+48 500 000 000"
 pnpm --silent run cli --tenant acme simulate-purchase --email buyer@example.com \
-  --product <id> --shipping-rate locker --pickup-point WAW01M
+  --product <id> --shipping-rate locker --pickup-point WAW01M --shipping-phone "+48 500 000 000"
 pnpm --silent run cli --tenant acme orders list --fulfilment to_pack
 pnpm --silent run cli --tenant acme orders packing-list --format csv --out packing-list.csv
 pnpm --silent run cli --tenant acme orders packing-list --format csv --mode test
 pnpm --silent run cli --tenant acme orders ship <orderId> --carrier inpost --tracking 520000011395200025754311
 pnpm --silent run cli --tenant acme orders list --fulfilment shipped
+pnpm --silent run cli --tenant acme order delivery <orderId> --phone '+48 500 000 000'
+pnpm --silent run cli --tenant acme order delivery <orderId> --line1 'Example Street 2' --postal-code '00-001' --city 'Warsaw'
 pnpm --silent run cli --tenant acme tenant shipx-set --slot sandbox \
   --organization-id 1234 --token-env SHIPX_SANDBOX_TOKEN
 pnpm --silent run cli --tenant acme tenant shipx-set --slot production \
@@ -1390,6 +1521,7 @@ pnpm --silent run cli --tenant acme product update <id> --parcel-template large
 pnpm --silent run cli --tenant acme --json order shipx show <orderId>
 pnpm --silent run cli --tenant acme --json order shipx refresh <orderId>
 pnpm --silent run cli --tenant acme --json order shipx create <orderId>
+pnpm --silent run cli --tenant acme --json order shipx create <orderId> --mark-shipped
 pnpm --silent run cli --tenant acme order shipx label <orderId> --out label.pdf
 pnpm --silent run cli --tenant acme order shipx discard <orderId>
 pnpm --silent run cli --tenant acme product update <id> \
@@ -1404,12 +1536,23 @@ pnpm --silent run cli --tenant acme checkout session --sales-link <link-id> --pr
 pnpm --silent run cli --tenant acme orders personalization <orderId> <productId> --text 'For Anna'
 ```
 
+`order delivery` reads the current order and sends expected previous values with
+the [delivery corrections](#correct-delivery-details). `--line1`, `--postal-code`
+and `--city` must be given together; `--line2` is optional, stays unchanged
+when omitted and is cleared with an empty string. If an active shipment already
+has an InPost ID, change the receiver in
+InPost Manager. If a creation attempt is in progress or unresolved and no ID
+exists, refresh the shipment or discard the attempt before correcting the
+details. A known canceled label does not block corrections, and saving a
+correction does not replace it.
+
 `--shipping-rates` replaces the whole list; an empty string for
 `--inpost-geowidget-token` clears the token. `--checkout-return-origins` replaces
 the list of shop origins that checkout return and cancel addresses may use
 (see [Return and cancel addresses](shop-integration.md#return-and-cancel-addresses));
 an empty string clears it. `--pickup-point` needs
-`--shipping-rate`. `checkout session --line <product-id>:<quantity>` posts a
+`--shipping-rate`. Every InPost rate also requires `--shipping-phone` (a Polish
+mobile number, for example `+48 500 000 000`). `checkout session --line <product-id>:<quantity>` posts a
 cart; repeat it once per product and leave out `--product` and `--sales-link`
 (see [Cart: several products and quantities](shop-integration.md#cart-several-products-and-quantities)).
 For an order with a line above one unit, `orders list` shows its product lines

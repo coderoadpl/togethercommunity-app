@@ -1,4 +1,4 @@
-import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalListStatusSchema, orderBillingFilterSchema, orderInvoiceFilterSchema, orderSortDirectionSchema, orderSortFieldSchema, deliveryMethodSchema, fulfilmentStatusSchema, orderFulfilmentDisplay, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -74,6 +74,7 @@ import {
 } from './config.js';
 import { registerReportCommands } from './report-commands.js';
 import { registerShopKeyCommands } from './shop-key-commands.js';
+import { shipxCreateLine } from './shipx-output.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { registerOrderChangeCommands } from './order-change-commands.js';
 import { registerOrderRefundCommands } from './order-refund-commands.js';
@@ -255,7 +256,7 @@ const ordersShipOptionsSchema = z.object({
 const ordersIssueOptionsSchema = z.object({
   count: z.string().regex(/^[1-9]\d*$/, 'Count must be a positive integer').transform((value) => Number.parseInt(value, 10)).optional(),
 });
-const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional() });
+const ordersShipxCreateOptionsSchema = z.object({ parcelTemplate: parcelTemplateSchema.optional(), markShipped: z.boolean().default(false) });
 const ordersShipxLabelOptionsSchema = z.object({ out: z.string().min(1) });
 const tenantShipxSetOptionsSchema = z.object({
   slot: shipxEnvironmentSchema.optional(),
@@ -318,6 +319,7 @@ const personalizationSelection = (
 };
 const shippingSelectionOptionsSchema = z.object({
   shippingRate: z.string().min(1).optional(),
+  shippingPhone: z.string().min(1).optional(),
   pickupPoint: z.string().min(1).optional(),
 });
 const simulatePurchaseOptionsSchema = shippingSelectionOptionsSchema.merge(personalizationSelectionOptionsSchema).extend({
@@ -336,6 +338,10 @@ const priceAddOptionsSchema = z.object({
   currency: currencySchema.optional(),
 });
 const ordersListOptionsSchema = z.object({
+  invoice: orderInvoiceFilterSchema.optional(),
+  billing: orderBillingFilterSchema.optional(),
+  sortBy: orderSortFieldSchema.optional(),
+  sortDirection: orderSortDirectionSchema.optional(),
   mode: stripeModeSchema.optional(),
   sourceExact: z.boolean().optional(),
   source: z.string().min(1).max(200).optional(),
@@ -357,6 +363,10 @@ const ordersListOptionsSchema = z.object({
     .optional(),
 });
 const ordersExportOptionsSchema = z.object({
+  invoice: orderInvoiceFilterSchema.optional(),
+  billing: orderBillingFilterSchema.optional(),
+  sortBy: orderSortFieldSchema.optional(),
+  sortDirection: orderSortDirectionSchema.optional(),
   sourceExact: z.boolean().optional(),
   source: z.string().min(1).max(200).optional(),
   format: z.enum(['csv', 'json']),
@@ -1030,6 +1040,7 @@ checkout
   .option('--language <language>', 'checkout language (pl or en)')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--shipping-phone <phone>', 'delivery phone; required for every InPost rate')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--client-reference <reference>', 'your own reference for this checkout (1-200 printable ASCII characters), stored on the order')
   .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product, not with --line', (value: string, previous: string[]) => [...previous, value], [])
@@ -1097,10 +1108,11 @@ const shippingSelection = (
   options: z.output<typeof shippingSelectionOptionsSchema>,
 ): Result<CheckoutShippingInput | null, AppError> => {
   if (options.shippingRate === undefined) {
-    return options.pickupPoint === undefined ? ok(null) : err(validation('Pass --shipping-rate <id> together with --pickup-point <code>'));
+    return options.pickupPoint === undefined && options.shippingPhone === undefined ? ok(null) : err(validation('Pass --shipping-rate <id> together with --pickup-point or --shipping-phone'));
   }
   return ok({
     rateId: options.shippingRate,
+    ...(options.shippingPhone === undefined ? {} : { phone: options.shippingPhone }),
     ...(options.pickupPoint === undefined ? {} : { pickupPoint: { provider: 'inpost' as const, code: options.pickupPoint } }),
   });
 };
@@ -1975,6 +1987,41 @@ ordersCommand
       );
     }),
   );
+ordersCommand.command('delivery <orderId>').description('Correct delivery details of an order waiting to be packed')
+  .option('--phone <phone>', 'delivery phone')
+  .option('--recipient-name <name>', 'recipient name')
+  .option('--locker <code>', 'parcel locker code')
+  .option('--line1 <line>', 'street and building number; requires --postal-code and --city')
+  .option('--line2 <line>', 'apartment or second address line; omitted means unchanged, empty clears it; requires --line1, --postal-code and --city')
+  .option('--postal-code <code>', 'postal code')
+  .option('--city <city>', 'city')
+  .action(withInput(z.tuple([z.string().min(1), z.object({
+    phone: z.string().optional(), recipientName: z.string().optional(), locker: z.string().optional(),
+    line1: z.string().optional(), line2: z.string().optional(), postalCode: z.string().optional(), city: z.string().optional(),
+  })]), async (ctx, [orderId, options]) => {
+    const addressChanged = options.line1 !== undefined || options.line2 !== undefined || options.postalCode !== undefined || options.city !== undefined;
+    if (addressChanged && (options.line1 === undefined || options.postalCode === undefined || options.city === undefined)) {
+      emit(err(validation('Pass --line1, --postal-code and --city together; --line2 is optional and otherwise unchanged')), ctx.json, () => '');
+      return;
+    }
+    const current = await ctx.api.getOrder(orderId);
+    if (!current.ok) { emit(current, ctx.json, () => ''); return; }
+    const shipping = current.value.order.shipping;
+    if (shipping == null) { emit(err(validation('Order has no delivery details')), ctx.json, () => ''); return; }
+    emit(await ctx.api.correctOrderDelivery({
+      orderId,
+      expected: {
+        ...(options.phone === undefined ? {} : { phone: shipping.phone }),
+        ...(options.recipientName === undefined ? {} : { recipientName: shipping.address.name }),
+        ...(options.locker === undefined ? {} : { pickupPoint: shipping.pickupPoint?.code ?? null }),
+        ...(addressChanged ? { address: { line1: shipping.address.line1, line2: shipping.address.line2, postalCode: shipping.address.postalCode, city: shipping.address.city } } : {}),
+      },
+      ...(options.phone === undefined ? {} : { phone: options.phone }),
+      ...(options.recipientName === undefined ? {} : { recipientName: options.recipientName }),
+      ...(options.locker === undefined ? {} : { pickupPoint: { code: options.locker } }),
+      ...(addressChanged ? { address: { line1: options.line1 ?? '', line2: options.line2 ?? shipping.address.line2, postalCode: options.postalCode ?? '', city: options.city ?? '' } } : {}),
+    }), ctx.json, (data) => JSON.stringify(data, null, 2));
+  }));
 const ordersShipx = ordersCommand.command('shipx').description('InPost ShipX shipments and labels');
 ordersShipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment').action(
   withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [orderId]) => {
@@ -1988,14 +2035,15 @@ ordersShipx.command('refresh <orderId>').description('Read the live ShipX status
 );
 ordersShipx
   .command('create <orderId>')
-  .description('Create and pay the InPost shipment, then mark the order as shipped')
+  .description('Create and pay the InPost label; keep the order to pack by default')
+  .option('--mark-shipped', 'also mark the order as shipped and email the buyer', false)
   .option('--parcel-template <size>', 'InPost parcel size for this shipment: small, medium or large (default: the largest product template)')
   .action(
     withInput(z.tuple([z.string().min(1), ordersShipxCreateOptionsSchema]), async (ctx, [orderId, options]) => {
       emit(
-        await ctx.api.shipxCreate({ orderId, ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }) }),
+        await ctx.api.shipxCreate({ orderId, markShipped: options.markShipped, ...(options.parcelTemplate === undefined ? {} : { parcelTemplate: options.parcelTemplate }) }),
         ctx.json,
-        (data) => `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`,
+        shipxCreateLine,
       );
     }),
   );
@@ -2051,6 +2099,10 @@ ordersCommand
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
+  .option('--invoice <state>', 'with or without an invoice record')
+  .option('--billing <request>', 'requested, company, private or none (invoice data the buyer gave at checkout)')
+  .option('--sort-by <field>', 'createdAt (default) or amountCents')
+  .option('--sort-direction <direction>', 'desc (default) or asc')
   .option('--page <n>')
   .option('--page-size <n>')
   .action(
@@ -2066,6 +2118,10 @@ ordersCommand
           ...(options.source === undefined ? {} : { source: options.source }),
           ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
           ...(options.search === undefined ? {} : { search: options.search }),
+          ...(options.invoice === undefined ? {} : { invoice: options.invoice }),
+          ...(options.billing === undefined ? {} : { billing: options.billing }),
+          ...(options.sortBy === undefined ? {} : { sortBy: options.sortBy }),
+          ...(options.sortDirection === undefined ? {} : { sortDirection: options.sortDirection }),
           ...(options.page === undefined ? {} : { page: options.page }),
           ...(options.pageSize === undefined ? {} : { pageSize: options.pageSize }),
         }),
@@ -2076,7 +2132,7 @@ ordersCommand
             : [
                 ...data.orders.map(
                   (order) =>
-                    `${order.createdAt}\t${orderStatusLabel(order)}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
+                    `${order.createdAt}\t${orderStatusLabel(order)}\t${orderFulfilmentDisplay(order) ?? '-'}\t${order.amountCents} ${order.currency}\t${order.kind}\t${orderProductsLabel(order)}\t${order.memberEmail}\t${order.clientReference == null ? '' : `ref ${order.clientReference}\t`}(${order.id.slice(0, 8)})`,
                 ),
                 `page ${data.page}/${Math.max(1, Math.ceil(data.total / data.pageSize))} — ${data.total} order(s)`,
               ].join('\n'),
@@ -2096,6 +2152,10 @@ ordersCommand
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
+  .option('--invoice <state>', 'with or without an invoice record')
+  .option('--billing <request>', 'requested, company, private or none (invoice data the buyer gave at checkout)')
+  .option('--sort-by <field>', 'createdAt (default) or amountCents')
+  .option('--sort-direction <direction>', 'desc (default) or asc')
   .option('--out <file>', 'write the export to a file instead of stdout')
   .action(
     withInput(z.tuple([ordersExportOptionsSchema]), async (ctx, [options]) => {
@@ -2109,6 +2169,10 @@ ordersCommand
         ...(options.source === undefined ? {} : { source: options.source }),
         ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
         ...(options.search === undefined ? {} : { search: options.search }),
+        ...(options.invoice === undefined ? {} : { invoice: options.invoice }),
+        ...(options.billing === undefined ? {} : { billing: options.billing }),
+        ...(options.sortBy === undefined ? {} : { sortBy: options.sortBy }),
+        ...(options.sortDirection === undefined ? {} : { sortDirection: options.sortDirection }),
       });
       if (result.ok && options.out !== undefined) {
         await writeFile(options.out, result.value.content);
@@ -3607,6 +3671,7 @@ program
   .option('--price-id <id>', 'buy a specific price; a recurring price starts a simulated subscription')
   .option('--shipping-rate <id>', 'delivery option id for products that are shipped')
   .option('--pickup-point <code>', 'parcel locker code for a locker delivery option')
+  .option('--shipping-phone <phone>', 'delivery phone; required for every InPost rate')
   .option('--accept-terms', 'accept the workspace terms on behalf of the buyer')
   .option('--personalization <productId:text>', 'the personalisation text the buyer asks for on a product; repeat for each product', (value: string, previous: string[]) => [...previous, value], [])
   .option('--accept-condition', 'accept the personalisation conditions on behalf of the buyer')

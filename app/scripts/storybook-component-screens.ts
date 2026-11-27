@@ -72,6 +72,7 @@ const storyByScreen: ReadonlyMap<string, string> = new Map([
   ['lesson-editions-menu-dark-desktop', 'member-lessoneditions--menu-dark-desktop'],
   ['lesson-editions-menu-dark-mobile', 'member-lessoneditions--menu-dark-mobile'],
   ['telemetry-overview', 'integrations-telemetrystore--overview'],
+  ['panel-sales-grid', 'panel-sales-list--grid-capture'],
   ['personalisation-unticked', 'checkout-personalisation--unticked'],
   ['personalisation-error', 'checkout-personalisation--error-missing-text'],
   ['personalisation-condition', 'checkout-personalisation--with-condition'],
@@ -121,6 +122,15 @@ const screen = (
 const telemetryScreens: ScreenSpec[] = [{
   name: 'telemetry-overview', auth: 'creator', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true,
   ready: async (page) => { await page.getByTestId('telemetry-overview').waitFor(visible); },
+}];
+
+const salesGridScreens: ScreenSpec[] = [{
+  name: 'panel-sales-grid', auth: 'creator', path: '', viewports: ['desktop', 'mobile'], minBytes: 4 * 1024, fullPage: true,
+  ready: async (page) => {
+    const phone = (page.viewportSize()?.width ?? 0) < 600;
+    await page.getByTestId(phone ? 'sales-cards' : 'sales-grid').waitFor(visible);
+    await page.getByTestId('studio-grid-count').filter({ hasText: /\d/u }).waitFor(visible);
+  },
 }];
 
 const personalisationScreens: ScreenSpec[] = [
@@ -228,6 +238,7 @@ export const componentScreens: readonly ScreenSpec[] = [
   { name: 'lesson-editions-menu-dark-desktop', auth: 'member', path: '', viewports: ['desktop'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('lesson-editions-list').waitFor(visible); } },
   { name: 'lesson-editions-menu-dark-mobile', auth: 'member', path: '', viewports: ['mobile'], minBytes: 4 * 1024, ready: async (page) => { await page.getByTestId('lesson-editions-list').waitFor(visible); } },
   ...telemetryScreens,
+  ...salesGridScreens,
   ...personalisationScreens,
   screen('markdown-editor-empty', 'desktop'),
   screen('markdown-editor-long-content', 'mobile'),

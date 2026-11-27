@@ -4,7 +4,7 @@ import {
   SHIPX_COURIER_PARCEL_WEIGHT_KG,
   SHIPX_PARCEL_DIMENSIONS_MM,
   splitPersonName,
-  normalizeShipxPhone,
+  normalizeShipxSenderPhone,
   type ShipxRemoteShipment,
   type ShipxSender,
   type ShipxShipmentRequest,
@@ -86,7 +86,7 @@ const toWireSender = (sender: ShipxSender) => {
     first_name: name.firstName,
     last_name: name.lastName,
     email: sender.email,
-    phone: normalizeShipxPhone(sender.phone) ?? sender.phone,
+    phone: normalizeShipxSenderPhone(sender.phone) ?? sender.phone,
     address: {
       street: sender.street,
       building_number: sender.buildingNumber,

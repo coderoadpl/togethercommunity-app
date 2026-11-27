@@ -30,11 +30,16 @@ import {
   deliveryMethodSchema,
   err,
   fulfilmentStatusSchema,
+  orderBillingFilterSchema,
+  orderInvoiceFilterSchema,
+  orderSortDirectionSchema,
+  orderSortFieldSchema,
   isChangeProposalReference,
   KEY_DOWNLOAD_CONTENT_TYPE_BY_EXTENSION,
   keyDownloadAttachInputSchema,
   notFound,
   ok,
+  orderFulfilmentDisplay,
   parcelTemplateSchema,
   priceKindSchema,
   priceMajorSchema,
@@ -62,6 +67,7 @@ import { changeProposalAppliedLine } from './change-proposal-output.js';
 import { imageUploadInput, productImagesFileOption } from './image-files.js';
 import { emit, orderStatusLabel } from './output.js';
 import { readStdin, secretInput } from './secret-input.js';
+import { shipxCreateLine } from './shipx-output.js';
 import { shipxSettingsLines, shipxSlotPatch } from './shipx-settings.js';
 import { formatProductStock } from './stock-commands.js';
 
@@ -140,6 +146,10 @@ const orderFiltersSchema = z.object({
   source: z.string().min(1).max(200).optional(),
   sourceExact: z.boolean().optional(),
   search: z.string().min(1).optional(),
+  invoice: orderInvoiceFilterSchema.optional(),
+  billing: orderBillingFilterSchema.optional(),
+  sortBy: orderSortFieldSchema.optional(),
+  sortDirection: orderSortDirectionSchema.optional(),
 });
 const ordersListSchema = orderFiltersSchema.extend({
   mode: stripeModeSchema.optional(),
@@ -309,10 +319,14 @@ const orderFilters = (options: z.output<typeof orderFiltersSchema>) => ({
   ...(options.source === undefined ? {} : { source: options.source }),
   ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
   ...(options.search === undefined ? {} : { search: options.search }),
+  ...(options.invoice === undefined ? {} : { invoice: options.invoice }),
+  ...(options.billing === undefined ? {} : { billing: options.billing }),
+  ...(options.sortBy === undefined ? {} : { sortBy: options.sortBy }),
+  ...(options.sortDirection === undefined ? {} : { sortDirection: options.sortDirection }),
 });
 
 const orderLine = (order: OrderListItem): string =>
-  `${order.createdAt}\t${orderStatusLabel(order)}\t${order.mode ?? 'live'}\t${order.fulfilmentStatus ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
+  `${order.createdAt}\t${orderStatusLabel(order)}\t${order.mode ?? 'live'}\t${orderFulfilmentDisplay(order) ?? '-'}\t${String(order.amountCents)} ${order.currency}\t${order.productTitle}\t${order.memberEmail}\t(${order.id})`;
 
 const shipxOrderLines = (view: ShipxOrderView): string => [
   `available: ${String(view.available)}${view.reason === null ? '' : ` (${view.reason})`}`,
@@ -709,7 +723,11 @@ export const registerShopKeyCommands = (
     .option('--fulfilment <status>', 'to_pack (paid orders that still need shipping) or shipped')
     .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
     .option('--source-exact', 'treat --source literally, including the campaign source none')
-    .option('--search <text>', 'search by member e-mail or name');
+    .option('--search <text>', 'search by member e-mail or name')
+    .option('--invoice <state>', 'with or without an invoice record')
+    .option('--billing <request>', 'requested, company, private or none (invoice data the buyer gave at checkout)')
+    .option('--sort-by <field>', 'createdAt (default) or amountCents')
+    .option('--sort-direction <direction>', 'desc (default) or asc');
   keyed(withOrderFilters(orders.command('list').description('List orders with filters and paging; use --mode live for fulfilment automation'))
     .option('--mode <mode>', 'live or test (default: both)')
     .option('--page <n>')
@@ -761,9 +779,9 @@ export const registerShopKeyCommands = (
   const shipx = orders.command('shipx').description('InPost ShipX shipments and labels');
   keyed(shipx.command('show <orderId>').description('Show whether the order can use InPost ShipX and its stored shipment'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxShipment({ orderId }), shipxOrderLines));
-  keyed(shipx.command('create <orderId>').description('Create and pay the InPost shipment, then mark the order as shipped'))
-    .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxCreate({ orderId }), (data) =>
-      `shipped: ${data.order.id} (inpost ${data.shipment.trackingNumber ?? ''})`));
+  keyed(shipx.command('create <orderId>').description('Create and pay the InPost label; keep the order to pack by default')
+    .option('--mark-shipped', 'also mark the order as shipped and email the buyer', false))
+    .action(run(z.tuple([idSchema, keyOnlySchema.extend({ markShipped: z.boolean().default(false) })]), (client, [orderId, options]) => client.shipxCreate({ orderId, markShipped: options.markShipped }), shipxCreateLine));
   keyed(shipx.command('refresh <orderId>').description('Read the live ShipX status of a shipment not yet paid, store it and show the order'))
     .action(run(z.tuple([idSchema, keyOnlySchema]), (client, [orderId]) => client.shipxRefresh({ orderId }), shipxOrderLines));
   keyed(shipx.command('discard <orderId>').description('Discard an InPost attempt that ShipX did not confirm, after checking Manager Paczek; this never cancels a shipment in ShipX'))

@@ -1,5 +1,5 @@
 import type { ElementType } from 'react';
-import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Dialog, DialogActions, DialogTitle, Drawer, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, Table, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Backdrop, Badge, Box, Breadcrumbs, Button, ButtonBase, Chip, Dialog, DialogActions, DialogTitle, Drawer, IconButton, LinearProgress, Link, List, ListItem, ListItemButton, ListItemText, OutlinedInput, Paper, Popover, Stack, SvgIcon, TableCell, TableContainer, Tabs, TextField, Typography } from '@mui/material';
 import { TreeItem, TreeItemContent } from '@mui/x-tree-view/TreeItem';
 import { SimpleTreeView } from '@mui/x-tree-view/SimpleTreeView';
 import { alpha, createTheme, darken, lighten, styled, type CSSObject, type Theme } from '@mui/material/styles';
@@ -4752,6 +4752,125 @@ export const SurveyScaleButton = styled(Button, { shouldForwardProp: (prop) => p
 }));
 export const SurveyCommentCell = styled(TableCell)({ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' });
 
+const TABLE_HEAD_KEYS = ['color', 'fontSize', 'fontWeight', 'letterSpacing', 'textTransform'] as const;
+const isStyleObject = (value: unknown): value is CSSObject => typeof value === 'object' && value !== null && !Array.isArray(value);
+const tableHeadTypography = (theme: Theme): CSSObject => {
+  const head = theme.components?.MuiTableCell?.styleOverrides?.head;
+  const style: CSSObject = isStyleObject(head) ? head : {};
+  return {
+    color: theme.palette.text.primary,
+    fontWeight: theme.typography.fontWeightMedium,
+    fontSize: theme.typography.body2.fontSize,
+    letterSpacing: 'normal',
+    textTransform: 'none',
+    ...Object.fromEntries(TABLE_HEAD_KEYS.flatMap((key) => (style[key] === undefined ? [] : [[key, style[key]]]))),
+  };
+};
+
+const tableRowDividerColor = (theme: Theme): string => {
+  const root = theme.components?.MuiTableCell?.styleOverrides?.root;
+  const border = isStyleObject(root) ? root.borderBottom : undefined;
+  const color = typeof border === 'string' ? /^\S+\s+\S+\s+(.+)$/.exec(border)?.[1] : undefined;
+  return color ?? theme.palette.divider;
+};
+
+export const STUDIO_GRID_CONTROL_CLASS = 'StudioDataGrid-control';
+export const STUDIO_GRID_WRAP_CHIPS_CLASS = 'StudioDataGrid-wrapChips';
+
+export const STUDIO_GRID_HEADER_HEIGHT = 56;
+
+const studioGridSurface = (theme: Theme) => ({
+  backgroundColor: theme.palette.background.paper,
+  borderColor: theme.palette.divider,
+  borderRadius: 12,
+});
+
+export const StudioGridSkeleton = styled('div')(({ theme }) => ({
+  ...studioGridSurface(theme),
+  borderStyle: 'solid',
+  borderWidth: 1,
+  minWidth: 0,
+}));
+export const StudioGridSkeletonRow = styled('div')(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: theme.spacing(2),
+  paddingInline: theme.spacing(1),
+  minHeight: 52,
+  borderBottom: `1px solid ${tableRowDividerColor(theme)}`,
+}));
+export const StudioGridSkeletonHeader = styled(StudioGridSkeletonRow)({ minHeight: STUDIO_GRID_HEADER_HEIGHT });
+export const StudioGridSkeletonFooter = styled(StudioGridSkeletonRow)({ justifyContent: 'flex-end', borderBottom: 0 });
+
+export const StudioDataGridFrame = styled('div')(({ theme }) => ({
+  minWidth: 0,
+  '& .MuiDataGrid-root': {
+    ...studioGridSurface(theme),
+    '--DataGrid-containerBackground': theme.palette.background.paper,
+    '--DataGrid-rowBorderColor': tableRowDividerColor(theme),
+    '& .MuiDataGrid-columnHeaderTitle': {
+      ...tableHeadTypography(theme),
+      whiteSpace: 'normal',
+      lineHeight: 1.3,
+    },
+    '& .MuiDataGrid-columnHeaders': { overflow: 'hidden' },
+    '& .MuiDataGrid-columnHeader, & .MuiDataGrid-cell:not(.MuiDataGrid-cellEmpty)': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+    '& .MuiDataGrid-cell': {
+      display: 'flex',
+      alignItems: 'center',
+      paddingTop: '0.625rem',
+      paddingBottom: '0.625rem',
+      whiteSpace: 'normal',
+      lineHeight: 1.43,
+      fontSize: '0.875rem',
+    },
+    '& .MuiDataGrid-cell > *': { minWidth: 0, maxWidth: '100%' },
+    [`& .${STUDIO_GRID_CONTROL_CLASS}`]: { paddingLeft: 0, paddingRight: 0, justifyContent: 'center' },
+    '& .MuiDataGrid-cell .MuiChip-root': { height: 'auto', minHeight: 24, maxWidth: '100%' },
+    '& .MuiDataGrid-cell .MuiChip-label': { whiteSpace: 'nowrap', paddingTop: 2, paddingBottom: 2 },
+    [`& .${STUDIO_GRID_WRAP_CHIPS_CLASS} .MuiChip-label`]: { whiteSpace: 'normal' },
+    '& .MuiDataGrid-cell:focus, & .MuiDataGrid-cell:focus-within, & .MuiDataGrid-columnHeader:focus, & .MuiDataGrid-columnHeader:focus-within': {
+      outline: `2px solid ${theme.palette.primary.main}`,
+      outlineOffset: -2,
+    },
+    '& .MuiDataGrid-row:hover': { backgroundColor: theme.palette.action.hover },
+    '& .MuiDataGrid-row:last-of-type .MuiDataGrid-cell': { borderBottom: 0 },
+  },
+  '@media (prefers-reduced-motion: reduce)': { '& *': { transition: 'none', animation: 'none' } },
+}));
+export const StudioGridCellStack = styled('div')({
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: '0.25rem',
+  minWidth: 0,
+  width: '100%',
+  '& .MuiButton-text': { whiteSpace: 'nowrap', minWidth: 0, paddingLeft: '0.3125rem', paddingRight: '0.3125rem', marginLeft: '-0.3125rem' },
+});
+export const StudioGridChipRow = styled('div')({ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', minWidth: 0 });
+export const StudioGridHint = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  borderRadius: 4,
+  textDecorationStyle: 'dotted',
+  textUnderlineOffset: '0.2em',
+  cursor: 'help',
+  '&:hover': { textDecorationLine: 'underline' },
+  '&:focus-visible': { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 2 },
+}));
+export const StudioGridMutedHint = styled(StudioGridHint)(({ theme }) => ({ color: theme.palette.text.secondary }));
+export const StudioGridCaptionHint = styled(StudioGridMutedHint)(({ theme }) => ({ ...theme.typography.caption, display: 'block', marginTop: '-0.25rem' }));
+export const StudioGridCount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
+export const StudioGridColumnRow = styled('li')(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  padding: '0.125rem 0',
+  '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
+}));
+export const StudioGridColumnList = styled('ul')({ listStyle: 'none', margin: 0, padding: 0 });
+export const StudioGridNoWrap = styled('span')({ whiteSpace: 'nowrap' });
+export const StudioGridEllipsis = styled('span')({ display: 'block', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+export const SalesGridMember = styled('span')({ display: 'block', minWidth: 0, width: '100%', whiteSpace: 'nowrap' });
 export const SalesOrderCardList = styled('ul')(({ theme }) => ({
   listStyle: 'none',
   margin: 0,
@@ -4760,13 +4879,42 @@ export const SalesOrderCardList = styled('ul')(({ theme }) => ({
   border: `1px solid ${theme.palette.divider}`,
   borderRadius: 12,
 }));
-export const SalesTable = styled(Table)(({ theme }) => ({
-  [theme.breakpoints.down('xl')]: {
-    '& .MuiTableCell-root:not(.MuiTableCell-paddingCheckbox)': { paddingLeft: '0.5rem', paddingRight: '0.5rem' },
+export const SalesMemberName = styled('span')({ display: 'block', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', overflowWrap: 'anywhere' });
+export const SalesMemberEmail = styled('span')(({ theme }) => ({
+  ...theme.typography.body2,
+  display: 'block',
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  overflowWrap: 'anywhere',
+  color: theme.palette.text.secondary,
+  userSelect: 'text',
+}));
+export const OrderDetailValue = styled(Typography)<AsElement>(({ theme }) => ({ minWidth: 0, [theme.breakpoints.up('sm')]: { textAlign: 'right' } }));
+export const SalesDateLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
+  display: 'inline-flex',
+  flexDirection: 'column',
+  color: theme.palette.text.primary,
+  textDecoration: 'none',
+  '&:hover, &:focus-visible': { color: theme.palette.primary.main, textDecoration: 'underline' },
+}));
+export const SalesDateTime = styled('span')(({ theme }) => ({ ...theme.typography.caption, color: theme.palette.text.secondary }));
+// Zero intrinsic width keeps a long first item or an expanded list from widening the product column.
+const SALES_FILL_CELL: CSSObject = { width: 0, minWidth: '100%' };
+export const SalesProductLine = styled('div')({ ...SALES_FILL_CELL, display: 'flex', alignItems: 'center', gap: '0.25rem' });
+export const SalesProductName = styled('span')({ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+export const SalesProductMore = styled('span')(({ theme }) => ({ flexShrink: 0, color: theme.palette.text.secondary, whiteSpace: 'nowrap' }));
+export const SalesProductToggle = styled(IconButton, { shouldForwardProp: (prop) => prop !== 'expanded' })<{ expanded: boolean }>(({ theme, expanded }) => ({
+  position: 'relative',
+  zIndex: 1,
+  flexShrink: 0,
+  padding: '0.125rem',
+  '& svg': {
+    transform: expanded ? 'rotate(180deg)' : 'none',
+    '@media (prefers-reduced-motion: no-preference)': { transition: theme.transitions.create('transform', { duration: 150 }) },
   },
 }));
-export const SalesNoWrapCell = styled(TableCell)({ whiteSpace: 'nowrap' });
-export const SalesMemberCell = styled(TableCell)({ whiteSpace: 'nowrap', maxWidth: '14rem', overflow: 'hidden', textOverflow: 'ellipsis' });
+export const SalesProductItems = styled('ul')(({ theme }) => ({ ...SALES_FILL_CELL, ...theme.typography.body2, margin: '0.25rem 0 0', paddingLeft: '1.25rem', overflowWrap: 'anywhere' }));
 export const SalesCardAmount = styled(Typography)({ fontWeight: 600, whiteSpace: 'nowrap' });
 export const SalesOrderCard = styled('li')(({ theme }) => ({
   position: 'relative',
@@ -4778,7 +4926,6 @@ export const SalesOrderCard = styled('li')(({ theme }) => ({
   '& + &': { borderTop: `1px solid ${theme.palette.divider}` },
 }));
 export const SalesCardControl = styled('span')({ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column' });
-export const SalesCardMemberLink = styled(Link)<AsElement & { to?: string }>({ position: 'relative', zIndex: 1 });
 export const SalesCardOrderLink = styled(Link)<AsElement & { to?: string }>(({ theme }) => ({
   display: 'flex',
   alignItems: 'center',
@@ -4888,7 +5035,14 @@ export const RefundFinalNote = styled(Stack)(({ theme }) => ({
 export const RefundAmountField = styled(TextField, { shouldForwardProp: (prop) => prop !== 'locked' })<{ locked: boolean }>(({ theme, locked }) => (
   locked ? { '& .MuiOutlinedInput-root': { backgroundColor: theme.palette.action.hover } } : {}
 ));
+export const RefundUnitChip = styled(Chip)({
+  maxWidth: '100%',
+  '& .MuiChip-label': { display: 'flex', minWidth: 0 },
+});
+export const RefundUnitName = styled('span')({ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' });
+export const RefundUnitQuantity = styled('span')({ flexShrink: 0, whiteSpace: 'pre' });
 export const RefundFieldset = styled('fieldset')(({ theme }) => ({
+  minWidth: 0,
   margin: 0,
   padding: '0.75rem 1rem',
   border: `1px solid ${theme.palette.divider}`,

@@ -935,6 +935,8 @@ issuing owner's account. Invoices and refunds are not available with a shop
 management key; they stay on the staff session routes. A shop key never
 refunds; a propose-mode key never refunds: no scope grants `order:refund`, and
 the [staff refund routes](shop.md#staff-refunds) answer a key `401`.
+[Delivery correction](shop.md#correct-delivery-details) likewise needs a staff
+session. Shop-key responses, including JSON exports, omit `shipping.corrections`.
 
 | Method and path | Scope | Session counterpart |
 |---|---|---|
@@ -981,10 +983,14 @@ buyer the tracking number for a live order. `POST .../shipx` creates and pays
 a real InPost shipment for a live order when the workspace's `production`
 ShipX connection is saved, so automate it only with explicit operational
 approval; a test-mode order uses the `sandbox` connection. Its body
-may carry the optional `parcelTemplate` (`small`, `medium` or `large`) for this
-shipment; without it the parcel takes the largest product size, and any other
-value or an unknown field answers `400 validation` before anything is sent to
-ShipX. A request that finds another request working on the same shipment answers
+may carry `parcelTemplate` (`small`, `medium` or `large`; defaults to the largest
+product size) and `markShipped` (boolean, defaults to `false`). **The default
+changed:** a request with `{}` now buys the label and leaves the order to pack,
+without e-mailing the buyer. Send `{ "markShipped": true }` for the previous
+one-step behaviour: buy, mark as shipped, and e-mail the buyer for a live
+order. The previous release answers `400 validation` to a body containing
+`markShipped`, even if it is `false`. Invalid values or unknown fields answer
+`400 validation` before anything is sent to ShipX. A request that finds another request working on the same shipment answers
 `409 fulfilment_conflict` and should be retried later. Every such call that
 reaches its handler has its key history `request` row, written before the
 handler runs, including a call the handler refuses: a validation error, a
@@ -1057,10 +1063,17 @@ pnpm --silent run cli --tenant acme shop orders ship <order-id> --carrier other 
 pnpm --silent run cli --tenant acme shop orders issue <order-id> <product-id> [--count 2]
 pnpm --silent run cli --tenant acme shop orders shipx show <order-id>
 pnpm --silent run cli --tenant acme shop orders shipx create <order-id>
+pnpm --silent run cli --tenant acme shop orders shipx create <order-id> --mark-shipped
 pnpm --silent run cli --tenant acme shop orders shipx refresh <order-id>
 pnpm --silent run cli --tenant acme shop orders shipx label <order-id> --out label.pdf
 pnpm --silent run cli --tenant acme shop orders shipx discard <order-id>
 ```
+
+`shop orders shipx create` now buys the label without dispatching the order
+or e-mailing the buyer. Use `--mark-shipped` for the previous one-step
+behaviour. The CLI sends `markShipped` as a boolean (`false` without the
+flag); use a matching server release, since the previous release rejects this
+field with `400 validation`.
 
 The typed client exposes the twelve calls with the session client's names:
 `listOrders`, `exportOrders`, `ordersPackingList`, `verifyOrder`, `getOrder`,
@@ -1296,6 +1309,7 @@ or use `createShopManagementClient`, which does that and returns a
 | Status | `error.code` | When | CLI exit code | What the backend does |
 |---|---|---|---|---|
 | 400 | `validation` | Malformed body or query, unknown settings field, disallowed secret key, Stripe key of the other mode; a download file whose stored bytes do not have the declared size or type, or a file a key cannot copy | 2 | Fix the request; never retry unchanged |
+| 400 | `locker_phone_invalid` | Public checkout selects an InPost rate without a valid Polish mobile number | 33 | Ask the buyer for a valid `shipping.phone` |
 | 401 | `unauthorized` | Missing, unknown, revoked, expired, legacy or other-workspace key; a key whose issuer is no longer a verified owner; a cookie or `Authorization` header on the request | 3 | Stop and alert; ask a current owner for a new key |
 | 403 | `forbidden` | The key lacks the route's scope, a propose-mode key calls a route its mode refuses, or a direct-mode key calls `POST /api/m2m/shop/products/access`, whose capability no scope grants | 4 | Stop and alert; issue a key with the needed scope or mode; for a product's access list, use a propose-mode key or an owner's session |
 | 404 | `not_found` | The product, price, order, sales link, candidate upload, download file, file upload or staged file does not exist in this workspace or for this key | 5 | Treat as gone |
@@ -1554,7 +1568,8 @@ repository calls a real provider.
 
 The storefront calls two anonymous routes on the workspace origin. Both answer
 any origin (`access-control-allow-origin: *`), need no key and must be called
-with credentials omitted.
+with credentials omitted. This example uses a manual `courier` rate with
+`carrier: "other"`, so it does not send a phone.
 
 ```ts
 const base = 'https://<workspace-host>';
@@ -1583,8 +1598,11 @@ window.location.assign(payload.data.url);
 - `POST /api/public/checkout/session` validates the product, price, delivery
   option (`shipping.rateId` must name an active rate; physical products need
   one) and terms acceptance, reserves one piece of tracked stock and answers
-  `{ "url": "<hosted-checkout-url>" }`. Send the buyer there. A sold-out
-  product answers `409 sold_out`; too many attempts answer `429` with
+  `{ "url": "<hosted-checkout-url>" }`. For every InPost rate, collect and send
+  the buyer's Polish mobile number as `shipping.phone`; a locker rate also
+  needs `shipping.pickupPoint`. See the [checkout contract](shop.md#checkout).
+  Send the buyer to the returned URL. A sold-out product answers
+  `409 sold_out`; too many attempts answer `429` with
   `Retry-After`.
 - An anonymous checkout is always a live checkout. Test purchases are
   available only to a signed-in staff member of the workspace who has switched
@@ -1718,7 +1736,9 @@ pnpm --silent run cli --tenant acme shop orders list --mode live
 `{"termsUrl":"https://brand.example.test/terms","privacyUrl":"https://brand.example.test/privacy","invoiceSellerName":"Example Press","invoiceSellerAddress":"<street, postal code, city>","shippingRates":[{"id":"courier","label":"Courier","amountCents":1500,"vatRatePercent":23,"carrier":"other","pickupPoint":"none","active":true}]}`.
 A workspace with legal URLs refuses a checkout without terms acceptance, so
 `checkout session` and `simulate-purchase` take `--accept-terms` to send
-`termsAccepted: true`; without the flag they send no terms field.
+`termsAccepted: true`; without the flag they send no terms field. If the
+selected rate instead uses InPost, pass `--shipping-phone` with the buyer's
+Polish mobile number.
 
 ## Deployment read-back checklist
 

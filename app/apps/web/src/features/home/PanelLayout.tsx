@@ -45,7 +45,7 @@ import { forgetLoginIdentifier } from '../../lib/login-identifier.js';
 import { publicAssetUrl } from '../../theme-public-asset.js';
 import { deterministicHue } from '../../lib/hue.js';
 import { applyBranding } from '../../theme-branding.js';
-import { persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
+import { clearListLayoutCopies, persistedJsonPreference, useColorScheme } from '../../theme-mode.js';
 import {
   AppBarTitle,
   createThemeForMode,
@@ -621,6 +621,7 @@ const PanelShell = ({ tenant, name, email, avatarUrl }: {
     ...actions.signOut,
     onSuccess: async () => {
       forgetLoginIdentifier();
+      clearListLayoutCopies();
       queryClient.clear();
       await navigate({ to: '/login' });
     },
@@ -833,7 +834,7 @@ export const PanelLayout = () => {
     <ThemeProvider theme={theme}>
       <DocumentTitleProvider tenantName={tenant.name} studio>
         <PanelContextProvider
-          value={{ tenant, email: me.data.email, emailVerified: me.data.emailVerified, impersonating: me.data.impersonation !== null }}
+          value={{ tenant, userId: me.data.userId, email: me.data.email, emailVerified: me.data.emailVerified, impersonating: me.data.impersonation !== null }}
         >
           <PanelShell
             tenant={tenant}

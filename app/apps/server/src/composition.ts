@@ -27,13 +27,14 @@ import { createConsumerSalesRepository } from '#adapters/db/consumer-sales.js';
 import type { ConsumerSalesRepository } from '#core/server/index.js';
 import { renderQrPng } from '#adapters/qr/png.js';
 import { createOrderVerificationRepository } from '#adapters/db/order-verification.js';
+import { createOrderDeliveryRepository } from '#adapters/db/order-delivery.js';
 import { createOrderFulfilmentRepository, createOrderPersonalizationRepository } from '#adapters/db/order-fulfilment.js';
 import { createOrderChangeRepository } from '#adapters/db/order-changes.js';
 import { createShipxSettingsRepository, createShipxShipmentRepository } from '#adapters/db/shipx.js';
 import { createFakePickupPointDirectory, createFakeShipxClient } from '#adapters/shipx/fake.js';
 import { createShipxHttpClient } from '#adapters/shipx/http.js';
 import { createInpostPointsDirectory } from '#adapters/shipx/points.js';
-import type { OrderChangeFeedDeps, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
+import type { OrderChangeFeedDeps, OrderDeliveryRepository, OrderFulfilmentRepository, OrderPersonalizationRepository, OrderVerificationRepository, PickupPointDirectory, ShipxClients, ShipxSettingsRepository, ShipxShipmentRepository } from '#core/server/index.js';
 import { createCheckoutSnapshotRepository } from '#adapters/db/checkout-snapshots.js';
 import { createStockRepository } from '#adapters/db/stock.js';
 import { releaseExpiredStockReservations, sweepKeyDownloadFiles, sweepQuarantinedImages, withPickupPointLookupBudget, type StagingSweepOutcome, type StockRepository } from '#core/server/index.js';
@@ -99,6 +100,7 @@ import { closeDb, createDb, type Db } from '#adapters/db/client.js';
 import { createAutoInvoiceJobRepository } from '#adapters/db/auto-invoice-jobs.js';
 import { createOrderRefundJobRepository } from '#adapters/db/order-refund-jobs.js';
 import { createPaymentEventRejectionRepository } from '#adapters/db/payment-event-rejections.js';
+import { createStaffListLayoutRepository } from '#adapters/db/staff-list-layouts.js';
 import { createRefundJobQueue } from '#adapters/db/refund-job-queue.js';
 import { createOrderStaffRefundRepository } from '#adapters/db/order-staff-refunds.js';
 import { createEmailOutboxRepository, createEnrollmentTransactionPort, createPlatformAuthSendLog, createPlatformTransactionalPool } from '#adapters/db/email-outbox.js';
@@ -354,6 +356,7 @@ import type {
   OrderRepository,
   OrderDetailRepository,
   OrderRefundJobRepository,
+  ListLayoutRepository,
   PaymentEventRejectionRepository,
   OrderStaffRefundRepository,
   PaymentRefundRepository,
@@ -574,6 +577,7 @@ export interface AppDeps {
   orderVerification?: OrderVerificationRepository;
   orderFulfilment?: OrderFulfilmentRepository;
   orderPersonalizations?: OrderPersonalizationRepository;
+  orderDeliveries?: OrderDeliveryRepository;
   orderChangeFeed?: OrderChangeFeedDeps;
   shipxIntegration?: ShipxIntegrationDeps;
   pickupPoints?: PickupPointDirectory;
@@ -582,6 +586,7 @@ export interface AppDeps {
   stripeWebhookOwnership: StripeWebhookOwnershipReader;
   processedPaymentEvents: ProcessedPaymentEventRepository;
   paymentEventRejections: PaymentEventRejectionRepository;
+  listLayouts: ListLayoutRepository;
   purchases: PurchaseRepository;
   tenantApiKeys: TenantApiKeyRepository;
   impersonations: ImpersonationSessionRepository;
@@ -1676,6 +1681,7 @@ export const createDeps = (
       secrets: secretResolver, gateway: createMetaCapiGateway(), directory: createTenantDirectory(db, production) },
     orderFulfilment: createOrderFulfilmentRepository(db),
     orderPersonalizations: createOrderPersonalizationRepository(db),
+    orderDeliveries: createOrderDeliveryRepository(db),
     orderChangeFeed: { changes: createOrderChangeRepository(db), orders: orderRepository },
     shipxIntegration: {
       shipx: { real: env.PAYMENT_PROVIDER === 'stripe' ? createShipxHttpClient() : null, fake: createFakeShipxClient() },
@@ -1692,6 +1698,7 @@ export const createDeps = (
     stripeWebhookOwnership: createStripeWebhookOwnershipReader(db),
     processedPaymentEvents: createProcessedPaymentEventRepository(db),
     paymentEventRejections: createPaymentEventRejectionRepository(db),
+    listLayouts: createStaffListLayoutRepository(db),
     purchases: createPurchaseRepository(db),
     tenantApiKeys: createTenantApiKeyRepository(db),
     impersonations,

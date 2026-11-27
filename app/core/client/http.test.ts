@@ -44,6 +44,29 @@ describe('createApiClient', () => {
       .toEqual({ ok: false, error: { code: 'validation', message: 'This order line has no personalisation' } });
   });
 
+  it('posts delivery corrections to the tenant order route', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/orders/order%2F1/delivery-details');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ orderId: 'order/1', expected: { phone: null }, phone: '500000000' }));
+      return jsonResponse({ ok: false, error: { code: 'delivery_correction_shipment_bought', message: 'Already bought' } }, 409);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    expect(await client.correctOrderDelivery({ orderId: 'order/1', expected: { phone: null }, phone: '500000000' }))
+      .toEqual({ ok: false, error: { code: 'delivery_correction_shipment_bought', message: 'Already bought' } });
+  });
+
+  it('parses a successful delivery correction with just the updated order', async () => {
+    const order = {
+      id: 'order-1', tenantId: 'tenant-1', memberId: 'member-1', productId: 'book', priceId: null, mode: 'live', kind: 'one_time',
+      status: 'paid', amountCents: 4900, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+      createdAt: '2026-11-25T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Book', couponCode: null,
+    };
+    const fetchImpl: typeof fetch = async () => jsonResponse({ ok: true, data: { order } });
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    await expect(client.correctOrderDelivery({ orderId: 'order-1', expected: { phone: null }, phone: '500000000' })).resolves.toEqual(ok({ order }));
+  });
+
   it('selects archived courses without changing the active list request', async () => {
     const paths: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {
@@ -832,5 +855,40 @@ it('sends source filters for order listing and export and parses tenant source o
     'https://api.example.test/api/orders/export?format=csv&source=none&sourceMatch=exact',
     'https://api.example.test/api/orders?fulfilmentStatus=to_pack',
     'https://api.example.test/api/orders/export?format=csv&fulfilmentStatus=to_pack',
+  ]);
+});
+
+it('sends the invoice, billing and sort parameters to the order list and the export alike', async () => {
+  const urls: string[] = [];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input) => {
+    urls.push(String(input));
+    return String(input).includes('/export')
+      ? jsonResponse({ ok: true, data: { filename: 'orders.csv', mimeType: 'text/csv', content: '' } })
+      : jsonResponse({ ok: true, data: { orders: [], total: 0, page: 1, pageSize: 20, sources: [] } });
+  } });
+  const filters = { invoice: 'without', billing: 'company', sortBy: 'amountCents', sortDirection: 'asc' } as const;
+  await client.listOrders(filters);
+  await client.exportOrders({ ...filters, format: 'csv' });
+  expect(urls).toEqual([
+    'https://api.example.test/api/orders?invoice=without&billing=company&sortBy=amountCents&sortDirection=asc',
+    'https://api.example.test/api/orders/export?format=csv&invoice=without&billing=company&sortBy=amountCents&sortDirection=asc',
+  ]);
+});
+
+it('reads, saves and resets a saved list layout on the panel route', async () => {
+  const layout = { version: 1 as const, columns: [{ field: 'createdAt', visible: true }], sort: null, filters: {} };
+  const calls: Array<{ url: string; method: string | undefined; expectedUserId: string | null; body: unknown }> = [];
+  const answers = [{ layout: null }, { layout }, { reset: true }];
+  const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input, init) => {
+    calls.push({ url: String(input), method: init?.method, expectedUserId: new Headers(init?.headers).get('X-Expected-User-Id'), body: typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body });
+    return jsonResponse({ ok: true, data: answers.shift() });
+  } });
+  expect(await client.getListLayout({ listId: 'orders', expectedUserId: 'user-1' })).toEqual({ ok: true, value: { layout: null } });
+  expect(await client.saveListLayout({ listId: 'orders', expectedUserId: 'user-1', layout })).toEqual({ ok: true, value: { layout } });
+  expect(await client.resetListLayout({ listId: 'orders', expectedUserId: 'user-1' })).toEqual({ ok: true, value: { reset: true } });
+  expect(calls).toEqual([
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'GET', expectedUserId: 'user-1', body: null },
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'PUT', expectedUserId: 'user-1', body: { layout } },
+    { url: 'https://api.example.test/api/panel/list-layouts/orders', method: 'DELETE', expectedUserId: 'user-1', body: null },
   ]);
 });

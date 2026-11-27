@@ -36,6 +36,8 @@ interface Hoisted {
   createOrderRefund: ReturnType<typeof vi.fn>;
   shipOrderAnyway: ReturnType<typeof vi.fn>;
   correctOrderPersonalization: ReturnType<typeof vi.fn>;
+  getOrder: ReturnType<typeof vi.fn>;
+  correctOrderDelivery: ReturnType<typeof vi.fn>;
   ordersPackingList: ReturnType<typeof vi.fn>;
   listPaymentEventRejections: ReturnType<typeof vi.fn>;
   shipxShipment: ReturnType<typeof vi.fn>;
@@ -148,6 +150,8 @@ const h = vi.hoisted(
     createOrderRefund: vi.fn(),
     shipOrderAnyway: vi.fn(),
     correctOrderPersonalization: vi.fn(),
+    getOrder: vi.fn(),
+    correctOrderDelivery: vi.fn(),
     ordersPackingList: vi.fn(),
     listPaymentEventRejections: vi.fn(),
     shipxShipment: vi.fn(),
@@ -308,6 +312,8 @@ vi.mock('#core/client/index.js', async (importOriginal) => ({
     createOrderRefund: h.createOrderRefund,
     shipOrderAnyway: h.shipOrderAnyway,
     correctOrderPersonalization: h.correctOrderPersonalization,
+    getOrder: h.getOrder,
+    correctOrderDelivery: h.correctOrderDelivery,
     ordersPackingList: h.ordersPackingList,
     listPaymentEventRejections: h.listPaymentEventRejections,
     shipxShipment: h.shipxShipment,
@@ -466,12 +472,14 @@ beforeEach(() => {
   }));
   h.createOrderRefund.mockReset().mockResolvedValue(ok({ created: true, refund: { id: 'refund-1', kind: 'amount', status: 'pending', amountCents: 1250, currency: 'PLN', restocked: false, removedFromPackingList: false } }));
   h.shipOrderAnyway.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack' } }));
+  h.getOrder.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', shipping: { phone: null, pickupPoint: { code: 'ABC02M' }, address: { name: 'Original Buyer', line1: 'Street 1', line2: 'Apartment 2', postalCode: '00-001', city: 'City' } } } }));
+  h.correctOrderDelivery.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.correctOrderPersonalization.mockReset().mockResolvedValue(ok({ order: { id: 'order-number' } }));
   h.listPaymentEventRejections.mockReset().mockResolvedValue(ok({ rejections: [] }));
   h.ordersPackingList.mockReset().mockResolvedValue(ok({ filename: 'packing-list-acme.csv', mimeType: 'text/csv; charset=utf-8', content: 'order_number,paid_at' }));
   h.shipxShipment.mockReset().mockResolvedValue(ok(shipxOrderView));
   h.shipxRefresh.mockReset().mockResolvedValue(ok(shipxOrderView));
-  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'shipped' }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
+  h.shipxCreate.mockReset().mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack', label: { carrier: 'inpost', trackingNumber: '520000011395200025754311' } }, shipment: { shipxShipmentId: '1001', status: 'confirmed', trackingNumber: '520000011395200025754311' } }));
   h.shipxDiscard.mockReset().mockResolvedValue(ok({ discarded: true }));
   h.shipxLabel.mockReset().mockResolvedValue(ok({ filename: 'inpost-520000011395200025754311.pdf', contentType: 'application/pdf', bytes: new TextEncoder().encode('%PDF-1.4') }));
   const unconnected = { organizationId: null, token: null, configured: false };
@@ -620,6 +628,10 @@ describe('terms acceptance flag', () => {
     expect(process.exitCode).toBe(0);
   });
 
+  it.each(['checkout', 'simulate-purchase'])('passes the delivery phone through %s', async (command) => {
+    await run('--json', command, ...(command === 'checkout' ? ['session'] : []), '--product', 'product-1', '--email', 'buyer@example.test', '--shipping-rate', 'locker', '--pickup-point', 'ABC01M', '--shipping-phone', '+48 500 000 000');
+    expect(command === 'checkout' ? h.createCheckoutSession : h.simulatePurchase).toHaveBeenCalledWith(expect.objectContaining({ shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'ABC01M' } } }));
+  });
   it('simulates a purchase with termsAccepted only when --accept-terms is given', async () => {
     await run('--json', 'simulate-purchase', '--product', 'product-1', '--email', 'buyer@example.test');
     expect(h.simulatePurchase).toHaveBeenCalledExactlyOnceWith({ productId: 'product-1', email: 'buyer@example.test' });
@@ -2319,6 +2331,12 @@ describe('orders list CLI text', () => {
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\t2 × Paperback; Poster\tbuyer@example.com\t'));
   });
 
+  it('prints label_ready for a to-pack order with a bought label', async () => {
+    h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, fulfilmentStatus: 'to_pack', label: { carrier: 'inpost', trackingNumber: 'LABEL1234' } }], total: 1, page: 1, pageSize: 20, sources: [] }));
+    await run('orders', 'list', '--fulfilment', 'to_pack');
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('\tlabel_ready\t'));
+  });
+
   it('shows the client reference only of an order that has one', async () => {
     h.listOrders.mockResolvedValue(ok({ orders: [{ ...order, clientReference: 'shop-cart-8812' }, { ...order, id: 'order-87654321' }], total: 2, page: 1, pageSize: 20, sources: [] }));
     await run('orders', 'list');
@@ -2364,6 +2382,20 @@ it('distinguishes the campaign source none from missing attribution in CLI lists
   expect(h.listOrders).toHaveBeenCalledExactlyOnceWith({ source: 'none', sourceMatch: 'exact' });
   await run('--json', 'orders', 'export', '--format', 'json', '--source', 'none', '--source-exact');
   expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'json', source: 'none', sourceMatch: 'exact' });
+});
+
+it('passes the invoice, billing and sort flags to the order list and the export', async () => {
+  h.listOrders.mockReset().mockResolvedValue(ok({ orders: [], total: 0, page: 1, pageSize: 20, sources: [] }));
+  h.exportOrders.mockReset().mockResolvedValue(ok({ filename: 'orders.csv', mimeType: 'text/csv', content: '' }));
+  const flags = ['--invoice', 'without', '--billing', 'company', '--sort-by', 'amountCents', '--sort-direction', 'asc'];
+  const filters = { invoice: 'without', billing: 'company', sortBy: 'amountCents', sortDirection: 'asc' };
+  await run('--json', 'orders', 'list', ...flags);
+  expect(h.listOrders).toHaveBeenCalledExactlyOnceWith(filters);
+  await run('--json', 'orders', 'export', '--format', 'csv', ...flags);
+  expect(h.exportOrders).toHaveBeenCalledExactlyOnceWith({ format: 'csv', ...filters });
+  await run('--json', 'orders', 'list', '--billing', 'business');
+  expect(h.listOrders).toHaveBeenCalledTimes(1);
+  expect(process.exitCode).toBe(2);
 });
 
 describe('shipping CLI', () => {
@@ -2603,6 +2635,22 @@ describe('personalisation CLI', () => {
     await rm(join(invalid, '..'), { recursive: true, force: true });
   });
 
+  it.each([['--line1', 'Street 2'], ['--city', 'City'], ['--postal-code', '00-002'], ['--line2', 'Apartment 3']])('refuses incomplete delivery address flags %s', async (...args) => {
+    await run('--json', 'order', 'delivery', 'order-number', ...args);
+    expect(h.correctOrderDelivery).not.toHaveBeenCalled();
+    expect(h.getOrder).not.toHaveBeenCalled();
+    expect(soleJson()).toMatchObject({ ok: false, error: { code: 'validation', message: expect.stringContaining('--line1, --postal-code and --city together') } });
+  });
+  it('keeps the current second address line when its flag is omitted', async () => {
+    await run('--json', 'order', 'delivery', 'order-number', '--line1', 'Street 2', '--postal-code', '00-002', '--city', 'Other City');
+    expect(h.correctOrderDelivery).toHaveBeenCalledWith(expect.objectContaining({ address: { line1: 'Street 2', line2: 'Apartment 2', postalCode: '00-002', city: 'Other City' }, expected: { address: { line1: 'Street 1', line2: 'Apartment 2', postalCode: '00-001', city: 'City' } } }));
+  });
+  it('corrects delivery details through the order alias', async () => {
+    await run('--json', 'order', 'delivery', 'order-number', '--phone', '500000000', '--recipient-name', 'Example Buyer', '--locker', 'ABC01M');
+    expect(h.correctOrderDelivery).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', expected: { phone: null, recipientName: 'Original Buyer', pickupPoint: 'ABC02M' }, phone: '500000000', recipientName: 'Example Buyer', pickupPoint: { code: 'ABC01M' } });
+    expect(soleJson()).toEqual({ ok: true, data: { order: { id: 'order-number' } } });
+  });
+
   it('corrects the personalisation text of an order line through the order alias', async () => {
     await run('order', 'personalization', 'order-number', 'product-1', '--text', 'For Ann: with love');
     expect(h.correctOrderPersonalization).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', productId: 'product-1', text: 'For Ann: with love' });
@@ -2648,8 +2696,8 @@ describe('InPost ShipX CLI', () => {
 
   it('creates the shipment through the order alias and maps ShipX failures to their exit codes', async () => {
     await run('order', 'shipx', 'create', 'order-number');
-    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number' });
-    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost 520000011395200025754311)');
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', markShipped: false });
+    expect(logSpy).toHaveBeenCalledWith('label ready; order still to pack: order-number (inpost 520000011395200025754311)');
     h.shipxCreate.mockResolvedValue(err(appError('shipx_unavailable', 'InPost ShipX is unavailable')));
     await run('--json', 'orders', 'shipx', 'create', 'order-number');
     expect(process.exitCode).toBe(28);
@@ -2659,9 +2707,37 @@ describe('InPost ShipX CLI', () => {
     expect(process.exitCode).toBe(29);
   });
 
+  it('treats whitespace around the bought and dispatched tracking numbers as immaterial', async () => {
+    h.shipxCreate.mockResolvedValue(ok({
+      order: { id: 'order-number', fulfilmentStatus: 'shipped', shipment: { carrier: 'inpost', trackingNumber: ' LABEL1234' } },
+      shipment: { trackingNumber: 'LABEL1234 ' },
+    }));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(logSpy).toHaveBeenCalledWith('shipped: order-number (inpost LABEL1234)');
+  });
+
+  it('warns when the bought label has no usable dispatch tracking number', async () => {
+    h.shipxCreate.mockResolvedValue(ok({ order: { id: 'order-number', fulfilmentStatus: 'to_pack', label: null }, shipment: { trackingNumber: 'T1' } }));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(logSpy).toHaveBeenCalledWith('label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: order-number (inpost T1)');
+  });
+
+  it.each([
+    ['fulfilment_conflict', 'The order was marked as shipped meanwhile', { state: 'manual_shipped', trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }, 27],
+    ['conflict', 'The order left the packing list meanwhile', { trackingNumber: 'LABEL1234', shipxShipmentId: '1001' }, 6],
+  ] as const)('reports the bought-label %s on stderr with a non-zero exit', async (code, message, details, exitCode) => {
+    h.shipxCreate.mockResolvedValue(err(appError(code, message, details)));
+    await run('order', 'shipx', 'create', 'order-number');
+    expect(errorSpy).toHaveBeenCalledWith(`error(${code}): ${message}`);
+    expect(logSpy).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(exitCode);
+  });
+
   it('passes a chosen parcel template and rejects an unknown one before calling the server', async () => {
     await run('order', 'shipx', 'create', 'order-number', '--parcel-template', 'large');
-    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large' });
+    expect(h.shipxCreate).toHaveBeenCalledExactlyOnceWith({ orderId: 'order-number', parcelTemplate: 'large', markShipped: false });
+    await run('order', 'shipx', 'create', 'order-number', '--mark-shipped');
+    expect(h.shipxCreate).toHaveBeenLastCalledWith({ orderId: 'order-number', markShipped: true });
     h.shipxCreate.mockClear();
     await run('--json', 'order', 'shipx', 'create', 'order-number', '--parcel-template', 'huge');
     expect(h.shipxCreate).not.toHaveBeenCalled();

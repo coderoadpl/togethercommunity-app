@@ -34,7 +34,6 @@ const pageScreenNames = new Set([
   'panel-settings-security',
   'panel-settings-team',
   'panel-settings-domains',
-  'panel-settings-domains-active',
   'panel-settings-redirects',
   'panel-settings-redirects-edit',
   'panel-storage-wizard',
@@ -84,8 +83,6 @@ export const pageStoryId = (screen: string, viewport: string): string => {
   if (screen === 'lesson-lightbox-light' || screen === 'lesson-lightbox-dark') {
     return `pages-lessonplayer--lightbox-${screen.endsWith('dark') ? 'dark' : 'light'}-${viewport}`;
   }
-  // The active-named goldens came from a same-document navigation that retained pending DNS.
-  if (screen === 'panel-settings-domains-active') return `panel-settings-domains--shadcn--${viewport}`;
   const title = { lesson: 'lessonplayer', start: 'start', 'space-feed': 'spacefeed', 'hosted-legal-document': 'hostedlegaldocument' }[screen];
   return title ? `pages-${title}--light-${viewport === 'desktop' ? 'desktop' : 'mobile'}` : `${screen}--shadcn--${viewport}`;
 };

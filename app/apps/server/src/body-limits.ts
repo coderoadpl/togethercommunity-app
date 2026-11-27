@@ -1,4 +1,5 @@
 import { API_PATHS } from '#core/contract/index.js';
+import { LIST_LAYOUT_MAX_BYTES } from '#core/domain/index.js';
 
 export const DEFAULT_API_BODY_LIMIT = 100 * 1024;
 export const PUBLIC_FORM_BODY_LIMIT = 16 * 1024;
@@ -30,6 +31,7 @@ export const isPublicFormPath = (path: string): boolean =>
 
 export const requestBodyLimit = (method: string, path: string): number | undefined => {
   if (!['POST', 'PUT', 'PATCH'].includes(method)) return undefined;
+  if (method === 'PUT' && /^\/api\/panel\/list-layouts\/[^/]+$/.test(path)) return LIST_LAYOUT_MAX_BYTES + 1024;
   if (path === API_PATHS.marketingContactImportUpload) return 4 * 1024 * 1024;
   if (/^\/api\/(?:m2m\/)?marketing\/contact-imports\/[^/]+\/rows$/.test(path)) return 1024 * 1024;
   if (isWebhookPath(path)) return WEBHOOK_BODY_LIMIT;

@@ -653,7 +653,10 @@ transaction:
 A refusal of the command itself is an error whose code describes the request
 against the current state: `not_found`, `validation`, `conflict`,
 `slug_reserved`, `invoice_exemption_basis_missing`, `shipping_required`,
-`sold_out`, `fulfilment_conflict`, `shipx_rejected`, `workspace_quota_exceeded`,
+`locker_phone_invalid`, `sold_out`, `fulfilment_conflict`,
+`delivery_correction_shipped`, `delivery_correction_shipment_bought`,
+`delivery_correction_shipment_exists`, `delivery_correction_member_erased`,
+`delivery_correction_conflict`, `shipx_rejected`, `workspace_quota_exceeded`,
 `organization_managed`, `feed_cursor_reset`, `not_consented`, `suppressed`,
 `unsubscribed` and `pending_confirmation`. Every other code describes the
 caller, the configuration or the infrastructure (`internal`, `unavailable`,

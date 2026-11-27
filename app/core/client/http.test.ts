@@ -834,3 +834,39 @@ it('sends source filters for order listing and export and parses tenant source o
     'https://api.example.test/api/orders/export?format=csv&fulfilmentStatus=to_pack',
   ]);
 });
+
+
+describe('sign-in client transport', () => {
+  it('sends each operation under the registry path and parses the correct response', async () => {
+    const draft = { name: 'Application', redirectUris: ['https://callback.example.test/return'] };
+    const client = {
+      ...draft, id: `sc_${'p'.repeat(22)}`, redirectHost: 'callback.example.test', state: 'pending_activation', credentialVersion: 1,
+      createdAt: '2026-11-27T12:00:00.000Z', updatedAt: '2026-11-27T12:00:00.000Z',
+      secretRotatedAt: null, secretExpiresAt: '2027-02-25T12:00:00.000Z', retiredAt: null, hostVerifiedAt: null, activatedAt: null,
+    };
+    const retired = { ...client, state: 'retired', retiredAt: client.updatedAt, credentialVersion: 3, name: null, redirectUris: [], secretExpiresAt: null };
+    const rotated = { ...client, credentialVersion: 2, secretRotatedAt: client.updatedAt };
+    const first = { client, secret: `tc_sc_${'a'.repeat(43)}` };
+    const replacement = { client: rotated, secret: `tc_sc_${'b'.repeat(43)}` };
+    const page = { clients: [client], nextCursor: null };
+    const lifecycle = [
+      { path: '/api/sign-in-clients', method: 'POST', input: draft, output: first, status: 201 },
+      { path: `/api/sign-in-clients?cursor=${client.id}&limit=25`, method: 'GET', input: undefined, output: page, status: 200 },
+      { path: '/api/sign-in-clients/client%2F1/rotate-secret', method: 'POST', input: { expectedCredentialVersion: 1 }, output: replacement, status: 200 },
+      { path: '/api/sign-in-clients/client%2F1/disable', method: 'POST', input: undefined, output: { client: retired }, status: 200 },
+    ];
+    const api = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl: async (input, init) => {
+      const step = lifecycle.shift();
+      if (step === undefined) throw new Error('Unexpected sign-in client request');
+      expect(input).toBe(`https://api.example.test${step.path}`);
+      expect(init?.method).toBe(step.method);
+      expect(init?.body).toBe(step.input === undefined ? undefined : JSON.stringify(step.input));
+      return jsonResponse({ ok: true, data: step.output }, step.status);
+    } });
+    expect(await api.createSignInClient(draft)).toEqual(ok(first));
+    expect(await api.listSignInClients({ cursor: client.id, limit: 25 })).toEqual(ok(page));
+    expect(await api.rotateSignInClientSecret({ id: 'client/1', expectedCredentialVersion: 1 })).toEqual(ok(replacement));
+    expect(await api.disableSignInClient({ id: 'client/1' })).toEqual(ok({ client: retired }));
+    expect(lifecycle).toEqual([]);
+  });
+});

@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { createApiClient } from '#core/client/index.js';
-import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
+import { BETTER_AUTH_API_PATH_PATTERN, BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { members, organizationMembers, organizations, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
@@ -287,22 +286,20 @@ describe('Dormant sign-in client HTTP management', () => {
     }
   });
 
-  it('round-trips all four typed client operations with a verified CLI bearer and no origin', async () => {
-    const api = createApiClient({
-      baseUrl: workspaceOrigin,
-      headers: () => ({ ...owner(), host: new URL(workspaceOrigin).host }),
-      fetchImpl: (resource, init) => Promise.resolve(app.request(new Request(resource, init))),
+  it('serves all four operations to a verified CLI bearer without browser origin metadata', async () => {
+    const headers = owner();
+    const created = await request(app, 'POST', listPath, headers, {
+      name: 'CLI client', redirectUris: ['https://typed.example.test/return'],
     });
-    const created = await api.createSignInClient({ name: 'Typed client', redirectUris: ['https://typed.example.test/return'] });
-    expect(created.ok).toBe(true);
-    if (!created.ok) throw new Error('Typed creation failed');
-    const id = created.value.client.id;
-    expect(await api.listSignInClients({ limit: 100 })).toMatchObject({
-      ok: true, value: { clients: expect.arrayContaining([created.value.client]), nextCursor: null },
-    });
-    const rotated = await api.rotateSignInClientSecret({ id, expectedCredentialVersion: 1 });
-    expect(rotated).toMatchObject({ ok: true, value: { client: { id, credentialVersion: 2 } } });
-    expect(await api.disableSignInClient({ id })).toMatchObject({ ok: true, value: { client: { id, state: 'retired' } } });
+    expect(created.status).toBe(201);
+    const issued = await data(created, signInClientCredentialSchema);
+    const id = issued.client.id;
+    const listed = await request(app, 'GET', `${listPath}?limit=100`, headers);
+    expect((await data(listed, signInClientPageSchema)).clients).toContainEqual(issued.client);
+    const rotated = await request(app, 'POST', rotatePath(id), headers, versionInput);
+    expect((await data(rotated, signInClientCredentialSchema)).client).toMatchObject({ id, credentialVersion: 2 });
+    const disabled = await request(app, 'POST', disablePath(id), headers);
+    expect((await data(disabled, signInClientDisableOutputSchema)).client).toMatchObject({ id, state: 'retired' });
   });
 
   it('refuses the issued credential on the registry, existing key routes, and auth alias', async () => {
@@ -321,7 +318,7 @@ describe('Dormant sign-in client HTTP management', () => {
     expect((await request(app, 'GET', SHOP_CATALOG_ROUTES.listProducts.path, shop)).status).toBe(200);
     const legacy = machineCredentials.get('legacy key') ?? {};
     expect((await request(app, 'POST', API_ROUTES.m2mEnroll.path, legacy, {})).status).toBe(400);
-    const alias = await request(app, 'GET', '/api/auth/sign-in-clients', owner());
+    const alias = await request(app, 'GET', `${BETTER_AUTH_API_PATH_PATTERN.slice(0, -1)}sign-in-clients`, owner());
     expect(alias.status).toBe(404);
   });
 

@@ -2075,8 +2075,13 @@ describe('current email verification links', () => {
   it('keeps platform signup successful when verification enqueue fails and queues a later resend', async () => {
     const { auth, emailOutbox, emails, flushEmails } = buildAuth();
     const email = `verification-retry-${crypto.randomUUID()}@example.test`;
-    const failure = 'Verification outbox unavailable';
-    const enqueue = vi.spyOn(emailOutbox, 'enqueue').mockResolvedValueOnce(err(unavailable(failure)));
+    const { internalAdapter } = await auth.$context;
+    let sessionExistsAtEnqueue = false;
+    const enqueue = vi.spyOn(emailOutbox, 'enqueue').mockImplementationOnce(async () => {
+      const account = await internalAdapter.findUserByEmail(email);
+      sessionExistsAtEnqueue = account !== null && (await internalAdapter.listSessions(account.user.id)).length > 0;
+      return err(unavailable('Verification outbox unavailable'));
+    });
     const stderr = vi.spyOn(process.stderr, 'write');
     const post = (path: string, body: object) => auth.handler(new Request(`${authBaseUrl}/api/auth${path}`, {
       method: 'POST',
@@ -2092,9 +2097,9 @@ describe('current email verification links', () => {
       const signedUp = await post('/sign-up/email', { name: 'Ada', email, password: SIGN_UP_PASSWORD });
 
       expect(signedUp.status, await signedUp.clone().text()).toBe(200);
-      const { internalAdapter } = await auth.$context;
       expect((await internalAdapter.findUserByEmail(email))?.user).toMatchObject({ email, emailVerified: false });
       expect(stderr).toHaveBeenCalledWith('[Better Auth] error: Failed to run background task:\n');
+      expect(sessionExistsAtEnqueue).toBe(true);
       expect(enqueue).toHaveBeenCalledTimes(1);
       await flushEmails();
       expect(await emails.findByRecipient(email)).toBeNull();

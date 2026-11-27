@@ -2,7 +2,7 @@ import type { Hono } from 'hono';
 import { z } from 'zod';
 import { API_PATHS } from '#core/contract/index.js';
 import { err, internal } from '#core/domain/index.js';
-import { correctOrderPersonalization, exportPackingList, shipOrder, type OrderRepository, type ShipOrderDeps } from '#core/server/index.js';
+import { correctOrderDelivery, correctOrderPersonalization, exportPackingList, shipOrder, type OrderRepository, type ShipOrderDeps } from '#core/server/index.js';
 import type { AppDeps } from './composition.js';
 import type { AppVars } from './app-vars.js';
 import { ctxOf } from './ctx-of.js';
@@ -13,7 +13,7 @@ const shipBodySchema = z.object({}).passthrough();
 
 export const registerOrderFulfilmentRoutes = (
   app: Hono<AppVars>,
-  deps: Omit<ShipOrderDeps, 'fulfilment' | 'orderDetails'> & Pick<AppDeps, 'orderFulfilment' | 'orderDetails' | 'orderPersonalizations'> & { orders: Pick<OrderRepository, 'list'> },
+  deps: Omit<ShipOrderDeps, 'fulfilment' | 'orderDetails'> & Pick<AppDeps, 'orderFulfilment' | 'orderDetails' | 'orderPersonalizations' | 'orderDeliveries' | 'pickupPoints'> & { orders: Pick<OrderRepository, 'list'> },
 ): void => {
   app.get(API_PATHS.ordersPackingList, async (c) => respond(await exportPackingList(ctxOf(c), {
     format: c.req.query('format'),
@@ -27,6 +27,16 @@ export const registerOrderFulfilmentRoutes = (
       ...deps,
       fulfilment: deps.orderFulfilment,
       orderDetails: deps.orderDetails,
+    }));
+  });
+  app.post(API_PATHS.correctOrderDelivery, async (c) => {
+    if (deps.orderDeliveries === undefined || deps.orderDetails === undefined) return respond(err(internal('Order fulfilment is unavailable')));
+    const body = shipBodySchema.safeParse(await readJson(c.req.raw));
+    return respond(await correctOrderDelivery(ctxOf(c), { ...(body.success ? body.data : {}), orderId: c.req.param('orderId') ?? '' }, {
+      deliveries: deps.orderDeliveries,
+      orderDetails: deps.orderDetails,
+      pickupPoints: deps.pickupPoints,
+      clock: deps.clock,
     }));
   });
   app.post(API_PATHS.correctOrderPersonalization, async (c) => {

@@ -11429,9 +11429,15 @@ it('asks the carrier once for the parcel locker of a simulated purchase through 
   ] });
   const directory = createPickupPointDirectoryFake();
   h.base.pickupPoints = directory;
-  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+  const missingPhone = await purchase(h.app, { host: 'acme.localhost' }, {
     productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
     shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+  });
+  expect(await missingPhone.json()).toMatchObject({ ok: false, error: { code: 'locker_phone_invalid' } });
+  expect(h.orders).toHaveLength(0);
+  const response = await purchase(h.app, { host: 'acme.localhost' }, {
+    productId: 'print', salesLinkId: 'bundle-link', email: 'buyer@example.test',
+    shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
   });
   expect(await response.json()).toMatchObject({ ok: true, data: { orderId: expect.any(String) } });
   expect(directory.lookups).toHaveLength(1);

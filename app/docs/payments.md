@@ -358,7 +358,8 @@ effect at once.
 Parcel-locker delivery keeps Stripe's shipping address collection: Stripe does
 not document whether `shipping_options` works without
 `shipping_address_collection`, so the buyer of a locker delivery still enters an
-address and a phone number in Stripe.
+address in Stripe. Together collects the mobile number before handoff for all
+InPost rates, including courier.
 
 ## Shipping in Stripe Checkout
 
@@ -368,14 +369,17 @@ is `{ type: 'fixed_amount', fixed_amount: { amount, currency }, display_name,
 tax_behavior: 'inclusive' }`, with `delivery_estimate` in business days when the
 option has one. The session also sets `shipping_address_collection.allowed_countries`
 to the allowed shipping countries (`PL`) and `phone_number_collection.enabled`.
-Stripe coupons discount line items, never shipping rates.
+Stripe still collects a phone for one release so rolled-back code can fulfil
+existing sessions. Other carriers continue to use the phone collected by
+Stripe. Stripe coupons discount line items, never shipping rates.
 
 The webhook reads the address from `collected_information.shipping_details`,
 falling back to the top-level `shipping_details` of events in API versions
 from `2022-08-01` to before `2025-03-31.basil` and to `shipping` of events in
-versions before `2022-08-01`. It reads the phone number from
-`customer_details.phone`, falling back to the phone of that delivery hash, and
-the fee from `shipping_cost.amount_total`, falling back to
+versions before `2022-08-01`. For the order, it prefers the canonical InPost
+phone from the checkout snapshot. Without a snapshot phone, it uses
+`customer_details.phone`, falling back to the phone of that delivery hash. It
+reads the fee from `shipping_cost.amount_total`, falling back to
 `total_details.amount_shipping` (versions before `2022-08-01` carry only a
 `shipping_rate` id). It rejects a session whose fee differs from the
 snapshot's shipping line or whose address is missing or outside the allowed

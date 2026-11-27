@@ -34,7 +34,7 @@ The staging use-cases of `key-download-files.ts` authorize through the same-file
 
 The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.
 
-Closed capability count: 145. Route rows: 574. Exported `Ctx` use-case rows: 429.
+Closed capability count: 145. Route rows: 575. Exported `Ctx` use-case rows: 430.
 
 ## Human-readable diff
 
@@ -330,6 +330,7 @@ no changes
 | `POST /api/me/meta-capi/withdraw` | member:profile:self-write | owner, admin, member | owner, admin, member | yes | identity middleware + use-case guard |
 | `GET /api/orders/packing-list` | order:export | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/ship` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
+| `POST /api/orders/:orderId/delivery-details` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/personalization` | order:write | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/orders/:orderId/refund-preview` | order:refund | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/orders/:orderId/refunds` | order:refund | owner, admin | owner, admin | yes | identity middleware + use-case guard |
@@ -914,6 +915,7 @@ no changes
 | `operator-organizations.ts#setOrganizationLimits` | tenant:provision | operator-secret | operator-secret | yes | core/server/usecases/operator-organizations.ts authorization call |
 | `operator-tenant-readiness.ts#getOperatorTenantReadiness` | tenant:readiness | operator-secret | operator-secret | yes | core/server/usecases/operator-tenant-readiness.ts authorization call |
 | `order-changes.ts#listOrderChangeFeed` | order:read | owner, admin | owner, admin | yes | core/server/usecases/order-changes.ts authorization call |
+| `order-delivery.ts#correctOrderDelivery` | order:write | owner, admin | owner, admin | yes | core/server/usecases/order-delivery.ts authorization call |
 | `order-fulfilment.ts#shipOrder` | order:write | owner, admin | owner, admin | yes | core/server/usecases/order-fulfilment.ts authorization call |
 | `order-fulfilment.ts#correctOrderPersonalization` | order:write | owner, admin | owner, admin | yes | core/server/usecases/order-fulfilment.ts authorization call |
 | `order-fulfilment.ts#exportPackingList` | order:export | owner, admin | owner, admin | yes | core/server/usecases/order-fulfilment.ts authorization call |

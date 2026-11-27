@@ -22,12 +22,18 @@ const headingFor = (error: unknown, t: Messages): string => {
       return t.errors.headingNotFound;
     case 'tenant_not_found':
       return t.errors.headingTenantNotFound;
+    case 'locker_phone_invalid':
     case 'validation':
       return t.errors.headingValidation;
     case 'organization_managed':
       return t.errors.headingForbidden;
     case 'conflict':
     case 'fulfilment_conflict':
+    case 'delivery_correction_shipped':
+    case 'delivery_correction_shipment_exists':
+    case 'delivery_correction_member_erased':
+    case 'delivery_correction_conflict':
+    case 'delivery_correction_shipment_bought':
     case 'feed_cursor_reset':
       return t.errors.headingConflict;
     case 'slug_reserved':

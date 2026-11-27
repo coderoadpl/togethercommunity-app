@@ -17,6 +17,8 @@ export type CheckoutEvent =
   | { type: 'couponVisibilityChanged'; visible: boolean }
   | { type: 'couponCodeChanged'; couponCode: string }
   | { type: 'shippingRateSelected'; rateId: string }
+  | { type: 'lockerPhoneChanged'; phone: string }
+  | { type: 'lockerPhoneValidationFailed'; phone: string }
   | { type: 'pickupPointCodeChanged'; code: string }
   | { type: 'pickupPointSelected'; point: PickedPickupPoint }
   | { type: 'lockerCheckChanged'; check: LockerCheck };

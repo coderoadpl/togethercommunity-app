@@ -44,6 +44,29 @@ describe('createApiClient', () => {
       .toEqual({ ok: false, error: { code: 'validation', message: 'This order line has no personalisation' } });
   });
 
+  it('posts delivery corrections to the tenant order route', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('https://api.example.test/api/orders/order%2F1/delivery-details');
+      expect(init?.method).toBe('POST');
+      expect(init?.body).toBe(JSON.stringify({ orderId: 'order/1', expected: { phone: null }, phone: '500000000' }));
+      return jsonResponse({ ok: false, error: { code: 'delivery_correction_shipment_bought', message: 'Already bought' } }, 409);
+    };
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    expect(await client.correctOrderDelivery({ orderId: 'order/1', expected: { phone: null }, phone: '500000000' }))
+      .toEqual({ ok: false, error: { code: 'delivery_correction_shipment_bought', message: 'Already bought' } });
+  });
+
+  it('parses a successful delivery correction with just the updated order', async () => {
+    const order = {
+      id: 'order-1', tenantId: 'tenant-1', memberId: 'member-1', productId: 'book', priceId: null, mode: 'live', kind: 'one_time',
+      status: 'paid', amountCents: 4900, currency: 'PLN', provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
+      createdAt: '2026-11-25T10:00:00.000Z', memberEmail: 'buyer@example.org', memberName: 'Buyer', productTitle: 'Book', couponCode: null,
+    };
+    const fetchImpl: typeof fetch = async () => jsonResponse({ ok: true, data: { order } });
+    const client = createApiClient({ baseUrl: 'https://api.example.test', fetchImpl });
+    await expect(client.correctOrderDelivery({ orderId: 'order-1', expected: { phone: null }, phone: '500000000' })).resolves.toEqual(ok({ order }));
+  });
+
   it('selects archived courses without changing the active list request', async () => {
     const paths: string[] = [];
     const fetchImpl: typeof fetch = async (input) => {

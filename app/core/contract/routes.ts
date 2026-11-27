@@ -2410,6 +2410,7 @@ export const API_PATHS = {
   issueOrderLine: API_ROUTES.issueOrderLine.path,
   shipOrder: API_ROUTES.shipOrder.path,
   correctOrderPersonalization: API_ROUTES.correctOrderPersonalization.path,
+  correctOrderDelivery: API_ROUTES.correctOrderDelivery.path,
   ordersPackingList: API_ROUTES.ordersPackingList.path,
   orderRefundPreview: API_ROUTES.orderRefundPreview.path,
   orderRefundCreate: API_ROUTES.orderRefundCreate.path,

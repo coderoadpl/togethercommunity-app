@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '#core/client/index.js';
 import type { ErrorCode, OrderListItem, ShipxOrderView, ShipxShipment } from '#core/domain/index.js';
 import { LanguageProvider } from '../../../i18n/index.js';
+import { en } from '../../../i18n/en.js';
 import { pl } from '../../../i18n/pl.js';
 import { renderWithProviders } from '../../../test/render.js';
 import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
@@ -33,6 +34,34 @@ const props = {
 };
 
 describe('OrderShipx', () => {
+  it.each([
+    [{ 'receiver.phone': ['invalid'] }, true],
+    [{ 'receiver.address.city': ['required'] }, true],
+    [{ 'receiver.email': ['invalid'], 'receiver.first_name': ['required'] }, true],
+    [{ 'custom_attributes.target_point': ['invalid'] }, true],
+    [{ target_point: ['invalid'] }, true],
+    [{ receiver: ['invalid'] }, false],
+    [{ 'sender.phone': ['invalid'] }, false],
+    [{ organization_id: ['invalid'] }, false],
+  ])('shows correction only for carrier receiver fields %o', (fields, visible) => {
+    const onCorrectDelivery = vi.fn();
+    renderWithProviders(<OrderShipx {...props} onCorrectDelivery={onCorrectDelivery} error={new ApiError({ code: 'shipx_rejected', message: 'InPost rejected the shipment data', details: { status: 400, error: 'validation_failed', fields } })} />);
+    expect(screen.queryByRole('button', { name: 'Correct delivery details' }) !== null).toBe(visible);
+  });
+  it.each(['receiver.email', 'receiver.address.country_code'])('explains why %s cannot be corrected', (field) => {
+    const error = new ApiError({ code: 'shipx_rejected', message: 'InPost rejected the shipment data', details: { status: 400, error: 'validation_failed', fields: { [field]: ['invalid'] } } });
+    renderWithProviders(<OrderShipx {...props} onCorrectDelivery={vi.fn()} error={error} />);
+    const alert = within(screen.getByTestId('order-shipx-error'));
+    expect(alert.queryByRole('button', { name: en.deliveryCorrection.action })).not.toBeInTheDocument();
+    expect(alert.getByText(en.deliveryCorrection.receiverEmailOrCountry)).toBeVisible();
+  });
+  it('opens the delivery correction from a receiver validation failure', async () => {
+    const onCorrectDelivery = vi.fn();
+    renderWithProviders(<OrderShipx {...props} onCorrectDelivery={onCorrectDelivery} error={new ApiError({ code: 'validation', message: 'Invalid receiver', details: { state: 'receiver_invalid', field: 'phone' } })} />);
+    await userEvent.click(within(screen.getByTestId('order-shipx-error')).getByRole('button', { name: 'Correct delivery details' }));
+    expect(onCorrectDelivery).toHaveBeenCalledOnce();
+  });
+
   it('creates the shipment after a confirmation with the one-step checkbox off by default', async () => {
     const onCreate = vi.fn();
     renderWithProviders(<OrderShipx {...props} onCreate={onCreate} />);

@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm';
-import { correctedLinePersonalization, err, notFound, ok, orderSchema, orderShipmentAllowed, validation, type AppError, type Result } from '#core/domain/index.js';
+import { correctedLinePersonalization, err, notFound, ok, orderDeliveryDetails, orderSchema, orderShipmentAllowed, validation, type AppError, type Result } from '#core/domain/index.js';
 import type { OrderFulfilmentRepository, OrderPersonalizationRepository } from '#core/server/index.js';
 import type { Db } from './client.js';
 import { orders } from './app-schema.js';
@@ -16,8 +16,10 @@ export const createOrderFulfilmentRepository = (db: Db): OrderFulfilmentReposito
       const result = await db.transaction(async (tx) => {
         const [row] = await tx.select().from(orders).where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId))).for('update');
         if (row === undefined) return err(notFound('Order was not found'));
-        const allowed = orderShipmentAllowed(orderSchema.parse(normalizeOrderDates(row)));
+        const lockedOrder = orderSchema.parse(normalizeOrderDates(row));
+        const allowed = orderShipmentAllowed(lockedOrder);
         if (!allowed.ok) return allowed;
+        if (input.email !== null && lockedOrder.shipping == null) return err(validation('Order has no delivery details'));
         await tx.update(orders).set({ fulfilmentStatus: 'shipped', shipment: input.shipment })
           .where(and(eq(orders.tenantId, tenantId), eq(orders.id, input.orderId)));
         await tx.insert(orderFulfilmentEvents).values({
@@ -29,9 +31,10 @@ export const createOrderFulfilmentRepository = (db: Db): OrderFulfilmentReposito
           actorUserId: input.shipment.shippedBy,
           occurredAt: input.shipment.shippedAt,
         });
-        if (input.email !== null) {
+        if (input.email !== null && lockedOrder.shipping != null) {
           const queued = await createEmailOutboxRepository(tx).enqueue({
             ...input.email,
+            payload: { ...input.email.payload, shipment: { ...input.email.payload.shipment, delivery: orderDeliveryDetails(lockedOrder.shipping) } },
             tenantId,
             now: input.shipment.shippedAt,
           });

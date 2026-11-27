@@ -701,12 +701,40 @@ describe('hosted cart checkout', () => {
   });
 
   describe('parcel locker map', () => {
+    it('blocks a missing or autofilled foreign phone and shows a server phone refusal inline', async () => {
+      const bodies: unknown[] = [];
+      serve({ onSession: (body) => bodies.push(body), sessionRefusal: { status: 400, error: { code: 'locker_phone_invalid', message: 'Invalid locker phone' } } });
+      renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
+      await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+      await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
+      await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      fireEvent.change(screen.getByLabelText(en.shipping.lockerCodeLabel), { target: { value: 'ABC01M' } });
+      const phone = screen.getByLabelText(en.shipping.lockerPhoneLabel);
+      const pay = screen.getByTestId('checkout-pay-cta');
+      expect(pay).toBeDisabled();
+      expect(pay).toHaveAccessibleDescription(en.checkout.payBlockedLockerPhone);
+      fireEvent.input(phone, { target: { value: '+44 7700 900000' } });
+      expect(phone).toHaveAttribute('aria-invalid', 'true');
+      expect(pay).toBeDisabled();
+      expect(bodies).toEqual([]);
+      fireEvent.change(phone, { target: { value: '500000000' } });
+      await userEvent.click(pay);
+      expect(await screen.findByRole('alert')).toHaveTextContent(en.shipping.lockerPhoneInvalid);
+      expect(screen.getAllByText(en.shipping.lockerPhoneInvalid)).toHaveLength(1);
+      expect(pay).toBeDisabled();
+      expect(bodies[0]).toMatchObject({ shipping: { phone: '+48500000000' } });
+      fireEvent.change(phone, { target: { value: '500 000 000' } });
+      expect(pay).toBeEnabled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
     it('loads the map only with a token, after the locker option is chosen and the picker is opened, in live mode, for a buyer', async () => {
       serve({ token: 'public-map-token' });
       renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
       await userEvent.click(await screen.findByLabelText(exact(`Courier — ${pln(1999)}`)));
       expect(document.getElementById('inpost-geowidget-script')).toBeNull();
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       expect(document.getElementById('inpost-geowidget-script')).toBeNull();
       expect(document.querySelector('inpost-geowidget')).toBeNull();
       await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
@@ -730,6 +758,7 @@ describe('hosted cart checkout', () => {
       try {
         renderWithProviders(<RouterProvider router={router} />);
         await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+        await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
         await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
         await screen.findByTestId('checkout-inpost-geowidget');
         act(() => { void router.navigate({ to: '/login' }); });
@@ -746,6 +775,7 @@ describe('hosted cart checkout', () => {
       serve({ token: 'public-map-token' });
       renderCart(`${HOSTED_CART_PATH}?lines=${poster}.1`);
       await userEvent.click(await screen.findByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       const option = screen.getByTestId('checkout-delivery-option-locker');
       const block = screen.getByTestId('checkout-locker-picker');
       expect(option.nextElementSibling).toBe(block);
@@ -776,6 +806,7 @@ describe('hosted cart checkout', () => {
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
       const dialog = await screen.findByRole('dialog', { name: en.shipping.lockerChoose });
       const widget = dialog.querySelector('inpost-geowidget');
@@ -801,6 +832,7 @@ describe('hosted cart checkout', () => {
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       expect(await screen.findByLabelText(en.shipping.lockerCodeLabel)).toBeInTheDocument();
       expect(screen.queryByTestId('checkout-inpost-geowidget')).not.toBeInTheDocument();
       expect(document.querySelector('inpost-geowidget')).toBeNull();
@@ -826,6 +858,7 @@ describe('hosted cart checkout', () => {
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
       await userEvent.type(field, 'missing1');
       await userEvent.tab();
@@ -861,6 +894,7 @@ describe('hosted cart checkout', () => {
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
       const pay = screen.getByTestId('checkout-pay-cta');
       await userEvent.click(pay);
@@ -889,6 +923,7 @@ describe('hosted cart checkout', () => {
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
       await userEvent.type(field, 'waw01m');
       await userEvent.click(screen.getByTestId('checkout-pay-cta'));
@@ -909,6 +944,7 @@ describe('hosted cart checkout', () => {
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
       await userEvent.click(toggle);
       await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
@@ -936,6 +972,7 @@ describe('hosted cart checkout', () => {
       await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
       await userEvent.click(screen.getByRole('checkbox', { name: /terms/iu }));
       await userEvent.click(screen.getByRole('radio', { name: lockerOption }));
+      await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
       await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
       const pay = screen.getByTestId('checkout-pay-cta');
       await userEvent.click(pay);

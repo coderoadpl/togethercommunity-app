@@ -159,7 +159,7 @@ describe('a live sales-link bundle paid under the 2020-03-02 webhook API version
       headers: { host: workspaceHost, 'content-type': 'application/json' },
       body: JSON.stringify({
         productId: course.id, salesLinkId: link.id, email: buyerEmail, termsAccepted: true, language: 'en',
-        shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
+        shipping: { rateId: 'locker', phone: '+48 500 000 000', pickupPoint: { provider: 'inpost', code: 'waw01m' } },
       }),
     });
     expect(await handoff.json()).toStrictEqual({ ok: true, data: expect.objectContaining({ url: expect.any(String) }) });
@@ -200,7 +200,7 @@ describe('a live sales-link bundle paid under the 2020-03-02 webhook API version
       orders: [{
         status: 'paid', mode: 'live', amountCents: 8800, cancelReason: null, fulfilmentStatus: 'to_pack',
         shipping: {
-          rateId: 'locker', label: 'Parcel locker', amountCents: 0, vatRatePercent: 23, carrier: 'inpost', phone: '+48500100200',
+          rateId: 'locker', label: 'Parcel locker', amountCents: 0, vatRatePercent: 23, carrier: 'inpost', phone: '+48500000000',
           address: { name: 'Test Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' },
           pickupPoint: { provider: 'inpost', code: 'WAW01M', name: 'Next to the main entrance', address: 'Main Street 1, 00-001 Warsaw' },
         },

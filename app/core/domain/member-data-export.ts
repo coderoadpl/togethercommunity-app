@@ -5,6 +5,7 @@ import { memberGrantSchema } from './grant.js';
 import { invoiceSchema } from './invoice.js';
 import { languageSchema } from './language.js';
 import { isoDateTimeSchema, marketingConsentSchema } from './marketing-email.js';
+import { orderShippingSchema } from './shipping.js';
 import { memberSubscriptionSchema, orderSchema } from './commerce.js';
 import { termsConsentSchema } from './consent.js';
 import { postBodyFormatSchema, postContextKindSchema } from './community.js';
@@ -33,7 +34,7 @@ export const memberDataExportSchema = z.object({
   }),
   grants: z.array(memberGrantSchema),
   subscriptions: z.array(memberSubscriptionSchema),
-  orders: z.array(orderSchema),
+  orders: z.array(orderSchema.extend({ shipping: orderShippingSchema.omit({ corrections: true }).nullable().optional() })),
   invoices: z.array(invoiceSchema),
   courseProgress: z.array(memberCourseProgressSchema),
   posts: z.array(

@@ -167,9 +167,10 @@ describe('parcel locker picker', () => {
     expect(router.state.location.pathname).toBe(formPath);
 
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, 30-001 Cracow' } } });
+    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, 30-001 Cracow' } } });
   });
 
   it('keeps the first point when another one arrives while the picker is closing', async () => {
@@ -405,9 +406,10 @@ describe('parcel locker picker', () => {
     await waitFor(() => expect(code).toHaveFocus());
     await userEvent.type(code, 'waw01m');
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
   });
 
   it('mounts the map again with a fresh script when the buyer tries again after a failure inside the picker', async () => {
@@ -465,9 +467,10 @@ describe('parcel locker picker', () => {
     await userEvent.type(code, 'waw01m');
     expect(chooseButton()).toBeVisible();
     await userEvent.type(screen.getByLabelText(en.checkout.emailLabel), 'buyer@example.org');
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(bodies).toHaveLength(1));
-    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+    expect(bodies[0]).toMatchObject({ shipping: { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
     expect(bodies[0]).not.toHaveProperty('shipping.pickupPoint.name');
     expect(document.getElementById('inpost-geowidget-script')).toBeNull();
   });

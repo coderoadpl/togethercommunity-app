@@ -79,6 +79,12 @@ describe('ShipX HTTP client', () => {
     });
   });
 
+  it('normalizes a legacy sender phone with a leading zero for the shipment request', async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => json(fixture('create-locker-response.json'), 201));
+    await createShipxHttpClient({ fetchImpl }).createShipment(credentials, { ...lockerRequest, sender: { ...sender, phone: '+48 050 000 000' } });
+    expect(requestOf(fetchImpl).body).toMatchObject({ sender: { phone: '050000000' } });
+  });
+
   it('sends courier parcels as dimensions and weight with the receiver address', async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => json(fixture('create-locker-response.json'), 201));
     await createShipxHttpClient({ fetchImpl }).createShipment({ ...credentials, environment: 'production' }, {

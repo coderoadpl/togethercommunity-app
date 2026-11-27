@@ -17,6 +17,8 @@ describe('checkout state', () => {
       couponCode: 'partner20',
       shippingRateId: null,
       pickupPointCode: '',
+      lockerPhone: '',
+      lockerPhoneValidationFailed: false,
       pickupPoint: null,
       lockerCheck: null,
     });
@@ -47,13 +49,32 @@ describe('checkout state', () => {
   });
 });
 
+const withPhone = () => reduceCheckoutState(createCheckoutState(''), { type: 'lockerPhoneChanged', phone: '500000000' });
+
 describe('delivery selection', () => {
+  it('requires a Polish phone for lockers, persists it between rates, and ignores it for another carrier', () => {
+    const locker = { ...createCheckoutState(''), shippingRateId: 'locker', pickupPointCode: 'ABC01M' };
+    expect(selectDelivery(locker, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'locker_phone' });
+    const foreign = reduceCheckoutState(locker, { type: 'lockerPhoneChanged', phone: '+44 7700 900000' });
+    expect(selectDelivery(foreign, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'locker_phone' });
+    const valid = reduceCheckoutState(foreign, { type: 'lockerPhoneChanged', phone: '500 000 000' });
+    expect(selectDelivery(valid, { required: true, rates })).toMatchObject({ status: 'ready', shipping: { phone: '+48500000000' } });
+    const rejected = reduceCheckoutState(valid, { type: 'lockerPhoneValidationFailed', phone: valid.lockerPhone });
+    expect(selectDelivery(rejected, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'locker_phone' });
+    const courier = reduceCheckoutState(rejected, { type: 'shippingRateSelected', rateId: 'courier' });
+    expect(courier.lockerPhone).toBe('500 000 000');
+    expect(selectDelivery(courier, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'courier' } });
+    const corrected = reduceCheckoutState(rejected, { type: 'lockerPhoneChanged', phone: '+48 500 000 000' });
+    expect(selectDelivery(corrected, { required: true, rates }).status).toBe('ready');
+    expect(reduceCheckoutState(corrected, { type: 'lockerPhoneValidationFailed', phone: '500 000 000' })).toEqual(corrected);
+  });
+
   it('needs nothing when no product is shipped', () => {
-    expect(selectDelivery(createCheckoutState(''), { required: false, rates })).toEqual({ status: 'not_required' });
+    expect(selectDelivery(withPhone(), { required: false, rates })).toEqual({ status: 'not_required' });
   });
 
   it('waits for a rate, then for a valid locker code on a locker rate', () => {
-    const initial = createCheckoutState('');
+    const initial = withPhone();
     expect(selectDelivery(initial, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'rate' });
     const locker = reduceCheckoutState(initial, { type: 'shippingRateSelected', rateId: 'locker' });
     expect(selectDelivery(locker, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'pickup_point' });
@@ -61,27 +82,27 @@ describe('delivery selection', () => {
     expect(invalid.pickupPointCode).toBe('WAW-1');
     expect(selectDelivery(invalid, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'pickup_point' });
     const typed = reduceCheckoutState(locker, { type: 'pickupPointCodeChanged', code: ' waw01m' });
-    expect(selectDelivery(typed, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
+    expect(selectDelivery(typed, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'WAW01M' } } });
   });
 
   it('ignores the locker for a courier rate and rejects an unknown rate', () => {
-    const courier = reduceCheckoutState(createCheckoutState(''), { type: 'shippingRateSelected', rateId: 'courier' });
+    const courier = reduceCheckoutState(withPhone(), { type: 'shippingRateSelected', rateId: 'courier' });
     expect(selectDelivery(courier, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'courier' } });
     const unknown = reduceCheckoutState(courier, { type: 'shippingRateSelected', rateId: 'retired' });
     expect(selectDelivery(unknown, { required: true, rates })).toEqual({ status: 'incomplete', missing: 'rate' });
   });
 
   it('sends the picked locker name and address while the code names that locker, also after the code is edited back', () => {
-    const locker = reduceCheckoutState(createCheckoutState(''), { type: 'shippingRateSelected', rateId: 'locker' });
+    const locker = reduceCheckoutState(withPhone(), { type: 'shippingRateSelected', rateId: 'locker' });
     const picked = reduceCheckoutState(locker, { type: 'pickupPointSelected', point: { code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } });
     expect(picked.pickupPointCode).toBe('KRA010');
-    expect(selectDelivery(picked, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } } });
+    expect(selectDelivery(picked, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } } });
     const edited = reduceCheckoutState(picked, { type: 'pickupPointCodeChanged', code: 'KRA011' });
     expect(pickedPickupPoint(edited)).toBeNull();
-    expect(selectDelivery(edited, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA011' } } });
+    expect(selectDelivery(edited, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'KRA011' } } });
     const retyped = reduceCheckoutState(edited, { type: 'pickupPointCodeChanged', code: 'kra010' });
     expect(pickedPickupPoint(retyped)).toEqual({ code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' });
-    expect(selectDelivery(retyped, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } } });
+    expect(selectDelivery(retyped, { required: true, rates })).toEqual({ status: 'ready', shipping: { rateId: 'locker', phone: '+48500000000', pickupPoint: { provider: 'inpost', code: 'KRA010', name: 'Next to the shop', address: 'Main Street 1, Cracow' } } });
   });
 
   it('parses the point chosen on the parcel locker map', () => {
@@ -104,7 +125,7 @@ describe('delivery selection', () => {
 
 describe('typed locker code check', () => {
   const typed = (code: string) => reduceCheckoutState(
-    reduceCheckoutState(createCheckoutState(''), { type: 'shippingRateSelected', rateId: 'locker' }),
+    reduceCheckoutState(withPhone(), { type: 'shippingRateSelected', rateId: 'locker' }),
     { type: 'pickupPointCodeChanged', code },
   );
 

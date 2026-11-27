@@ -116,8 +116,20 @@ export const localizeErrorCode = (code: ErrorCode, t: Messages): string => {
       return t.errors.messageInvoiceExemptionBasisMissing;
     case 'shipping_required':
       return t.errors.messageShippingRequired;
+    case 'locker_phone_invalid':
+      return t.shipping.inpostPhoneInvalid;
     case 'sold_out':
       return t.errors.messageSoldOut;
+    case 'delivery_correction_shipped':
+      return t.deliveryCorrection.shipped;
+    case 'delivery_correction_shipment_exists':
+      return t.deliveryCorrection.shipmentRefresh;
+    case 'delivery_correction_member_erased':
+      return t.deliveryCorrection.memberErased;
+    case 'delivery_correction_conflict':
+      return t.deliveryCorrection.conflict;
+    case 'delivery_correction_shipment_bought':
+      return t.deliveryCorrection.bought;
     case 'fulfilment_conflict':
       return t.errors.messageFulfilmentConflict;
     case 'shipx_unavailable':
@@ -160,7 +172,13 @@ const panelHintOf = (code: ErrorCode, t: Messages): string | null => {
     case 'slug_reserved':
     case 'impersonation_read_only':
     case 'shipping_required':
+    case 'locker_phone_invalid':
     case 'sold_out':
+    case 'delivery_correction_shipped':
+    case 'delivery_correction_shipment_exists':
+    case 'delivery_correction_member_erased':
+    case 'delivery_correction_conflict':
+    case 'delivery_correction_shipment_bought':
     case 'fulfilment_conflict':
     case 'shipx_unavailable':
     case 'shipx_rejected':

@@ -41,7 +41,7 @@ afterAll(async () => { await database?.close(); });
 describe('order shipping persistence', () => {
   it('round-trips the checkout shipping snapshot within its workspace', async () => {
     const snapshots = createCheckoutSnapshotRepository(database.db);
-    const snapshotShipping = { rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const, pickupPoint: shipping.pickupPoint, allowedCountries: ['PL'] };
+    const snapshotShipping = { rateId: 'locker', label: 'Parcel locker', amountCents: 1499, vatRatePercent: 23 as const, carrier: 'inpost' as const, pickupPoint: shipping.pickupPoint, allowedCountries: ['PL'], phone: '+48500000000' };
     await snapshots.create('workspace', { id: 'snapshot-shipping', tenantId: 'workspace', salesLinkId: null, lines: [productLine, shippingLine], shipping: snapshotShipping, currency: 'PLN', createdAt: now });
     expect(await snapshots.findById('workspace', 'snapshot-shipping')).toMatchObject({ lines: [productLine, shippingLine], shipping: snapshotShipping });
     expect(await snapshots.findById('other', 'snapshot-shipping')).toBeNull();

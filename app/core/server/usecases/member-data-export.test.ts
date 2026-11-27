@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { orderSchema } from '#core/domain/index.js';
 import type { Invoice, Member, Post } from '#core/domain/index.js';
 
 import type { Ctx } from '../context.js';
@@ -181,6 +182,22 @@ const deps = (
 });
 
 describe('exportMyData', () => {
+  it('exports current delivery details without the staff correction audit', async () => {
+    const harness = deps();
+    harness.orders.listForMember = async () => [orderSchema.parse({
+      id: 'order', tenantId: 'tenant-1', memberId: 'member-1', productId: 'book', priceId: null, kind: 'one_time', status: 'paid',
+      mode: 'live', amountCents: 1200, currency: 'PLN', provider: 'simulated', providerObjectIds: {}, couponId: null, discountCents: 0, createdAt: now,
+      shipping: { rateId: 'courier', label: 'Courier', amountCents: 1200, vatRatePercent: 23, carrier: 'other', pickupPoint: null,
+        phone: '+48500000000', address: { name: 'Example Buyer', line1: 'Street 2', line2: null, postalCode: '00-001', city: 'Example City', country: 'PL' },
+        corrections: [{ field: 'phone', from: null, to: '+48500000000', at: now, byUserId: 'staff', byEmail: 'staff@example.org' }],
+      },
+    })];
+    const result = await exportMyData(context('member'), harness);
+    if (!result.ok) throw new Error('Export failed');
+    expect(JSON.parse(result.value.content)).toMatchObject({ orders: [{ shipping: { phone: '+48500000000', address: { line1: 'Street 2' } } }] });
+    expect(result.value.content).not.toContain('corrections');
+    expect(result.value.content).not.toContain('staff@example.org');
+  });
   it('returns the member disclosure package', async () => {
     const result = await exportMyData(context('member'), deps());
     expect(result).toMatchObject({

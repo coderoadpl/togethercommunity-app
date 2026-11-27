@@ -117,6 +117,7 @@ const lockerShipping = {
   pickupPoint: { provider: 'inpost', code: 'WAW01M', name: null, address: null },
   address: { name: 'Jane Buyer', line1: 'Garden Street 5', line2: null, postalCode: '00-950', city: 'Warsaw', country: 'PL' },
   phone: '+48500000000',
+  corrections: [{ field: 'phone', from: null, to: '+48500000000', at: now, byUserId: 'staff-audit', byEmail: 'staff-audit@example.org' }],
 };
 
 const courierShipping = {
@@ -192,6 +193,17 @@ beforeAll(async () => {
 afterAll(async () => { await database?.close(); });
 
 describe('shop order routes with a shop management key', () => {
+  it('strips the staff delivery audit from raw list detail verification and JSON export responses', async () => {
+    const secret = await createShopKey([READ]);
+    for (const path of [SHOP_ORDER_ROUTES.listOrders.path, orderPath(SHOP_ORDER_ROUTES.getOrder.path, 'acme-live-courier'), orderPath(SHOP_ORDER_ROUTES.verifyOrder.path, 'acme-live-courier'), SHOP_ORDER_ROUTES.exportOrders.path + '?format=json']) {
+      const response = await keyed(secret, 'GET', path);
+      expect(response.status).toBe(200);
+      const body = await response.text();
+      expect(body).not.toContain('corrections');
+      expect(body).not.toContain('staff-audit');
+    }
+    expect((await createOrderRepository(database.db).findById('acme', 'acme-live-courier'))?.shipping?.corrections).toHaveLength(1);
+  });
   it('lists only the key workspace orders and filters by the requested mode', async () => {
     const secret = await createShopKey([READ]);
     expect(await listIds(await keyed(secret, 'GET', SHOP_ORDER_ROUTES.listOrders.path)))
@@ -274,6 +286,7 @@ describe('shop order routes with a shop management key', () => {
     const path = orderPath(SHOP_ORDER_ROUTES.shipOrder.path, 'acme-live-courier');
     const shipped = await keyed(secret, 'POST', path, { carrier: 'other', trackingNumber: 'MANUAL0001' });
     expect(shipped.status).toBe(200);
+    expect(await shipped.clone().text()).not.toContain('corrections');
     expect(envelope(shopOrderContracts.shipOrder.output).parse(await shipped.json()).data.order).toMatchObject({
       id: 'acme-live-courier', fulfilmentStatus: 'shipped', shipment: { carrier: 'other', trackingNumber: 'MANUAL0001', shippedBy: ownerId },
     });
@@ -425,6 +438,8 @@ describe('shop order routes with a shop management key', () => {
 
     const created = await keyed(secret, 'POST', at(SHOP_ORDER_ROUTES.shipxCreate.path), undefined, akademiaHost);
     expect(created.status).toBe(200);
+    expect(await created.clone().text()).not.toContain('corrections');
+    expect(await created.clone().text()).not.toContain('staff-audit');
     const tracking = fakeShipxTrackingNumber(fakeShipxShipmentId('akademia-live-locker'));
     expect((await database.db.select().from(orderFulfilmentEvents)).filter((event) => event.orderId === 'akademia-live-locker')).toEqual([]);
     expect((await database.db.select().from(emailOutbox)).filter((email) => email.tenantId === 'akademia' && email.kind === 'order-shipped')).toEqual([]);

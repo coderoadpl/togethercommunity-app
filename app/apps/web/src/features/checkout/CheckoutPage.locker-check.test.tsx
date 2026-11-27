@@ -96,6 +96,7 @@ const renderCheckout = () => {
 const typeCode = async (code: string) => {
   await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
   await userEvent.click(screen.getByRole('radio', { name: /^Parcel locker/u }));
+  await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
   const field = screen.getByLabelText(en.shipping.lockerCodeLabel);
   await userEvent.type(field, code);
   return field;
@@ -250,6 +251,7 @@ describe('typed parcel locker code check', () => {
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('radio', { name: /^Parcel locker/u }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
     await userEvent.click(toggle);
     await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'waw01m');
@@ -277,6 +279,7 @@ describe('typed parcel locker code check', () => {
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('radio', { name: /^Parcel locker/u }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     const toggle = screen.getByRole('button', { name: en.shipping.lockerKnowCode });
     await userEvent.click(toggle);
     await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'missing1');
@@ -297,6 +300,7 @@ describe('typed parcel locker code check', () => {
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('radio', { name: /^Parcel locker/u }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
     const widget = (await screen.findByTestId('checkout-inpost-geowidget')).querySelector('inpost-geowidget');
     const eventName = widget?.getAttribute('onpoint') ?? '';
@@ -317,6 +321,7 @@ describe('typed parcel locker code check', () => {
     const h = serve({ token: 'public-map-token', canTest, testEnabled });
     renderCheckout();
     await userEvent.click(await screen.findByRole('radio', { name: /^Parcel locker/u }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     await userEvent.type(screen.getByLabelText(en.shipping.lockerCodeLabel), 'missing1');
     await userEvent.tab();
     await waitFor(() => expect(screen.getByTestId('checkout-pickup-point-check')).toHaveTextContent(en.shipping.lockerRejected.not_found));
@@ -424,8 +429,7 @@ describe('typed parcel locker code check', () => {
     await userEvent.click(screen.getByRole('radio', { name: /^Courier/u }));
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));
     await waitFor(() => expect(h.sessions).toHaveLength(1));
-    expect(h.sessions[0]).toMatchObject({ shipping: { rateId: 'courier' } });
-    expect(h.sessions[0]).not.toHaveProperty('shipping.pickupPoint');
+    expect(h.sessions[0]).toHaveProperty('shipping', { rateId: 'courier', phone: '+48500000000' });
     release();
   });
 
@@ -434,6 +438,7 @@ describe('typed parcel locker code check', () => {
     renderCheckout();
     await userEvent.type(await screen.findByLabelText(en.checkout.emailLabel), 'buyer@example.org');
     await userEvent.click(screen.getByRole('radio', { name: /^Parcel locker/u }));
+    await userEvent.type(screen.getByLabelText(en.shipping.lockerPhoneLabel), '500000000');
     await userEvent.click(screen.getByRole('button', { name: en.shipping.lockerChoose }));
     await pickOnMap('KRA010');
     await userEvent.click(screen.getByTestId('checkout-pay-cta'));

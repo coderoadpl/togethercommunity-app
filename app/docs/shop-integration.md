@@ -397,7 +397,7 @@ For a custom form on an external site, the following plain JavaScript runs in a
 `<script type="module">` element without any package. Call the session request
 only after the buyer accepted the displayed legal terms. This example selects
 the configured manual `courier` rate; choose an active rate from the offer in a
-real UI.
+real UI. The examples below use the manual rate, so they omit `shipping.phone`.
 
 ```js
 const workspaceOrigin = 'https://acme.togethercommunity.app';
@@ -496,6 +496,19 @@ required. Do not send a delivery address in the session request. Optional
 `checkoutSessionRequestSchema`.
 Display the returned consent wording and never preselect marketing consent.
 
+For example, if the buyer selects an InPost locker rate, send the
+following `shipping` object in either request form. Use the actual rate ID,
+number entered by the buyer and selected locker code. For an InPost courier
+rate, send the rate ID and phone but omit `pickupPoint`.
+
+```json
+{
+  "rateId": "locker",
+  "phone": "+48 500 000 000",
+  "pickupPoint": { "provider": "inpost", "code": "WAW01M" }
+}
+```
+
 Optional `clientReference` is the storefront's own reference for the checkout,
 such as its cart or order number: 1–200 printable ASCII characters (space to
 `~`), with surrounding spaces trimmed; any other value is a `validation` error
@@ -526,7 +539,7 @@ selection is needed rather than guessing a payload.
 
 The same session route accepts a cart: several products, each with a quantity,
 paid in one payment. A body that has a `lines` field is a cart request; any other
-body is the single-product or sales-link request above, parsed exactly as before.
+body is the single-product or sales-link request above.
 With the `readData` helper and `workspaceOrigin` of the example above, a custom
 form sends:
 
@@ -634,7 +647,8 @@ single-product page for every product, including one whose slug is `cart`.
 
 The CLI posts the same cart with `checkout session --line '<product-id>:2'
 --line '<product-id>:1'`; repeat `--line` once per product and leave out
-`--product`. Both forms take `--client-reference '<reference>'`.
+`--product`. Both forms take `--client-reference '<reference>'` and require
+`--shipping-phone` when the selected delivery rate is InPost.
 
 ### Return and cancel addresses
 
@@ -684,10 +698,11 @@ Application JSON responses are `{ "ok": true, "data": ... }` or
 `{ "ok": false, "error": { "code": ..., "message": ..., "details": ... } }`;
 `details` is optional. Treat transport/JSON/schema failures separately from an
 application error. Never fulfil an order after a failed or unparsed response.
-Useful error mappings are validation/shipping-required `400`, unauthorized
-`401`, forbidden `403`, not-found `404`, sold-out/fulfilment-conflict `409`,
-integration-not-configured `412`, rate-limited `429` and
-integration-unavailable `503`. Use the actual underscore-separated `error.code`
+Useful error mappings are `validation`, `shipping_required` and
+`locker_phone_invalid` (400), `unauthorized` (401), `forbidden` (403),
+`not_found` (404), `sold_out` and `fulfilment_conflict` (409),
+`integration_not_configured` (412), `rate_limited` (429) and
+`integration_unavailable` (503). Use the actual underscore-separated `error.code`
 from the contract, such as `sold_out` or `shipping_required`, in program logic.
 
 Back off on `429`; respect `Retry-After` when readable and otherwise use bounded
@@ -902,6 +917,12 @@ the taxonomy exit code, for example `unauthorized` (3), `forbidden` (4),
 `validation` (2) and `internal` (10). On `feed_cursor_reset` the command prints
 the cursor to continue from after the resync and exits with code 30 instead of
 polling again.
+
+Before dispatch, an owner or admin with a staff session can correct delivery
+details using `POST /api/orders/:orderId/delivery-details` or
+`order delivery <orderId>`, provided no active InPost shipment blocks the change. See
+[Correct delivery details](shop.md#correct-delivery-details) for the request,
+audit and error codes. Shop management keys cannot call this route.
 
 For shipping, select live, paid orders whose `fulfilmentStatus` is `to_pack`.
 Packing-list/export tools are also available, but they are not proof of carrier

@@ -80,6 +80,7 @@ export * from './shipping.js';
 export * from './fulfilment.js';
 export * from './order-change.js';
 export * from './shipx.js';
+export * from './order-label.js';
 export * from './product-compliance.js';
 export * from './order-vat.js';
 export * from './coupon.js';

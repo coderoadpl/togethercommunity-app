@@ -981,10 +981,14 @@ buyer the tracking number for a live order. `POST .../shipx` creates and pays
 a real InPost shipment for a live order when the workspace's `production`
 ShipX connection is saved, so automate it only with explicit operational
 approval; a test-mode order uses the `sandbox` connection. Its body
-may carry the optional `parcelTemplate` (`small`, `medium` or `large`) for this
-shipment; without it the parcel takes the largest product size, and any other
-value or an unknown field answers `400 validation` before anything is sent to
-ShipX. A request that finds another request working on the same shipment answers
+may carry `parcelTemplate` (`small`, `medium` or `large`; defaults to the largest
+product size) and `markShipped` (boolean, defaults to `false`). **The default
+changed:** a request with `{}` now buys the label and leaves the order to pack,
+without e-mailing the buyer. Send `{ "markShipped": true }` for the previous
+one-step behaviour: buy, mark as shipped, and e-mail the buyer for a live
+order. The previous release answers `400 validation` to a body containing
+`markShipped`, even if it is `false`. Invalid values or unknown fields answer
+`400 validation` before anything is sent to ShipX. A request that finds another request working on the same shipment answers
 `409 fulfilment_conflict` and should be retried later. Every such call that
 reaches its handler has its key history `request` row, written before the
 handler runs, including a call the handler refuses: a validation error, a
@@ -1057,10 +1061,17 @@ pnpm --silent run cli --tenant acme shop orders ship <order-id> --carrier other 
 pnpm --silent run cli --tenant acme shop orders issue <order-id> <product-id> [--count 2]
 pnpm --silent run cli --tenant acme shop orders shipx show <order-id>
 pnpm --silent run cli --tenant acme shop orders shipx create <order-id>
+pnpm --silent run cli --tenant acme shop orders shipx create <order-id> --mark-shipped
 pnpm --silent run cli --tenant acme shop orders shipx refresh <order-id>
 pnpm --silent run cli --tenant acme shop orders shipx label <order-id> --out label.pdf
 pnpm --silent run cli --tenant acme shop orders shipx discard <order-id>
 ```
+
+`shop orders shipx create` now buys the label without dispatching the order
+or e-mailing the buyer. Use `--mark-shipped` for the previous one-step
+behaviour. The CLI sends `markShipped` as a boolean (`false` without the
+flag); use a matching server release, since the previous release rejects this
+field with `400 validation`.
 
 The typed client exposes the twelve calls with the session client's names:
 `listOrders`, `exportOrders`, `ordersPackingList`, `verifyOrder`, `getOrder`,

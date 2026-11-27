@@ -24,6 +24,7 @@
           "fulfilmentStatus": null,
           "id": "order-studio-active-js",
           "kind": "one_time",
+          "label": null,
           "lines": [
             {
               "grossCents": 39900,

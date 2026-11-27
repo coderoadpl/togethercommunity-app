@@ -1602,6 +1602,8 @@ describe('host-scoped credentials', () => {
     ] as const)('does not authenticate on %s with unlisted exact origin %s', async (host, origin) => {
       const { auth } = buildCeremonyAuth();
       const { credential } = await registerPasskey(auth, platformHost, baseDomain);
+      const context = await auth.$context;
+      context.skipOriginCheck = false;
       await expectPasskeyRefused(await authenticatePasskey(
         auth, host, baseDomain, credential, origin, browserOrigin(platformHost),
       ));
@@ -1610,6 +1612,8 @@ describe('host-scoped credentials', () => {
     it('rejects an untrusted passkey transport origin before verification', async () => {
       const { auth } = buildCeremonyAuth();
       const { credential } = await registerPasskey(auth, platformHost, baseDomain);
+      const context = await auth.$context;
+      context.skipOriginCheck = false;
       const response = await authenticatePasskey(
         auth, tenantHost, baseDomain, credential, browserOrigin(tenantHost), 'https://unverified.example',
       );
@@ -1647,7 +1651,7 @@ describe('host-scoped credentials', () => {
       const headers = new Headers({ origin: workspaceOrigin, cookie });
       const request = new Request(`${workspaceOrigin}/api/auth/passkey/verify-authentication`, { method: 'POST', headers });
 
-      const verified = await auth.api.verifyPasskeyAuthentication({ request, headers, body });
+      const verified = await auth.api.verifyPasskeyAuthentication({ request, headers, body, asResponse: false });
 
       expect(verified).toMatchObject({ user: { email } });
       expect(context.trustedOrigins).toEqual(initialOrigins);
@@ -2090,7 +2094,7 @@ describe('current email verification links', () => {
       expect(signedUp.status, await signedUp.clone().text()).toBe(200);
       const { internalAdapter } = await auth.$context;
       expect((await internalAdapter.findUserByEmail(email))?.user).toMatchObject({ email, emailVerified: false });
-      expect(stderr).toHaveBeenCalledWith(expect.stringContaining(`[Better Auth] error: ${failure}`));
+      expect(stderr).toHaveBeenCalledWith('[Better Auth] error: Failed to run background task:\n');
       expect(enqueue).toHaveBeenCalledTimes(1);
       await flushEmails();
       expect(await emails.findByRecipient(email)).toBeNull();

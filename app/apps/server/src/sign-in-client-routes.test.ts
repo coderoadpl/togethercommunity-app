@@ -1,4 +1,6 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-base';
+import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { BETTER_AUTH_API_PATH_PATTERN, BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
@@ -42,6 +44,8 @@ let pending: SignInClientCredential;
 let impersonation: string;
 const sessions = new Map<AccountKind, Session>();
 const machineCredentials = new Map<string, Record<string, string>>();
+const spanExporter = new InMemorySpanExporter();
+const tracerProvider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(spanExporter)] });
 
 const setup = (hosts = '') => createDeps(envSchema.parse({
   NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
@@ -109,6 +113,7 @@ const scopedKeys: readonly TenantApiKeyScope[] = [
 
 beforeAll(async () => {
   database = await createTestDatabase('together_registry_routes', z.string().url().parse(process.env['DATABASE_URL']));
+  tracerProvider.register();
   deps = setup(allowed);
   app = buildApp(deps);
   await database.db.insert(organizations).values({
@@ -165,7 +170,10 @@ beforeAll(async () => {
   machineCredentials.set('operator secret', { [SCHEDULER_OPERATOR_SECRET_HEADER]: operatorSecret });
 }, 120_000);
 
-afterAll(async () => { await database?.close(); });
+afterAll(async () => {
+  await tracerProvider.shutdown();
+  await database?.close();
+});
 
 describe('Dormant sign-in client HTTP management', () => {
   it.each(['admin', 'member', 'foreign', 'derived', 'unverified'] as const)('refuses all four operations to the %s session', async (kind) => {
@@ -257,32 +265,45 @@ describe('Dormant sign-in client HTTP management', () => {
   });
 
   it('allows a same-origin browser to issue and rotate once, keeping raw secrets out of reads and refusals', async () => {
-    const headers = { cookie: session('owner').cookie, origin: workspaceOrigin, 'sec-fetch-site': 'same-origin' };
-    const created = await request(app, 'POST', listPath, headers, browserInput);
-    expect(created.status).toBe(201);
-    expect(created.headers.get('cache-control')).toBe('no-store');
-    const { client, secret } = await data(created, signInClientCredentialSchema);
-    const rotated = await request(app, 'POST', rotatePath(client.id), headers, versionInput);
-    expect(rotated.status).toBe(200);
-    expect(rotated.headers.get('cache-control')).toBe('no-store');
-    const replacement = await data(rotated, signInClientCredentialSchema);
-    expect(replacement.secret).not.toBe(secret);
-    expect(replacement.client.credentialVersion).toBe(2);
-    const refused = await request(app, 'POST', rotatePath(client.id), headers, versionInput);
-    expect(refused.status).toBe(409);
-    const errorText = await refused.text();
-    expect(errorText).toContain('credential_version_changed');
-    const list = await request(app, 'GET', `${listPath}?limit=1`, owner());
-    const raw = await list.text();
-    const page = z.object({ data: signInClientPageSchema }).parse(JSON.parse(raw)).data;
-    expect(page.clients).toHaveLength(1);
-    expect(page.nextCursor).toBe(page.clients[0]?.id);
-    const next = await request(app, 'GET', `${listPath}?limit=1&cursor=${page.nextCursor ?? ''}`, owner());
-    expect((await data(next, signInClientPageSchema)).clients[0]?.id).not.toBe(page.nextCursor);
-    for (const plaintext of [secret, replacement.secret]) {
-      expect(errorText).not.toContain(plaintext);
-      expect(raw).not.toContain(plaintext);
-      expect(JSON.stringify(await readRegistry())).not.toContain(plaintext);
+    spanExporter.reset();
+    const spies = (['log', 'info', 'warn', 'error'] as const).map((level) =>
+      vi.spyOn(console, level).mockImplementation(() => undefined));
+    try {
+      const headers = { cookie: session('owner').cookie, origin: workspaceOrigin, 'sec-fetch-site': 'same-origin' };
+      const created = await request(app, 'POST', listPath, headers, browserInput);
+      expect(created.status).toBe(201);
+      expect(created.headers.get('cache-control')).toBe('no-store');
+      const { client, secret } = await data(created, signInClientCredentialSchema);
+      const rotated = await request(app, 'POST', rotatePath(client.id), headers, versionInput);
+      expect(rotated.status).toBe(200);
+      expect(rotated.headers.get('cache-control')).toBe('no-store');
+      const replacement = await data(rotated, signInClientCredentialSchema);
+      expect(replacement.secret).not.toBe(secret);
+      expect(replacement.client.credentialVersion).toBe(2);
+      const refused = await request(app, 'POST', rotatePath(client.id), headers, versionInput);
+      expect(refused.status).toBe(409);
+      const errorText = await refused.text();
+      expect(errorText).toContain('credential_version_changed');
+      const list = await request(app, 'GET', `${listPath}?limit=1`, owner());
+      const raw = await list.text();
+      const page = z.object({ data: signInClientPageSchema }).parse(JSON.parse(raw)).data;
+      expect(page.clients).toHaveLength(1);
+      expect(page.nextCursor).toBe(page.clients[0]?.id);
+      const next = await request(app, 'GET', `${listPath}?limit=1&cursor=${page.nextCursor ?? ''}`, owner());
+      expect((await data(next, signInClientPageSchema)).clients[0]?.id).not.toBe(page.nextCursor);
+      await tracerProvider.forceFlush();
+      const spans = spanExporter.getFinishedSpans();
+      expect(spans.some((span) => span.attributes['http.route'] === listPath)).toBe(true);
+      const observed = JSON.stringify({ logs: spies.flatMap((spy) => spy.mock.calls), spans: spans.map(({ attributes, events }) => ({ attributes, events })) });
+      for (const plaintext of [secret, replacement.secret]) {
+        expect(observed.includes(plaintext)).toBe(false);
+        expect(observed.includes(deps.signInClientCrypto.hash(plaintext))).toBe(false);
+        expect(errorText).not.toContain(plaintext);
+        expect(raw).not.toContain(plaintext);
+        expect(JSON.stringify(await readRegistry())).not.toContain(plaintext);
+      }
+    } finally {
+      for (const spy of spies) spy.mockRestore();
     }
   });
 

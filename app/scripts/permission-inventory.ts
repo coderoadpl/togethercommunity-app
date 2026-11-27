@@ -903,7 +903,7 @@ const beforeForUseCase = (
   if (file === 'shop-settings.ts') return name === 'getShopSettings' ? staff : owner;
   if (file === 'shop-integrations.ts') return name === 'getShopIntegrationSecrets' ? staff : owner;
   if (file === 'api-keys.ts') return name === 'listTenantApiKeys' ? staff : owner;
-  if (file === 'shop-management-keys.ts') return owner;
+  if (file === 'shop-management-keys.ts' || file === 'sign-in-clients.ts') return owner;
   if (file === 'tenant-secrets.ts') return name === 'getTenantSecretsMasked' ? staff : owner;
   if (file === 'storage-configuration.ts') return owner;
   if (file === 'configure-stripe.ts' || file === 'probe-stripe-permissions.ts') return owner;

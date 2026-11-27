@@ -147,6 +147,8 @@ import type {
   ShopManagementKey,
   ShopManagementKeyEvent,
   ShopManagementKeyEventPage,
+  SignInClientPage,
+  SignInClientPublic,
   ChangeProposal,
   ChangeProposalCap,
   ChangeProposalCountCap,
@@ -960,6 +962,46 @@ export interface ShopManagementKeyRepository {
     event: (apiKeyId: string) => ShopManagementKeyEvent,
     withdrawal: ChangeProposalWithdrawal,
   ): Promise<number>;
+}
+
+export type SignInClientWriteRefusal =
+  | 'host_unavailable'
+  | 'workspace_unavailable'
+  | 'client_not_found'
+  | 'credential_version_changed'
+  | 'client_retired';
+
+export interface SignInClientMutation {
+  at: string;
+  eventId: string;
+}
+
+export interface SignInClientSecretState {
+  secretHash: string;
+  secretExpiresAt: string;
+}
+
+export interface NewSignInClient extends SignInClientMutation, SignInClientSecretState {
+  id: string;
+  name: string;
+  redirectHost: string;
+  redirectUris: string[];
+}
+
+export interface SignInClientRepository {
+  create(tenantId: string, input: NewSignInClient): Promise<Result<SignInClientPublic, SignInClientWriteRefusal>>;
+  findById(tenantId: string, id: string): Promise<SignInClientPublic | null>;
+  list(tenantId: string, query: { cursor?: string; limit: number }): Promise<SignInClientPage>;
+  rotate(tenantId: string, id: string, input: SignInClientMutation & SignInClientSecretState & {
+    expectedCredentialVersion: number;
+  }): Promise<Result<SignInClientPublic, SignInClientWriteRefusal>>;
+  disable(tenantId: string, id: string, input: SignInClientMutation): Promise<Result<SignInClientPublic, SignInClientWriteRefusal>>;
+}
+
+export interface SignInClientCrypto {
+  generateId(): string;
+  generateSecret(): string;
+  hash(secret: string): string;
 }
 
 export interface ShopManagementKeyRateLimitRepository {

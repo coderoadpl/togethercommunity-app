@@ -52,6 +52,8 @@ export const CAPABILITIES = [
   'member:product:read',
   'api-key:read',
   'api-key:write',
+  'sign-in-client:read',
+  'sign-in-client:write',
   'course:read',
   'course:write',
   'course:history:read',
@@ -178,6 +180,8 @@ const VERIFIED_EMAIL_CAPABILITIES: readonly Capability[] = [
   'platform:data:reset',
   'proposal:decide',
   'order:refund',
+  'sign-in-client:read',
+  'sign-in-client:write',
 ];
 
 export const requiresVerifiedEmail = (capability: Capability): boolean =>
@@ -297,6 +301,8 @@ const ownerOnlyCapabilities = [
   'tenant:secret:write',
   'tenant:organization:unlink',
   'api-key:write',
+  'sign-in-client:read',
+  'sign-in-client:write',
   'integration:test',
   'proposal:read',
   'proposal:decide',

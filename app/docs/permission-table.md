@@ -34,7 +34,7 @@ The staging use-cases of `key-download-files.ts` authorize through the same-file
 
 The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.
 
-Closed capability count: 145. Route rows: 571. Exported `Ctx` use-case rows: 426.
+Closed capability count: 147. Route rows: 571. Exported `Ctx` use-case rows: 430.
 
 ## Human-readable diff
 
@@ -985,6 +985,10 @@ no changes
 | `shop-management-keys.ts#listShopManagementKeyEvents` | api-key:write | owner | owner | yes | core/server/usecases/shop-management-keys.ts authorization call |
 | `shop-settings.ts#getShopSettings` | tenant:settings:read | owner, admin | owner, admin | yes | core/server/usecases/shop-settings.ts authorization call |
 | `shop-settings.ts#updateShopSettings` | tenant:settings:write | owner | owner | yes | core/server/usecases/shop-settings.ts authorization call |
+| `sign-in-clients.ts#createSignInClient` | sign-in-client:write | owner | owner | yes | core/server/usecases/sign-in-clients.ts authorization call |
+| `sign-in-clients.ts#listSignInClients` | sign-in-client:read | owner | owner | yes | core/server/usecases/sign-in-clients.ts authorization call |
+| `sign-in-clients.ts#rotateSignInClientSecret` | sign-in-client:write | owner | owner | yes | core/server/usecases/sign-in-clients.ts authorization call |
+| `sign-in-clients.ts#disableSignInClient` | sign-in-client:write | owner | owner | yes | core/server/usecases/sign-in-clients.ts authorization call |
 | `spaces.ts#createSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#updateSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |
 | `spaces.ts#deleteSpace` | space:write | owner, admin | owner, admin | yes | core/server/usecases/spaces.ts authorization call |

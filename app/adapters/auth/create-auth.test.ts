@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { BASE_ERROR_CODES } from 'better-auth';
+import { signJWT } from 'better-auth/crypto';
 import { asc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -34,6 +35,7 @@ import {
   PASSWORD_RESET_TOKEN_EXPIRES_IN_SECONDS,
   RESET_PASSWORD_CONTEXT_MAX_ENTRIES,
 } from './create-auth.js';
+import { createTestPasskey } from './passkey-test-authenticator.js';
 import { totpCode } from './totp-test-helper.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -1430,6 +1432,113 @@ describe('host-scoped credentials', () => {
     expect(challengeCookie).not.toContain('Domain=');
   });
 
+  describe('passkey ceremonies with a workspace wildcard', () => {
+    const platformHost = `start.${baseDomain}`;
+    const otherWorkspaceHost = `studio.${baseDomain}`;
+    const wildcard = `https://*.${baseDomain}`;
+    const buildCeremonyAuth = () => buildAuth({
+      baseUrl: browserOrigin(platformHost), baseDomain, secureCookies: true,
+      verifiedCustomHosts: [customHost],
+      trustedOrigins: [browserOrigin(platformHost), wildcard, browserOrigin(customHost)],
+    });
+
+    const requireCookie = (response: Response, name: string) => {
+      const cookie = response.headers.getSetCookie()
+        .find((value) => value.startsWith(`__Secure-better-auth.${name}=`));
+      expect(cookie).toBeDefined();
+      return cookie?.split(';', 1)[0] ?? '';
+    };
+
+    const expectOk = async (response: Response) => {
+      expect(response.status, await response.clone().text()).toBe(200);
+    };
+
+    const registerPasskey = async (auth: ReturnType<typeof buildAuth>['auth'], host: string, expectedRpId: string) => {
+      const email = `passkey-${crypto.randomUUID()}@example.test`;
+      const password = passwordFixture('passkey-ceremony');
+      const signedUp = await call(auth, host, '/sign-up/email', { body: { name: 'Ada', email, password } });
+      await expectOk(signedUp);
+      const session = requireCookie(signedUp, 'session_token');
+      const proof = await call(auth, host, '/verify-password', { body: { password }, cookie: session });
+      await expectOk(proof);
+      const authenticated = `${session}; ${requireCookie(proof, 'passkey_sensitive')}`;
+      const options = await call(auth, host, '/passkey/generate-register-options', { cookie: authenticated });
+      await expectOk(options);
+      const { challenge, rp, authenticatorSelection } = z.object({
+        challenge: z.string(), rp: z.object({ id: z.string() }),
+        authenticatorSelection: z.object({ userVerification: z.string() }),
+      }).parse(await options.json());
+      expect(rp.id).toBe(expectedRpId);
+      expect(authenticatorSelection.userVerification).toBe('preferred');
+      const credential = createTestPasskey(rp.id);
+      const response = await call(auth, host, '/passkey/verify-registration', {
+        body: { response: credential.register({ challenge, origin: browserOrigin(host) }) },
+        cookie: `${authenticated}; ${requireCookie(options, 'better-auth-passkey')}`,
+      });
+      await expectOk(response);
+      return { email, credential };
+    };
+
+    const authenticatePasskey = async (
+      auth: ReturnType<typeof buildAuth>['auth'], host: string, expectedRpId: string,
+      credential: ReturnType<typeof createTestPasskey>, origin = browserOrigin(host),
+    ) => {
+      const options = await call(auth, host, '/passkey/generate-authenticate-options');
+      await expectOk(options);
+      const { challenge, rpId, userVerification } = z.object({
+        challenge: z.string(), rpId: z.string(), userVerification: z.string(),
+      }).parse(await options.json());
+      expect(rpId).toBe(expectedRpId);
+      expect(userVerification).toBe('preferred');
+      return call(auth, host, '/passkey/verify-authentication', {
+        body: { response: credential.authenticate({ challenge, origin }) },
+        cookie: requireCookie(options, 'better-auth-passkey'),
+      });
+    };
+
+    it.each([
+      [platformHost, baseDomain, [platformHost]],
+      [tenantHost, baseDomain, [tenantHost, otherWorkspaceHost, platformHost]],
+      [customHost, customHost, [customHost]],
+    ] as const)('registers on %s and authenticates within relying party %s', async (host, rpId, signInHosts) => {
+      const { auth, authPort } = buildCeremonyAuth();
+      const { email, credential } = await registerPasskey(auth, host, rpId);
+      for (const signInHost of signInHosts) {
+        const response = await authenticatePasskey(auth, signInHost, rpId, credential);
+        await expectOk(response);
+        const headers = new Headers({ cookie: requireCookie(response, 'session_token') });
+        expect(await authPort.getAuthenticatedUser(headers)).toMatchObject({ email });
+      }
+    });
+
+    it('does not sign in when a credential belongs to the other relying party', async () => {
+      const { auth } = buildCeremonyAuth();
+      const platform = await registerPasskey(auth, platformHost, baseDomain);
+      const custom = await registerPasskey(auth, customHost, customHost);
+
+      for (const [host, rpId, credential] of [
+        [customHost, customHost, platform.credential],
+        [platformHost, baseDomain, custom.credential],
+      ] as const) {
+        const response = await authenticatePasskey(auth, host, rpId, credential);
+        expect(response.status).toBe(400);
+        expect(response.headers.get('set-auth-token')).toBeNull();
+      }
+    });
+
+    it('keeps a password sign-in on a wildcard workspace host unchanged', async () => {
+      const { auth } = buildCeremonyAuth();
+      const email = `workspace-sign-in-${crypto.randomUUID()}@example.test`;
+      const password = passwordFixture('workspace-sign-in');
+      await register(auth, tenantHost, email, password);
+      const response = await call(auth, tenantHost, '/sign-in/email', { body: { email, password } });
+      await expectOk(response);
+      expect(response.headers.getSetCookie()).toContainEqual(
+        expect.stringMatching(/; Domain=\.together\.example(?:;|$)/u),
+      );
+    });
+  });
+
   const twoFactorChallengeLocation = async (
     auth: ReturnType<typeof buildAuth>['auth'],
     { path, host, location }: { path: string; host: string; location: string },
@@ -1703,6 +1812,40 @@ describe('soft email verification', () => {
     expect(message?.subject).toBe('Verify your email address');
     const actionUrl = message?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
     expect(new URL(actionUrl).host).toBe('localhost:48730');
+  });
+});
+
+describe('legacy email verification links', () => {
+  it.each(['direct', 'from the outbox'] as const)('verifies a link issued without a user ID %s', async (delivery) => {
+    const { auth, authPort, emailOutbox, emails, flushEmails } = buildAuth();
+    const email = `legacy-verification-${crypto.randomUUID()}@example.test`;
+    expect((await authPort.ensureUser(email)).created).toBe(true);
+    const { secret, options, internalAdapter } = await auth.$context;
+    const token = await signJWT({ email: email.toLowerCase(), updateTo: undefined },
+      secret, options.emailVerification?.expiresIn ?? 3600);
+    const link = new URL('/api/auth/verify-email', authBaseUrl);
+    link.searchParams.set('token', token);
+    const callback = `${authBaseUrl}/my`;
+    link.searchParams.set('callbackURL', callback);
+    let actionUrl = link.href;
+    if (delivery === 'from the outbox') {
+      const queued = await emailOutbox.enqueue({
+        id: crypto.randomUUID(), tenantId: null, to: email, now: new Date().toISOString(),
+        payload: { kind: 'verify-email', language: 'en', actionUrl },
+      });
+      expect(queued.ok).toBe(true);
+      expect(await emails.findByRecipient(email)).toBeNull();
+      await flushEmails();
+      const delivered = await emails.findByRecipient(email);
+      actionUrl = delivered?.text.match(/https?:\/\/\S+/)?.[0] ?? '';
+      expect(actionUrl).toBe(link.href);
+    }
+
+    const verified = await auth.handler(new Request(actionUrl));
+
+    expect(verified.status).toBe(302);
+    expect(verified.headers.get('location')).toBe(callback);
+    expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
   });
 });
 

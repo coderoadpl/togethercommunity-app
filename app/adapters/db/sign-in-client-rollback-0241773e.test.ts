@@ -1,6 +1,5 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { z } from 'zod';
 
 import { createSignInClientCrypto } from '#adapters/auth/sign-in-client-crypto.js';
 import { SMOKE_TENANT_ID, SMOKE_TENANT_SLUG } from '#core/domain/index.js';
@@ -48,7 +47,9 @@ const expectCascade = async (targetId: string, preservedId: string) => {
 };
 
 beforeEach(async () => {
-  database = await createTestDatabase('together_registry_rollback', z.string().url().parse(process.env['DATABASE_URL']));
+  const databaseUrl = process.env['DATABASE_URL'];
+  if (databaseUrl === undefined) throw new Error('DATABASE_URL is required');
+  database = await createTestDatabase('together_registry_rollback', databaseUrl);
   await seedWorkspace(unaffected, unaffected);
 }, 120_000);
 

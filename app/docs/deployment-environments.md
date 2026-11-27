@@ -105,6 +105,16 @@ A successful reset reports through a snackbar. A failure keeps the confirmation
 dialog open and shows the refusal inline rather than as a toast, so the owner can
 correct the confirmation and retry without reopening the dialog.
 
+`SIGN_IN_CLIENT_HOSTS` is a comma-separated list of exact `workspace-id=host`
+pairs, for example `workspace-id=callback.example.test`. Use workspace IDs,
+not slugs, and lowercase ASCII DNS hosts without schemes, ports, or paths.
+Malformed entries prevent startup. An empty or unset setting blocks creating a
+sign-in client and rotating its secret. Removing a pair blocks rotation for that
+client; verified direct owners can still list and disable clients. Allowing a
+pair permits management only: no client can be activated by this setting.
+Approve pairs before adding them: a successful creation reserves its host
+permanently, even after disable or workspace deletion.
+
 ## Migration journal
 
 `db:migrate` (`adapters/db/migrate.ts`) applies the files in `app/drizzle`

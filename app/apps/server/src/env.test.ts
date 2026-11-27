@@ -20,7 +20,32 @@ import {
   selectTenantRouting,
   selectTrustedAuthOrigins,
 } from './composition.js';
-import { envSchema, isLocalDevelopmentEnvironment } from './env.js';
+import { envSchema, isLocalDevelopmentEnvironment, loadEnv } from './env.js';
+
+describe('SIGN_IN_CLIENT_HOSTS', () => {
+  it('defaults to an empty allow-list and parses exact workspace/host pairs', () => {
+    expect(envSchema.parse({}).SIGN_IN_CLIENT_HOSTS.size).toBe(0);
+    expect(envSchema.parse({ SIGN_IN_CLIENT_HOSTS: 'workspace=callback.example.test' }).SIGN_IN_CLIENT_HOSTS)
+      .toEqual(new Map([['workspace', new Set(['callback.example.test'])]]));
+  });
+
+  it('exits at startup when the allow-list is malformed without echoing its value', () => {
+    const value = 'workspace=https://callback.example.test';
+    vi.stubEnv('SIGN_IN_CLIENT_HOSTS', value);
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('startup refused'); });
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      expect(loadEnv).toThrow('startup refused');
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(log.mock.calls[0]?.[1]).toHaveProperty('SIGN_IN_CLIENT_HOSTS');
+      expect(JSON.stringify(log.mock.calls)).not.toContain(value);
+    } finally {
+      log.mockRestore();
+      exit.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 const productionEnvironment = (overrides: Record<string, string | undefined> = {}) => ({
   NODE_ENV: 'production',

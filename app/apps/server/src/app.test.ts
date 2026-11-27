@@ -1,3 +1,5 @@
+import { createSignInClientCrypto } from '#adapters/auth/sign-in-client-crypto.js';
+import { createInMemorySignInClientRepository } from '#core/server/testing/sign-in-client-fakes.js';
 import { createAvatarImageProcessor } from '#adapters/storage/avatar-images.js';
 import type { EntityVersionRecord, SurveyRepository } from '#core/server/index.js';
 import { createPersonalisationSlots } from '#adapters/personalisation/slots.js';
@@ -384,6 +386,9 @@ const deps = (input: {
       record: async () => undefined,
       list: async () => ({ events: [], nextCursor: null }),
     },
+    signInClients: createInMemorySignInClientRepository(),
+    signInClientHosts: new Map(),
+    signInClientCrypto: createSignInClientCrypto(),
     shopManagementKeys: {
       listByTenant: async () => [],
       create: async () => undefined,

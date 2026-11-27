@@ -217,6 +217,8 @@ import {
   createUserDisplayReader,
 } from '#adapters/db/repositories.js';
 import { createAuth, createAuthPort, type Auth } from '#adapters/auth/create-auth.js';
+import { createSignInClientCrypto } from '#adapters/auth/sign-in-client-crypto.js';
+import { createSignInClientRepository } from '#adapters/db/sign-in-clients.js';
 import { createApiKeyCrypto } from '#adapters/auth/api-key-crypto.js';
 import { createSecretCrypto } from '#adapters/crypto/secret-crypto.js';
 import { databaseHostFingerprint, databaseIdentityFingerprint } from '#adapters/crypto/database-fingerprint.js';
@@ -317,6 +319,7 @@ import type {
   ShopManagementKeyEventRepository,
   ShopManagementKeyRateLimitRepository,
   ShopManagementKeyRepository,
+  SignInClientDeps,
   ImportRedirectRepository,
   ImportContentRepository,
   ImportUsersReader,
@@ -497,7 +500,7 @@ interface SweepTick {
   deadlineAt?: number;
 }
 
-export interface AppDeps {
+export interface AppDeps extends SignInClientDeps {
   metaCapi?: MetaCapiDispatchDeps;
   consumerSales?: ConsumerSalesRepository;
   renderQrPng?: (url: string) => Promise<Uint8Array>;
@@ -1708,6 +1711,9 @@ export const createDeps = (
     importAuditEvents: createImportAuditEventRepository(db),
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
+    signInClients: createSignInClientRepository(db, baseDomain),
+    signInClientHosts: env.SIGN_IN_CLIENT_HOSTS,
+    signInClientCrypto: createSignInClientCrypto(),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),
     changeProposals: createChangeProposalRepository(db, options.changeProposalBounds),
     changeProposalEvents: createChangeProposalEventRepository(db),

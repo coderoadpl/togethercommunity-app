@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { createApiClient } from '#core/client/index.js';
 import { BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
 import { members, organizationMembers, organizations, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
@@ -8,6 +9,7 @@ import {
   API_KEY_HEADER,
   API_ROUTES,
   SCHEDULER_OPERATOR_SECRET_HEADER,
+  SHOP_CATALOG_ROUTES,
   apiKeyCreateOutputSchema,
   apiKeysShopManagementCreateOutputSchema,
   signInClientCredentialSchema,
@@ -27,7 +29,7 @@ const workspaceOrigin = 'http://acme.localhost:48730';
 const operatorSecret = 'registry-test-operator-secret';
 const password = 'registry-session-password';
 const now = '2026-11-27T12:00:00.000Z';
-const allowed = 'acme=callback.example.test,acme=browser.example.test';
+const allowed = 'acme=callback.example.test,acme=browser.example.test,acme=typed.example.test';
 const input = { name: 'External application', redirectUris: ['https://callback.example.test/Return%2Fvalue'] };
 const browserInput = { name: 'Browser test client', redirectUris: ['https://browser.example.test/return'] };
 const accountKinds = ['owner', 'admin', 'member', 'foreign', 'derived', 'unverified'] as const;
@@ -283,6 +285,44 @@ describe('Dormant sign-in client HTTP management', () => {
       expect(raw).not.toContain(plaintext);
       expect(JSON.stringify(await readRegistry())).not.toContain(plaintext);
     }
+  });
+
+  it('round-trips all four typed client operations with a verified CLI bearer and no origin', async () => {
+    const api = createApiClient({
+      baseUrl: workspaceOrigin,
+      headers: owner,
+      fetchImpl: (resource, init) => Promise.resolve(app.request(new Request(resource, init))),
+    });
+    const created = await api.createSignInClient({ name: 'Typed client', redirectUris: ['https://typed.example.test/return'] });
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error('Typed creation failed');
+    const id = created.value.client.id;
+    expect(await api.listSignInClients({ limit: 100 })).toMatchObject({
+      ok: true, value: { clients: expect.arrayContaining([created.value.client]), nextCursor: null },
+    });
+    const rotated = await api.rotateSignInClientSecret({ id, expectedCredentialVersion: 1 });
+    expect(rotated).toMatchObject({ ok: true, value: { client: { id, credentialVersion: 2 } } });
+    expect(await api.disableSignInClient({ id })).toMatchObject({ ok: true, value: { client: { id, state: 'retired' } } });
+  });
+
+  it('refuses the issued credential on the registry, existing key routes, and auth alias', async () => {
+    const headers = { [API_KEY_HEADER]: pending.secret };
+    const routes = [
+      ['GET', listPath, undefined],
+      ['GET', SHOP_CATALOG_ROUTES.listProducts.path, undefined],
+      ['POST', API_ROUTES.m2mEnroll.path, {}],
+    ] as const;
+    for (const [method, path, body] of routes) {
+      const response = await request(app, method, path, headers, body);
+      expect(response.status).toBe(401);
+      expect(await response.text()).not.toContain(pending.secret);
+    }
+    const shop = machineCredentials.get('direct shop key') ?? {};
+    expect((await request(app, 'GET', SHOP_CATALOG_ROUTES.listProducts.path, shop)).status).toBe(200);
+    const legacy = machineCredentials.get('legacy key') ?? {};
+    expect((await request(app, 'POST', API_ROUTES.m2mEnroll.path, legacy, {})).status).toBe(400);
+    const alias = await request(app, 'GET', '/api/auth/sign-in-clients', owner());
+    expect(alias.status).toBe(404);
   });
 
   it('still permits terminal disable while empty and returns the same scrubbed record on repeat', async () => {

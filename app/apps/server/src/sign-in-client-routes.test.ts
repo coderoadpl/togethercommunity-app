@@ -63,8 +63,8 @@ const request = (target: typeof app, method: string, path: string, headers: Reco
   });
 
 const owner = () => ({ authorization: `Bearer ${session('owner').bearer}` });
-const data = async <S extends z.ZodTypeAny>(response: Response, schema: S) =>
-  z.object({ ok: z.literal(true), data: schema }).parse(await response.json()).data;
+const data = async <T>(response: Response, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> =>
+  schema.parse(z.object({ ok: z.literal(true), data: z.unknown() }).parse(await response.json()).data);
 
 const authRequest = (kind: AccountKind, path: string, body: unknown) => app.request(`${baseUrl}${path}`, {
   method: 'POST',

@@ -1587,6 +1587,9 @@ describe('activity report CLI parsing', () => {
     await run('api-keys', 'create', 'Reporting', '--scope', 'report:read', '--json');
     expect(h.createApiKey).toHaveBeenCalledWith({ name: 'Reporting', scopes: ['report:read'] });
   });
+});
+
+describe('sign-in client CLI commands', () => {
   it('creates a dormant sign-in client with repeated return addresses and prints the secret once', async () => {
     const client = { id: 'client-1', name: 'External application', credentialVersion: 1 };
     const redirectUris = ['https://callback.example.test/return', 'https://callback.example.test/alternate'];
@@ -1620,6 +1623,9 @@ describe('activity report CLI parsing', () => {
     expect(h.disableSignInClient).toHaveBeenCalledExactlyOnceWith({ id: 'client-1' });
     expect(logSpy).toHaveBeenCalledExactlyOnceWith('disabled sign-in client client-1');
   });
+});
+
+describe('shop management key CLI commands', () => {
   it('creates a shop management key under the shop-management group with scopes and expiry', async () => {
     h.createShopManagementKey.mockReset().mockResolvedValue(ok({ apiKey: { id: 'key', name: 'Shop' }, secret: 'shop-secret' }));
     await run(

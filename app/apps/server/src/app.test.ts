@@ -386,7 +386,7 @@ const deps = (input: {
       record: async () => undefined,
       list: async () => ({ events: [], nextCursor: null }),
     },
-    signInClients: createInMemorySignInClientRepository(),
+    signInClients: createInMemorySignInClientRepository().repo,
     signInClientHosts: new Map(),
     signInClientCrypto: createSignInClientCrypto(),
     shopManagementKeys: {

@@ -17,6 +17,24 @@ host as the relying party. Non-local authentication origins are HTTPS-only. HTTP
 for `localhost` and its subdomains, and boot rejects an HTTP `APP_BASE_URL`
 outside local development.
 
+Passkey registration and sign-in accept the configured platform origin and
+origins trusted explicitly for the request. On a host one label under the base
+domain, they also accept that host's own origin at the configured scheme and
+port when an existing workspace wildcard already covers it. A wildcard does
+not make other workspace origins eligible for that ceremony. A verified custom
+domain's own origin is trusted explicitly; it does not receive a workspace
+origin. WebAuthn verifies the relying-party ID as well as the origin, so a
+credential for the shared base-domain relying party cannot be used for a custom
+domain's relying party, or the other way around.
+
+Verification links for ordinary sign-up and resend confirm the account they
+were issued for. Links already issued without an account ID remain usable until
+they expire. The library's change-of-address flow is disabled.
+
+A remembered sign-in clears any stale session-only marker. Revoking the current
+session or all sessions clears the browser's session cookie using the same
+scope and security attributes as when it was issued.
+
 ## Session tokens and browsers
 
 Better Auth's bearer plugin copies the session cookie value into a readable

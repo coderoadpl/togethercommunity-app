@@ -96,7 +96,9 @@ on read and persist it on their next check.
 A custom domain is a separate credential world:
 
 - members are signed out once and sign in again on the new address;
-- passkeys are bound to a host, so they must be registered again there;
+- passkeys are bound to a relying party: the platform host and workspace
+  subdomains share one, but the verified custom domain has its own. Members
+  register a separate passkey there;
 - **Google sign-in is unavailable on a custom domain** — the OAuth callback is
   registered for a single origin. Members who signed up with Google use a magic
   link with the same e-mail address, or set a password.

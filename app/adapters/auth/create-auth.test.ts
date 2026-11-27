@@ -948,7 +948,7 @@ const buildAuth = (options: {
   baseDomain?: string;
   singleTenantMode?: boolean;
   verifiedCustomHosts?: string[];
-  trustedOrigins?: string[];
+  trustedOrigins?: Parameters<typeof createAuth>[1]['trustedOrigins'];
   recordSignIn?(input: { request: Request; userId: string; sessionId: string; occurredAt: string }): Promise<void>;
   activateTeamInvitation?(input: { request: Request; userId: string; email: string; occurredAt: string }): Promise<void>;
   platformTransportFails?: boolean;
@@ -1314,6 +1314,44 @@ describe('host-scoped credentials', () => {
     expect(sessionCookie(completed)).not.toContain('Domain=');
   });
 
+  it('rejects an expired two-factor challenge before spending a TOTP attempt', async () => {
+    const { auth, db } = buildHostAuth();
+    const email = `expired-two-factor-${crypto.randomUUID()}@example.test`;
+    const password = passwordFixture('expired-two-factor');
+    const token = await register(auth, tenantHost, email, password);
+    const authorization = `Bearer ${token}`;
+    const enabled = await call(auth, tenantHost, '/two-factor/enable', { body: { password }, authorization });
+    expect(enabled.status).toBe(200);
+    const { totpURI } = z.object({ totpURI: z.string() }).parse(await enabled.json());
+    const secret = new URL(totpURI).searchParams.get('secret') ?? '';
+    const enrolled = await call(auth, tenantHost, '/two-factor/verify-totp', {
+      body: { code: totpCode(secret) }, authorization,
+    });
+    expect(enrolled.status).toBe(200);
+    const challenged = await call(auth, tenantHost, '/sign-in/email', { body: { email, password } });
+    expect(await challenged.json()).toMatchObject({ twoFactorRedirect: true });
+    const challengeCookie = challenged.headers.getSetCookie()
+      .find((header) => header.startsWith('better-auth.two_factor='))?.split(';', 1)[0] ?? '';
+    expect(challengeCookie).not.toBe('');
+    const { internalAdapter } = await auth.$context;
+    const account = await internalAdapter.findUserByEmail(email);
+    const userId = account?.user.id ?? '';
+    const challenges = await db.select().from(verification).where(eq(verification.value, userId));
+    const [challenge] = challenges.filter((row) => row.identifier.startsWith('2fa-'));
+    expect(challenge).toBeDefined();
+    await db.update(verification).set({ expiresAt: new Date(0) }).where(eq(verification.id, challenge?.id ?? ''));
+
+    const rejected = await call(auth, tenantHost, '/two-factor/verify-totp', {
+      body: { code: '000000' }, cookie: challengeCookie,
+    });
+
+    expect(rejected.status).toBe(401);
+    expect(await rejected.json()).toMatchObject({ code: 'INVALID_TWO_FACTOR_COOKIE' });
+    expect(rejected.headers.get('set-auth-token')).toBeNull();
+    const [enrollment] = await db.select().from(twoFactor).where(eq(twoFactor.userId, userId));
+    expect(enrollment?.failedVerificationCount).toBe(0);
+  });
+
   it.each([
     { host: customHost, callbackURL: '/', redirectHost: customHost },
     { host: customHost, callbackURL: '/my', redirectHost: customHost },
@@ -1436,10 +1474,12 @@ describe('host-scoped credentials', () => {
     const platformHost = `start.${baseDomain}`;
     const otherWorkspaceHost = `studio.${baseDomain}`;
     const wildcard = `https://*.${baseDomain}`;
-    const buildCeremonyAuth = () => buildAuth({
+    const exactHost = `preview.${baseDomain}`;
+    const origins = [browserOrigin(platformHost), wildcard, browserOrigin(customHost), browserOrigin(exactHost)];
+    const buildCeremonyAuth = (overrides: Parameters<typeof buildAuth>[0] = {}) => buildAuth({
       baseUrl: browserOrigin(platformHost), baseDomain, secureCookies: true,
-      verifiedCustomHosts: [customHost],
-      trustedOrigins: [browserOrigin(platformHost), wildcard, browserOrigin(customHost)],
+      verifiedCustomHosts: [customHost], trustedOrigins: origins,
+      ...overrides,
     });
 
     const requireCookie = (response: Response, name: string) => {
@@ -1524,6 +1564,139 @@ describe('host-scoped credentials', () => {
         expect(response.status).toBe(400);
         expect(response.headers.get('set-auth-token')).toBeNull();
       }
+    });
+
+    it.each([platformHost, exactHost])('accepts the independently trusted origin %s on a workspace host', async (originHost) => {
+      const { auth } = buildCeremonyAuth();
+      const { credential } = await registerPasskey(auth, platformHost, baseDomain);
+
+      await expectOk(await authenticatePasskey(auth, tenantHost, baseDomain, credential, browserOrigin(originHost)));
+    });
+
+    it.each([
+      [tenantHost, browserOrigin(otherWorkspaceHost)],
+      [tenantHost, `http://${tenantHost}`],
+      [tenantHost, `https://${tenantHost}:8443`],
+      [`deep.${tenantHost}`, `https://deep.${tenantHost}`],
+      [baseDomain, browserOrigin(baseDomain)],
+      ['unverified.example', 'https://unverified.example'],
+    ] as const)('does not authenticate on %s with unlisted exact origin %s', async (host, origin) => {
+      const { auth } = buildCeremonyAuth();
+      const { credential } = await registerPasskey(auth, platformHost, baseDomain);
+      const response = await authenticatePasskey(auth, host, baseDomain, credential, origin);
+
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBeLessThan(500);
+      expect(response.headers.get('set-auth-token')).toBeNull();
+    });
+
+    it('adds only the serving workspace origin already allowed by the matching wildcard', async () => {
+      const port = ':8443';
+      const platform = `${platformHost}${port}`;
+      const workspace = `${tenantHost}${port}`;
+      const portWildcard = `${wildcard}${port}`;
+      const { auth } = buildCeremonyAuth({
+        baseUrl: browserOrigin(platform), trustedOrigins: [browserOrigin(platform), portWildcard],
+      });
+      const { credential } = await registerPasskey(auth, workspace, baseDomain);
+      const context = await auth.$context;
+      expect(context.trustedOrigins).toContain(portWildcard);
+      expect(context.trustedOrigins).not.toContain(browserOrigin(workspace));
+      expect(context.isTrustedOrigin(browserOrigin(workspace))).toBe(true);
+      expect(context.isTrustedOrigin(browserOrigin(tenantHost))).toBe(false);
+      await expectOk(await authenticatePasskey(auth, workspace, baseDomain, credential));
+      const wrongPort = await authenticatePasskey(auth, workspace, baseDomain, credential, browserOrigin(tenantHost));
+      expect(wrongPort.status).toBe(400);
+    });
+
+    it('keeps exact workspace origins isolated when two passkey requests overlap', async () => {
+      const bothEntered = Promise.withResolvers<void>();
+      let pending = 0;
+      const { auth } = buildCeremonyAuth({
+        trustedOrigins: async (request) => {
+          if (request && new URL(request.url).pathname.endsWith('/passkey/verify-authentication')) {
+            if (++pending === 2) bothEntered.resolve();
+            await bothEntered.promise;
+          }
+          return origins;
+        },
+      });
+      const { credential } = await registerPasskey(auth, platformHost, baseDomain);
+      const origin = browserOrigin(otherWorkspaceHost);
+      const [notServing, serving] = await Promise.all([
+        authenticatePasskey(auth, tenantHost, baseDomain, credential, origin),
+        authenticatePasskey(auth, otherWorkspaceHost, baseDomain, credential, origin),
+      ]);
+
+      expect(notServing.status).toBe(400);
+      await expectOk(serving);
+      expect(origins).not.toContain(origin);
+    });
+
+    it('does not use an already proven browser session after it leaves the session store', async () => {
+      const { auth } = buildCeremonyAuth();
+      const email = `stale-passkey-session-${crypto.randomUUID()}@example.test`;
+      const password = passwordFixture('stale-passkey-session');
+      const signedUp = await call(auth, tenantHost, '/sign-up/email', { body: { name: 'Ada', email, password } });
+      await expectOk(signedUp);
+      const sessionCookie = requireCookie(signedUp, 'session_token');
+      const proof = await call(auth, tenantHost, '/verify-password', { body: { password }, cookie: sessionCookie });
+      await expectOk(proof);
+      const proved = `${sessionCookie}; ${requireCookie(proof, 'passkey_sensitive')}`;
+      await expectOk(await call(auth, tenantHost, '/passkey/generate-register-options', { cookie: proved }));
+      await expectOk(await call(auth, tenantHost, '/revoke-sessions', { body: {}, cookie: sessionCookie }));
+
+      const stale = await call(auth, tenantHost, '/passkey/generate-register-options', { cookie: proved });
+
+      expect(stale.status).toBe(401);
+    });
+
+    it.each([tenantHost, customHost])('expires cookies in their original scope on %s', async (host) => {
+      const { auth } = buildCeremonyAuth();
+      const email = `cookie-scope-${crypto.randomUUID()}@example.test`;
+      const password = passwordFixture('cookie-scope');
+      const setCookie = (response: Response, name: string, expires: boolean) => {
+        const cookie = response.headers.getSetCookie().find((header) =>
+          header.startsWith(`__Secure-better-auth.${name}=`) && /; Max-Age=0(?:;|$)/u.test(header) === expires);
+        expect(cookie).toBeDefined();
+        return cookie ?? '';
+      };
+      const attributes = (cookie: string) => cookie.split('; ').slice(1)
+        .filter((value) => !value.startsWith('Max-Age=')).sort();
+      const expectedScope = ['Path=/', 'HttpOnly', 'SameSite=Lax', 'Secure',
+        ...(host === tenantHost ? [`Domain=.${baseDomain}`] : [])].sort();
+
+      const signedUp = await call(auth, host, '/sign-up/email', { body: { name: 'Ada', email, password } });
+      await expectOk(signedUp);
+      const temporary = await call(auth, host, '/sign-in/email', { body: { email, password, rememberMe: false } });
+      await expectOk(temporary);
+      const marker = setCookie(temporary, 'dont_remember', false);
+      expect(attributes(marker)).toEqual(expectedScope);
+      const remembered = await call(auth, host, '/sign-in/email', {
+        body: { email, password, rememberMe: true }, cookie: requireCookie(temporary, 'dont_remember'),
+      });
+      await expectOk(remembered);
+      expect(attributes(setCookie(remembered, 'dont_remember', true))).toEqual(attributes(marker));
+      const liveSession = setCookie(remembered, 'session_token', false);
+      const liveSessionCookie = requireCookie(remembered, 'session_token');
+      expect(attributes(liveSession)).toEqual(expectedScope);
+
+      const { internalAdapter } = await auth.$context;
+      const account = await internalAdapter.findUserByEmail(email);
+      expect(account).not.toBeNull();
+      const active = await internalAdapter.listSessions(account?.user.id ?? '');
+      const value = decodeURIComponent(liveSessionCookie.split('=')[1] ?? '');
+      const token = active.find((candidate) => value.startsWith(`${candidate.token}.`))?.token;
+      expect(token).toBeDefined();
+      const revoked = await call(auth, host, '/revoke-session', { body: { token }, cookie: liveSessionCookie });
+      await expectOk(revoked);
+      expect(attributes(setCookie(revoked, 'session_token', true))).toEqual(attributes(liveSession));
+      expect(await internalAdapter.findSession(token ?? '')).toBeNull();
+
+      const all = await call(auth, host, '/revoke-sessions', { body: {}, cookie: requireCookie(signedUp, 'session_token') });
+      await expectOk(all);
+      expect(attributes(setCookie(all, 'session_token', true))).toEqual(attributes(liveSession));
+      expect(await internalAdapter.listSessions(account?.user.id ?? '')).toEqual([]);
     });
 
     it('keeps a password sign-in on a wildcard workspace host unchanged', async () => {
@@ -1846,6 +2019,136 @@ describe('legacy email verification links', () => {
     expect(verified.status).toBe(302);
     expect(verified.headers.get('location')).toBe(callback);
     expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
+  });
+});
+
+describe('current email verification links', () => {
+  const issueLink = async (fixture: ReturnType<typeof buildAuth>, email: string) => {
+    const signup = await signUp(fixture.auth, email);
+    expect(signup.status).toBe(200);
+    await fixture.flushEmails();
+    const delivered = await fixture.emails.findByRecipient(email);
+    return new URL(delivered?.text.match(/https?:\/\/\S+/)?.[0] ?? '');
+  };
+
+  it('verifies the account that requested the new link', async () => {
+    const fixture = buildAuth();
+    const email = `verification-current-${crypto.randomUUID()}@example.test`;
+    const link = await issueLink(fixture, email);
+    const { internalAdapter } = await fixture.auth.$context;
+    expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(false);
+
+    const response = await fixture.auth.handler(new Request(link));
+
+    expect(response.status).toBe(302);
+    expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(true);
+  });
+
+  it('refuses to verify the address for a different account', async () => {
+    const fixture = buildAuth();
+    const email = `verification-reassigned-${crypto.randomUUID()}@example.test`;
+    const link = await issueLink(fixture, email);
+    const { internalAdapter } = await fixture.auth.$context;
+    const previousOwner = await internalAdapter.findUserByEmail(email);
+    expect(previousOwner).not.toBeNull();
+    await fixture.db.update(user).set({ email: `previous-${email}` }).where(eq(user.email, email));
+    const nextOwner = await fixture.authPort.ensureUser(email);
+    expect(nextOwner.userId).not.toBe(previousOwner?.user.id);
+
+    link.searchParams.delete('callbackURL');
+    const response = await fixture.auth.handler(new Request(link));
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get('set-auth-token')).toBeNull();
+    expect((await internalAdapter.findUserByEmail(email))?.user.emailVerified).toBe(false);
+  });
+
+  it('does not let a signed-in user start the disabled change-email flow', async () => {
+    const { auth } = buildAuth();
+    const email = `disabled-email-change-${crypto.randomUUID()}@example.test`;
+    const signup = await signUp(auth, email);
+    expect(signup.status).toBe(200);
+    const changed = await auth.handler(new Request(`${authBaseUrl}/api/auth/change-email`, {
+      method: 'POST', headers: {
+        authorization: `Bearer ${signup.headers.get('set-auth-token') ?? ''}`,
+        origin: authBaseUrl, 'content-type': 'application/json',
+      }, body: JSON.stringify({ newEmail: `changed-${email}` }),
+    }));
+
+    expect(changed.status).toBe(400);
+    expect(await changed.json()).toMatchObject({ code: 'CHANGE_EMAIL_DISABLED' });
+  });
+});
+
+describe('lookup and session outcomes', () => {
+  it('keeps exact PostgreSQL account lookup distinct from a similarly named account', async () => {
+    const { authPort } = buildAuth();
+    const tag = crypto.randomUUID();
+    const email = `account-${tag}@example.test`;
+    const related = `account-${tag}-extra@example.test`;
+    const first = await authPort.ensureUser(email);
+    const second = await authPort.ensureUser(related);
+
+    expect(await authPort.findUserByEmail(email.toUpperCase())).toMatchObject({ userId: first.userId });
+    expect(await authPort.findUserByEmail(related)).toMatchObject({ userId: second.userId });
+    expect(await authPort.findUserByEmail(`account-${tag.slice(0, 8)}@example.test`)).toBeNull();
+  });
+
+  it('deletes an expired verification value at lookup even within the cleanup interval', async () => {
+    const { auth, db } = buildAuth();
+    const { internalAdapter } = await auth.$context;
+    const identifier = `expired-lookup-${crypto.randomUUID()}`;
+    const value = await internalAdapter.createVerificationValue({
+      identifier, value: 'test-value', expiresAt: new Date(Date.now() + 60_000),
+    });
+    expect(await internalAdapter.findVerificationValue(identifier)).toMatchObject({ id: value.id });
+    await db.update(verification).set({ expiresAt: new Date(0) }).where(eq(verification.id, value.id));
+
+    await internalAdapter.findVerificationValue(identifier);
+
+    expect(await db.select().from(verification).where(eq(verification.id, value.id))).toEqual([]);
+  });
+
+  it('leaves the library account-deletion route disabled', async () => {
+    const { auth } = buildAuth();
+    const email = `disabled-delete-user-${crypto.randomUUID()}@example.test`;
+    const signup = await signUp(auth, email);
+    expect(signup.status).toBe(200);
+    const response = await auth.handler(new Request(`${authBaseUrl}/api/auth/delete-user`, {
+      method: 'POST', headers: {
+        authorization: `Bearer ${signup.headers.get('set-auth-token') ?? ''}`,
+        origin: authBaseUrl, 'content-type': 'application/json',
+      }, body: '{}',
+    }));
+
+    expect(response.status).toBe(404);
+    const { internalAdapter } = await auth.$context;
+    expect(await internalAdapter.findUserByEmail(email)).not.toBeNull();
+  });
+
+  it('reports when a requested revocation leaves the session in the store', async () => {
+    const { auth } = buildAuth();
+    const email = `revocation-outcome-${crypto.randomUUID()}@example.test`;
+    const signup = await signUp(auth, email);
+    expect(signup.status).toBe(200);
+    const { internalAdapter } = await auth.$context;
+    const account = await internalAdapter.findUserByEmail(email);
+    const [target] = await internalAdapter.listSessions(account?.user.id ?? '');
+    expect(target).toBeDefined();
+    const retained = vi.spyOn(internalAdapter, 'deleteSession').mockResolvedValue(undefined);
+    try {
+      const revoked = await auth.handler(new Request(`${authBaseUrl}/api/auth/revoke-session`, {
+        method: 'POST', headers: {
+          authorization: `Bearer ${signup.headers.get('set-auth-token') ?? ''}`,
+          origin: authBaseUrl, 'content-type': 'application/json',
+        }, body: JSON.stringify({ token: target?.token }),
+      }));
+      expect(revoked.status).toBe(200);
+      expect(await revoked.json()).toEqual({ status: false });
+      expect(await internalAdapter.findSession(target?.token ?? '')).not.toBeNull();
+    } finally {
+      retained.mockRestore();
+    }
   });
 });
 

@@ -45,6 +45,7 @@ const machineCredentials = new Map<string, Record<string, string>>();
 const setup = (hosts = '') => createDeps(envSchema.parse({
   NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
   APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost', OPERATOR_SECRET: operatorSecret,
+  AUTH_TRUSTED_PROXY_HEADER: 'x-test-client-ip',
   BETTER_AUTH_SECRET: 'registry-test-signing-secret-at-least-32-characters', SIGN_IN_CLIENT_HOSTS: hosts,
 }), { db: database.db, clock: { nowIso: () => now } });
 
@@ -65,17 +66,19 @@ const owner = () => ({ authorization: `Bearer ${session('owner').bearer}` });
 const data = async <S extends z.ZodTypeAny>(response: Response, schema: S) =>
   z.object({ ok: z.literal(true), data: schema }).parse(await response.json()).data;
 
-const authRequest = (path: string, body: unknown) => app.request(`${baseUrl}${path}`, {
-  method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl }, body: JSON.stringify(body),
+const authRequest = (kind: AccountKind, path: string, body: unknown) => app.request(`${baseUrl}${path}`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', origin: baseUrl, 'x-test-client-ip': `192.0.2.${accountKinds.indexOf(kind) + 1}` },
+  body: JSON.stringify(body),
 });
 
 const createSession = async (kind: AccountKind): Promise<Session> => {
   const email = `registry-${kind}@example.test`;
-  const signup = await authRequest(BETTER_AUTH_SIGN_UP_PATH, { name: kind, email, password });
+  const signup = await authRequest(kind, BETTER_AUTH_SIGN_UP_PATH, { name: kind, email, password });
   expect(signup.status).toBe(200);
   const { user: { id } } = z.object({ user: z.object({ id: z.string().regex(/^[A-Za-z0-9_-]+$/u) }) }).parse(await signup.json());
   if (kind !== 'unverified') await database.db.execute(`update "user" set email_verified = true where id = '${id}'`);
-  const signin = await authRequest(BETTER_AUTH_PASSWORD_SIGN_IN_PATH, { email, password });
+  const signin = await authRequest(kind, BETTER_AUTH_PASSWORD_SIGN_IN_PATH, { email, password });
   expect(signin.status).toBe(200);
   const bearer = z.object({ token: z.string().min(1) }).parse(await signin.json()).token;
   const cookie = signin.headers.getSetCookie().map((line) => line.split(';')[0]).join('; ');

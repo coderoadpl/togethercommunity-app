@@ -342,7 +342,7 @@ const hostScopedCredentials = (settings: AuthSettings) => {
           const ceremony = isPasskeyCeremonyPath(ctx.path);
           if (customHost === null && !ceremony) return;
           if (ceremony && ctx.request && customHost === null && host !== null
-            && host !== routing.baseDomain && hostServedByBaseDomain(host, routing.baseDomain)) {
+            && host.length > routing.baseDomain.length + 1 && hostServedByBaseDomain(host, routing.baseDomain)) {
             const url = new URL(routing.baseUrl);
             url.hostname = host;
             const wildcard = `${url.protocol}//*.${routing.baseDomain}${url.port ? `:${url.port}` : ''}`;

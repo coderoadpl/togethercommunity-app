@@ -1190,6 +1190,12 @@ describe('host-scoped credentials', () => {
   const baseDomain = 'together.example';
   const tenantHost = `acme.${baseDomain}`;
   const customHost = 'course.acme.example';
+  let hostScopeClient = 0;
+
+  const nextHostScopeIp = () => {
+    const sequence = hostScopeClient++;
+    return `198.18.${Math.floor(sequence / 254)}.${sequence % 254 + 1}`;
+  };
 
   const browserOrigin = (host: string) =>
     host === 'localhost:48730' ? authBaseUrl : `https://${host}`;
@@ -1212,7 +1218,7 @@ describe('host-scoped credentials', () => {
       'content-type': 'application/json',
       host,
       origin: browserOrigin(host),
-      'x-forwarded-for': `203.0.113.${signUpIpSuffix++}`,
+      'x-forwarded-for': nextHostScopeIp(),
       ...(init.cookie === undefined ? {} : { cookie: init.cookie }),
       ...(init.authorization === undefined ? {} : { authorization: init.authorization }),
     },

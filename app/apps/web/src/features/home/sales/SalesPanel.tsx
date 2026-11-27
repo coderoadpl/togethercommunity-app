@@ -29,7 +29,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 
 import type { FulfilmentStatus, ListLayout, OrderExportFile, OrderExportFormat, OrderListItem } from '#core/domain/index.js';
-import { ORDER_SOURCE_FILTER_PREFIX, SALES_LINK_TIME_ZONE } from '#core/domain/index.js';
+import { ORDER_SOURCE_FILTER_PREFIX, SALES_LINK_TIME_ZONE, orderFulfilmentDisplay } from '#core/domain/index.js';
 
 import { actions } from '../../../api.js';
 import { GridColumnsDialog } from '../../../components/ui/data-grid/GridColumnsDialog.js';
@@ -329,10 +329,13 @@ export const SalesPanel = () => {
       )}
     </>
   );
-  const fulfilmentChip = (order: OrderListItem) => order.fulfilmentStatus == null ? null : (
-    <Chip size="small" variant="outlined" color={order.fulfilmentStatus === 'to_pack' ? 'warning' : 'success'}
-      label={t.shipping.fulfilmentStatuses[order.fulfilmentStatus]} data-testid="sales-fulfilment-chip" />
-  );
+  const fulfilmentChip = (order: OrderListItem) => {
+    const state = orderFulfilmentDisplay(order);
+    return state == null ? null : (
+      <Chip size="small" variant="outlined" color={state === 'to_pack' ? 'warning' : state === 'label_ready' ? 'info' : 'success'}
+        label={t.shipping.fulfilmentStatuses[state]} data-testid="sales-fulfilment-chip" />
+    );
+  };
   const selectBox = (order: OrderListItem) => order.invoice?.ksef?.state === 'held' ? (
     <SalesCardControl data-testid="sales-ksef-control">
       <Checkbox checked={selected.includes(order.id)} disabled={sending || searchPending}

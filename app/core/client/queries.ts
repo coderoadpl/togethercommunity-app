@@ -296,9 +296,11 @@ const imageAssetsScopes = {
   all: () => ['image-assets'] as const,
 };
 
+const orderListsScope = ['sales', 'orders'] as const;
+
 const salesScopes = {
   all: () => ['sales'] as const,
-  orders: (input: OrdersListQueryInput) => ['sales', 'orders', input] as const,
+  orders: (input: OrdersListQueryInput) => [...orderListsScope, input] as const,
   order: (id: string) => ['sales', 'order', id] as const,
   refundPreview: (id: string) => ['sales', 'order', id, 'refund-preview'] as const,
   export: (format: OrderExportFormat, input: OrdersExportQueryInput) => ['sales', 'export', format, input] as const,
@@ -948,7 +950,7 @@ export const memberBillingOrdersQuery = (api: ApiClient) =>
     call: ({ signal }) => api.listMemberBillingOrders(1, 25, signal),
   });
 
-export const ordersInvalidates = () => ({ queryKey: salesScopes.all() });
+export const ordersInvalidates = (scope: 'all' | 'list' = 'all') => ({ queryKey: scope === 'list' ? orderListsScope : salesScopes.all() });
 
 export const orderQuery = (api: ApiClient, id: string) =>
   defineQuery({

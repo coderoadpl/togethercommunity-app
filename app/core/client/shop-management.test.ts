@@ -282,8 +282,8 @@ describe('shop management client order calls', () => {
     });
     const client = createShopManagementClient({ baseUrl: 'https://platform.example.test', apiKey: 'shop-secret', tenant: 'acme', fetchImpl });
 
-    expect(await client.shipxCreate({ orderId: 'order-1', parcelTemplate: 'large' })).toMatchObject({ ok: true });
-    expect(bodies).toEqual([{ parcelTemplate: 'large' }]);
+    expect(await client.shipxCreate({ orderId: 'order-1', parcelTemplate: 'large', markShipped: true })).toMatchObject({ ok: true });
+    expect(bodies).toEqual([{ parcelTemplate: 'large', markShipped: true }]);
   });
 });
 

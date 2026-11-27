@@ -175,6 +175,10 @@ describe('InPost ShipX HTTP routes', () => {
     const created = await h.app.request('/api/orders/order-1/shipx', { method: 'POST' });
     expect(created.status).toBe(200);
     const tracking = fakeShipxTrackingNumber(fakeShipxShipmentId('order-1'));
+    expect(h.ship).not.toHaveBeenCalled();
+    const dispatched = await h.app.request('/api/orders/order-1/shipx', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ markShipped: true }) });
+    expect(dispatched.status).toBe(200);
+    expect(h.ship).toHaveBeenCalledTimes(1);
     expect(h.ship.mock.calls[0]?.[1].shipment).toMatchObject({ carrier: 'inpost', trackingNumber: tracking });
     expect(h.carrier.createShipment.mock.calls[0]?.[0]).toEqual({ environment: 'sandbox', ...SLOT_CREDENTIALS.sandbox });
     expect(h.real.createShipment).not.toHaveBeenCalled();

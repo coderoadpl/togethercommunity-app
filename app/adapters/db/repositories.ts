@@ -43,6 +43,7 @@ import {
   notificationSchema,
   orderSchema,
   ok,
+  orderLabel,
   orderListItemSchema,
   paidWithoutGrantRowSchema,
   productPriceSchema,
@@ -248,6 +249,7 @@ import {
   twoFactor,
   user,
 } from './schema.js';
+import { orderShipments } from './shipx-schema.js';
 
 const parseStaffRole = (raw: string): StaffRole | null => {
   const parsed = staffRoleSchema.safeParse(raw);
@@ -3526,6 +3528,7 @@ export const createOrderRepository = (
   const selectListRows = () => db
     .select({
       order: orders,
+      labelShipment: { shipxShipmentId: orderShipments.providerShipmentId, status: orderShipments.status, trackingNumber: orderShipments.trackingNumber },
       memberEmail: members.email,
       memberName: members.displayName,
       productTitle: products.title,
@@ -3533,6 +3536,7 @@ export const createOrderRepository = (
       salesLinkTitle: salesLinks.title,
     })
     .from(orders)
+    .leftJoin(orderShipments, and(eq(orderShipments.tenantId, orders.tenantId), eq(orderShipments.orderId, orders.id)))
     .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
     .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
     .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
@@ -3549,6 +3553,7 @@ export const createOrderRepository = (
       .where(and(eq(orderRefundJobs.tenantId, tenantId), inArray(orderRefundJobs.orderId, cancelledOrderIds)));
     return rows.map((row) => orderListItemSchema.parse({
       ...normalizeOrderDates(row.order),
+      label: orderLabel(row.labelShipment),
       memberEmail: row.memberEmail,
       memberName: row.memberName,
       productTitle: row.productTitle,
@@ -3636,6 +3641,7 @@ export const createOrderRepository = (
       const rows = await db
         .select({
           order: orders,
+          labelShipment: { shipxShipmentId: orderShipments.providerShipmentId, status: orderShipments.status, trackingNumber: orderShipments.trackingNumber },
           memberEmail: members.email,
           memberName: members.displayName,
           productTitle: products.title,
@@ -3643,6 +3649,7 @@ export const createOrderRepository = (
           salesLinkTitle: salesLinks.title,
         })
         .from(orders)
+        .leftJoin(orderShipments, and(eq(orderShipments.tenantId, orders.tenantId), eq(orderShipments.orderId, orders.id)))
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .leftJoin(salesLinks, and(eq(orders.salesLinkId, salesLinks.id), eq(salesLinks.tenantId, orders.tenantId)))
@@ -3651,7 +3658,7 @@ export const createOrderRepository = (
         .limit(1);
       const row = rows[0];
       if (row === undefined) return null;
-      const order = orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, salesLinkTitle: row.salesLinkTitle ?? undefined });
+      const order = orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, label: orderLabel(row.labelShipment), salesLinkTitle: row.salesLinkTitle ?? undefined });
       const staffIds = [
         ...order.lines?.flatMap((line) => line.issuedBy === undefined ? [] : [line.issuedBy]) ?? [],
         ...order.shipment == null ? [] : [order.shipment.shippedBy],
@@ -3705,18 +3712,20 @@ export const createOrderRepository = (
       const rows = await db
         .select({
           order: orders,
+          labelShipment: { shipxShipmentId: orderShipments.providerShipmentId, status: orderShipments.status, trackingNumber: orderShipments.trackingNumber },
           memberEmail: members.email,
           memberName: members.displayName,
           productTitle: products.title,
           couponCode: coupons.code,
         })
         .from(orders)
+        .leftJoin(orderShipments, and(eq(orderShipments.tenantId, orders.tenantId), eq(orderShipments.orderId, orders.id)))
         .innerJoin(members, and(eq(orders.memberId, members.id), eq(members.tenantId, orders.tenantId)))
         .innerJoin(products, and(eq(orders.productId, products.id), eq(products.tenantId, orders.tenantId)))
         .leftJoin(coupons, and(eq(orders.couponId, coupons.id), eq(coupons.tenantId, orders.tenantId)))
         .where(and(eq(orders.tenantId, tenantId), eq(orders.memberId, memberId)))
         .orderBy(desc(orders.createdAt), desc(orders.id));
-      return rows.map((row) => orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row }));
+      return rows.map((row) => orderListItemSchema.parse({ ...normalizeOrderDates(row.order), ...row, label: orderLabel(row.labelShipment) }));
     },
     listBillingForMember: async (tenantId, memberId, page, pageSize) => {
       const memberCondition = and(

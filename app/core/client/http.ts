@@ -3358,7 +3358,7 @@ const shopOrderMethods = (options: ApiClientOptions) => {
     shipxShipment: (input: ShopOrderInput<'shipxShipment'>, signal?: AbortSignal) =>
       request(options, routes.shipxShipment.method, orderPath(routes.shipxShipment.path, input.orderId), contracts.shipxShipment.output, undefined, signal),
     shipxCreate: (input: ShopOrderInput<'shipxCreate'>, signal?: AbortSignal) =>
-      request(options, routes.shipxCreate.method, orderPath(routes.shipxCreate.path, input.orderId), contracts.shipxCreate.output, input.parcelTemplate === undefined ? {} : { parcelTemplate: input.parcelTemplate }, signal),
+      request(options, routes.shipxCreate.method, orderPath(routes.shipxCreate.path, input.orderId), contracts.shipxCreate.output, { ...(input.parcelTemplate === undefined ? {} : { parcelTemplate: input.parcelTemplate }), ...(input.markShipped === undefined ? {} : { markShipped: input.markShipped }) }, signal),
     shipxRefresh: (input: ShopOrderInput<'shipxRefresh'>, signal?: AbortSignal) =>
       request(options, routes.shipxRefresh.method, orderPath(routes.shipxRefresh.path, input.orderId), contracts.shipxRefresh.output, {}, signal),
     shipxDiscard: (input: ShopOrderInput<'shipxDiscard'>, signal?: AbortSignal) =>

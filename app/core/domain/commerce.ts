@@ -260,6 +260,7 @@ export const orderListItemSchema = orderSchema.extend({
     issuedByDisplayName: z.string().min(1).optional(),
   })).optional(),
   shipment: orderShipmentSchema.extend({ shippedByDisplayName: z.string().min(1).optional() }).nullable().optional(),
+  label: z.object({ carrier: z.literal('inpost'), trackingNumber: z.string() }).nullable().optional(),
   salesLinkTitle: z.string().optional(),
   memberEmail: z.string(),
   memberName: z.string().nullable(),

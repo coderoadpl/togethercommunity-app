@@ -120,6 +120,50 @@ With a [shop management key](shop-management-keys.md#product-covers-gallery-imag
 the same steps are `shop images upload <file>` and
 `shop products create|update --images-file <path>`.
 
+## InPost labels and dispatch
+
+`order shipx create <orderId>` creates and pays for the label, stores the
+tracking number and leaves the order **to pack**. This default changed: label
+creation no longer marks an order as shipped or e-mails the buyer.
+`order shipx create <orderId> --mark-shipped` restores the one-step flow.
+The shop management key command has the same opt-in:
+`shop orders shipx create <orderId> --mark-shipped`.
+
+In plain mode both create commands print one line on success, based on the
+returned order:
+
+- `shipped: <orderId> (<dispatch carrier> <dispatch tracking>)`
+- `label ready; order still to pack: <orderId> (inpost <label tracking>)`
+- `label bought, but its tracking number cannot be used for dispatch; check Manager Paczek: <orderId> (inpost <shipment tracking>)` when the order explicitly returns `label: null`.
+
+If an older server omits `label`, the CLI derives it from the returned ShipX
+shipment. If no usable label can be derived, it reports
+`label bought; order still to pack: <orderId> (inpost <shipment tracking>)`.
+
+If another request dispatched the order with the same InPost label, the
+command reports `shipped` and does not send another e-mail. If the order was
+shipped meanwhile with a different carrier or tracking number, the command
+fails with `fulfilment_conflict` (`details.state: 'manual_shipped'`, exit 27).
+If the order left the packing list while the label was being bought, the
+command fails with `conflict` (exit 6). In plain mode both errors go to stderr;
+with `--json` they are returned in the error envelope on stdout.
+
+The plain session `orders list` output has a fulfilment column immediately
+after the status column. Scripts that read columns by position must adjust.
+Plain `shop orders list` keeps its existing fulfilment column. Both show
+`label_ready` in that column for a to-pack order with a bought label. Use
+`--fulfilment to_pack` to include these orders; the stored status is still
+`to_pack`.
+
+Without the `--mark-shipped` flag, dispatch the parcel later with
+`order ship <orderId> --carrier inpost --tracking <storedTrackingNumber>`
+(or `shop orders ship` with a key). Only dispatch writes the fulfilment event
+and queues the buyer's shipment e-mail; test orders never send it. Repeating
+label creation on an already bought label makes no second carrier call or
+purchase, and `--mark-shipped` can dispatch that label once. Both actions
+require `order:write`, or `shop:fulfilment:write` for a shop key. See
+[Creating the shipment](shop.md#creating-the-shipment) for retries and leases.
+
 ## Staff refunds
 
 `order refund-preview <orderId>` prints the paid amount, the amount refunded

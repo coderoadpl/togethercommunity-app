@@ -982,9 +982,9 @@ const runGoogleAccountLinking = async (databaseUrl: string): Promise<void> => {
       body: JSON.stringify(body),
     });
     const legacyLinkSchema = z.object({ email: z.string(), userId: z.string() });
-    const currentStateSchema = z.looseObject({
+    const currentStateSchema = z.object({
       link: legacyLinkSchema.extend({ encryptedSessionToken: z.string().min(1) }),
-    });
+    }).passthrough();
     const hasLinkedAccount = async () => {
       const linked = await db.query(
         `SELECT 1 FROM account JOIN "user" ON "user".id = account.user_id
@@ -1000,7 +1000,7 @@ const runGoogleAccountLinking = async (databaseUrl: string): Promise<void> => {
       const session = sessionCookiePair(signIn.headers);
       const started = await post('/api/auth/link-social', { provider: 'google', callbackURL, disableRedirect: true }, session);
       assert(started.status === 200, `account-link start returned HTTP ${started.status}`);
-      const { url } = z.object({ url: z.url() }).parse(parseJson(started.body));
+      const { url } = z.object({ url: z.string().url() }).parse(parseJson(started.body));
       const state = new URL(url).searchParams.get('state');
       assert(state !== null, 'account-link start omitted its state');
       const stateCookie = setCookieValues(started.headers).find((entry) => entry.startsWith('better-auth.state='))?.split(';', 1)[0];

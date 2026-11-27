@@ -290,7 +290,7 @@ describe('Dormant sign-in client HTTP management', () => {
   it('round-trips all four typed client operations with a verified CLI bearer and no origin', async () => {
     const api = createApiClient({
       baseUrl: workspaceOrigin,
-      headers: owner,
+      headers: () => ({ ...owner(), host: new URL(workspaceOrigin).host }),
       fetchImpl: (resource, init) => Promise.resolve(app.request(new Request(resource, init))),
     });
     const created = await api.createSignInClient({ name: 'Typed client', redirectUris: ['https://typed.example.test/return'] });

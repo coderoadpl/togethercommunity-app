@@ -4140,6 +4140,52 @@ apiKey
     }),
   );
 
+const signInClients = program.command('sign-in-clients')
+  .description('Manage dormant sign-in clients (verified direct owner session only)');
+
+signInClients
+  .command('create <name>')
+  .description('Create a pending sign-in client; the secret is shown once')
+  .requiredOption('--redirect-uri <uri>', 'Exact HTTPS return address; repeat for each address',
+    (value: string, previous: string[]) => [...previous, value], [])
+  .action(withInput(z.tuple([z.string().min(1), z.object({ redirectUri: z.array(z.string()).min(1).max(5) })]),
+    async (ctx, [name, options]) => {
+      emit(await ctx.api.createSignInClient({ name, redirectUris: options.redirectUri }), ctx.json, (data) =>
+        `created sign-in client ${data.client.name} (${data.client.id})\nsecret (shown once): ${data.secret}`);
+    }));
+
+signInClients
+  .command('list')
+  .description('List a page of sign-in clients (no secrets)')
+  .option('--cursor <id>', 'Start after this client ID')
+  .option('--limit <number>', 'Page size (1 to 100)')
+  .action(withInput(z.tuple([z.object({ cursor: z.string().min(1).optional(), limit: positiveIntegerOptionSchema })]),
+    async (ctx, [options]) => {
+      emit(await ctx.api.listSignInClients(options), ctx.json, (data) => [
+        ...(data.clients.length === 0 ? ['no sign-in clients'] : data.clients.map((client) =>
+          `${client.id}  ${client.state}  v${String(client.credentialVersion)}  ${client.redirectHost}`)),
+        ...(data.nextCursor === null ? [] : [`next cursor: ${data.nextCursor}`]),
+      ].join('\n'));
+    }));
+
+signInClients
+  .command('rotate-secret <id>')
+  .description('Replace the secret without overlap; the new secret is shown once')
+  .requiredOption('--if-version <number>', 'Current credential version')
+  .action(withInput(z.tuple([z.string().min(1), z.object({
+    ifVersion: z.string().regex(/^[1-9][0-9]{0,9}$/u).transform(Number).pipe(z.number().max(2_147_483_647)),
+  })]), async (ctx, [id, options]) => {
+    emit(await ctx.api.rotateSignInClientSecret({ id, expectedCredentialVersion: options.ifVersion }), ctx.json, (data) =>
+      `rotated sign-in client ${data.client.id} to v${String(data.client.credentialVersion)}\nsecret (shown once): ${data.secret}`);
+  }));
+
+signInClients
+  .command('disable <id>')
+  .description('Permanently retire a sign-in client; its host stays reserved')
+  .action(withInput(z.tuple([z.string().min(1), noOptionsSchema]), async (ctx, [id]) => {
+    emit(await ctx.api.disableSignInClient({ id }), ctx.json, (data) => `disabled sign-in client ${data.client.id}`);
+  }));
+
 const shopManagementKey = apiKey
   .command('shop-management')
   .description('Shop management keys (verified owner session only)');

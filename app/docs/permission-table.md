@@ -24,6 +24,8 @@ The `organization-owner` and `organization-admin` principals come from an organi
 
 The workspace `owner` and `admin` principals in the rows below include organization-derived roles. In a workspace linked to an active organization, an organization `owner` holds the workspace `owner` principal and an organization `admin` the workspace `admin` principal; `findStaffGrant` returns the higher of the direct and the derived role with its source (`direct` or `organization`, a tie keeps `direct`), read on every request. A suspended organization derives no workspace role, and `authorizeOrganization` refuses every `organization:*` capability outside the read allow-list in `core/domain/authorization.ts` while the organization is suspended. Staff notification recipients and the team list's members come from direct grants only.
 
+All four `/api/sign-in-clients` routes require a verified owner in their own session with a direct workspace grant. Organization-derived grants, machine keys and impersonated views do not qualify.
+
 `shop-management-key (scope intersect issuing owner)` is the principal of every `/api/m2m/shop` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (`core/domain/shop-management-key.ts`) intersected with that owner's capabilities, re-read on every request.
 
 `shop-management-key in propose mode (read scopes and proposal submission intersect issuing owner)` is a shop management key created in propose mode. Its read scopes grant the same read capabilities, so it is listed on the `GET /api/m2m/shop` routes; its `shop:catalog:write` and `shop:settings:write` scopes grant only `proposal:submit:catalog` and `proposal:submit:settings`, each with `proposal:asset:upload`, instead of the live write capabilities, and `shop:fulfilment:write` and `shop:integrations:write` cannot be granted to it. It is therefore never listed with a live write such as `product:write` or `tenant:settings:write`. A propose-mode key that calls a catalogue, sales-link or settings write route reaches the route but never its live handler: the request becomes a stored change proposal (`docs/change-proposals.md`) that only the owner can approve, so these rows list only the direct-mode key, whose live handler runs. On the four `/api/m2m/shop/image-assets` routes and the five `/api/m2m/shop/downloads` routes it reaches the handler, and `POST /api/m2m/shop/products/access` and the three product file routes (`POST /api/m2m/shop/products/downloads` and its `replace` and `remove` routes) it reaches only as a proposal; each of these routes has one row per key mode, its subject ending in `(direct-mode key)` or `(propose-mode key)`, whose evidence names every capability that mode needs and what the request does. Only a propose-mode key succeeds on the `/api/m2m/shop/proposals` routes, which refuse a direct-mode key, and on `POST /api/m2m/shop/products/access`, whose direct-mode row lists no principal.
@@ -34,7 +36,7 @@ The staging use-cases of `key-download-files.ts` authorize through the same-file
 
 The direct-mode row of `POST /api/m2m/shop/products/access` lists no principal. Its live handler runs `course-management.ts#updateProductAccessItems`, which needs `product:access:write`, and no scope of a shop management key grants that capability, so a direct-mode key reaches the handler and is refused with `403`. A propose-mode key reaches the route only as a `product.set-access` proposal, which runs the same use-case in the rolled-back dry run of its submission with the identity of the owner who issued the proposing key but without the course, module and lesson checks of the list, and at its approval, checks included, with the session of the approving owner.
 
-Closed capability count: 147. Route rows: 571. Exported `Ctx` use-case rows: 430.
+Closed capability count: 147. Route rows: 575. Exported `Ctx` use-case rows: 430.
 
 ## Human-readable diff
 
@@ -341,6 +343,10 @@ no changes
 | `GET /api/change-proposals/groups/:id` | proposal:read | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/groups/:id/reject` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
 | `POST /api/change-proposals/groups/:id/approve` | proposal:decide | owner | owner | yes | identity middleware + use-case guard |
+| `GET /api/sign-in-clients` | sign-in-client:read | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/sign-in-clients` | sign-in-client:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/sign-in-clients/:id/rotate-secret` | sign-in-client:write | owner | owner | yes | identity middleware + use-case guard |
+| `POST /api/sign-in-clients/:id/disable` | sign-in-client:write | owner | owner | yes | identity middleware + use-case guard |
 | `GET /api/orders/changes` | order:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `GET /api/integrations/shipx` | tenant:secret:read | owner, admin | owner, admin | yes | identity middleware + use-case guard |
 | `POST /api/integrations/shipx/configure` | tenant:secret:write | owner | owner | yes | identity middleware + use-case guard |
@@ -1059,12 +1065,12 @@ This mechanical scan keeps every current staff-role predicate, API-key path, and
 |---|---|---|
 | api-key | `apps/server/src/internal-app.ts:34` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/internal-app.ts:219` | `authenticateApiKey,` |
-| api-key | `apps/server/src/internal-app.ts:1321` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
-| api-key | `apps/server/src/internal-app.ts:1323` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
-| api-key | `apps/server/src/internal-app.ts:1345` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| api-key | `apps/server/src/internal-app.ts:1359` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
-| staff-role | `apps/server/src/internal-app.ts:1890` | `(identity.staffRole \|\| identity.memberId)` |
-| member-scope | `apps/server/src/internal-app.ts:1890` | `(identity.staffRole \|\| identity.memberId)` |
+| api-key | `apps/server/src/internal-app.ts:1322` | `const presentedKey = c.req.header(API_KEY_HEADER);` |
+| api-key | `apps/server/src/internal-app.ts:1324` | `const authed = await authenticateApiKey(tenant.value.tenant.id, presentedKey, deps);` |
+| api-key | `apps/server/src/internal-app.ts:1346` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| api-key | `apps/server/src/internal-app.ts:1360` | `const authed = await authenticateApiKey(tenant.value.tenant.id, c.req.header(API_KEY_HEADER) ?? '', deps);` |
+| staff-role | `apps/server/src/internal-app.ts:1892` | `(identity.staffRole \|\| identity.memberId)` |
+| member-scope | `apps/server/src/internal-app.ts:1892` | `(identity.staffRole \|\| identity.memberId)` |
 | api-key | `apps/server/src/marketing-routes.ts:8` | `API_KEY_HEADER,` |
 | api-key | `apps/server/src/marketing-routes.ts:45` | `authenticateApiKey,` |
 | api-key | `apps/server/src/marketing-routes.ts:94` | `const apiIdentity = (tenant: Tenant): Identity => ({` |

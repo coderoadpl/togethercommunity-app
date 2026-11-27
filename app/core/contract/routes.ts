@@ -4,6 +4,7 @@ import { checkoutAnalyticsConfigSchema, checkoutPurchaseAnalyticsSchema, checkou
 import { ORDER_VERIFICATION_ROUTES } from './order-verification.js';
 import { META_CAPI_ROUTES } from './meta-capi.js';
 import { ORGANIZATION_ROUTES } from './organizations.js';
+import { SIGN_IN_CLIENT_ROUTES } from './sign-in-clients.js';
 import { metaCapiConfigSchema } from '#core/domain/meta-capi.js';
 import { ORDER_FULFILMENT_ROUTES } from './order-fulfilment.js';
 import { STAFF_REFUND_ROUTES } from './staff-refunds.js';
@@ -2051,6 +2052,7 @@ export const API_ROUTES = {
   operatorTenantProvision: { method: 'POST', path: '/api/internal/tenants/provision' },
   operatorTenantReadiness: { method: 'GET', path: '/api/internal/tenants/:slug/readiness' },
   ...ORGANIZATION_ROUTES,
+  ...SIGN_IN_CLIENT_ROUTES,
   activitySummary: { method: 'GET', path: '/api/reports/activity-summary' },
   memberActivity: { method: 'GET', path: '/api/reports/member-activity' },
   ...MARKETING_CONTACT_ROUTES,

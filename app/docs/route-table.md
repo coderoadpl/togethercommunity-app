@@ -291,6 +291,10 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `GET /api/change-proposals/groups/:id` | authenticated | read | change proposal group |
 | `POST /api/change-proposals/groups/:id/reject` | authenticated | mutating | change proposal group reject |
 | `POST /api/change-proposals/groups/:id/approve` | authenticated | mutating | change proposal group approve |
+| `GET /api/sign-in-clients` | authenticated | read | sign in clients |
+| `POST /api/sign-in-clients` | authenticated | mutating | sign in client create |
+| `POST /api/sign-in-clients/:id/rotate-secret` | authenticated | mutating | sign in client rotate secret |
+| `POST /api/sign-in-clients/:id/disable` | authenticated | mutating | sign in client disable |
 | `GET /api/orders/changes` | authenticated | read | order changes |
 | `GET /api/integrations/shipx` | authenticated | read | shipx settings |
 | `POST /api/integrations/shipx/configure` | authenticated | mutating | shipx configure |

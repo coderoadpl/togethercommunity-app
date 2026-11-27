@@ -1,3 +1,11 @@
+import {
+  signInClientCredentialSchema,
+  signInClientDisableOutputSchema,
+  signInClientPageSchema,
+  type CreateSignInClientInput,
+  type ListSignInClientsInput,
+  type RotateSignInClientSecretInput,
+} from '#core/contract/index.js';
 import type { Language, OrderChangeFeed } from '#core/domain/index.js';
 import { metaCapiStateSchema, metaCapiEventsOutputSchema, metaCapiConsentsOutputSchema, type MetaCapiDecisionInput } from '#core/contract/index.js';
 import { tenantTeamOutputSchema, tenantTeamMutationOutputSchema, tenantTeamInvitationOutputSchema } from '#core/contract/index.js';
@@ -2675,6 +2683,41 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.apiKeyRevoke.method,
       API_ROUTES.apiKeyRevoke.path.replace(':id', encodeURIComponent(input.id)),
       apiKeyRevokeOutputSchema,
+      undefined,
+      signal,
+    ),
+  listSignInClients: (input: ListSignInClientsInput = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (input.cursor !== undefined) params.set('cursor', input.cursor);
+    if (input.limit !== undefined) params.set('limit', String(input.limit));
+    const query = params.toString();
+    const { path, method } = API_ROUTES.signInClients;
+    return request(options, method, query === '' ? path : `${path}?${query}`, signInClientPageSchema, undefined, signal);
+  },
+  createSignInClient: (input: CreateSignInClientInput, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.signInClientCreate.method,
+      API_ROUTES.signInClientCreate.path,
+      signInClientCredentialSchema,
+      input,
+      signal,
+    ),
+  rotateSignInClientSecret: ({ id, ...input }: RotateSignInClientSecretInput & { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.signInClientRotateSecret.method,
+      API_ROUTES.signInClientRotateSecret.path.replace(':id', encodeURIComponent(id)),
+      signInClientCredentialSchema,
+      input,
+      signal,
+    ),
+  disableSignInClient: (input: { id: string }, signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.signInClientDisable.method,
+      API_ROUTES.signInClientDisable.path.replace(':id', encodeURIComponent(input.id)),
+      signInClientDisableOutputSchema,
       undefined,
       signal,
     ),

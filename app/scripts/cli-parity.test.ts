@@ -77,6 +77,9 @@ describe('CLI parity inventory', () => {
     expect(rows.find((row) => row.action === 'updateLesson')).toEqual({ action: 'updateLesson', area: 'lessons', cli: true });
     expect(rows.find((row) => row.action === 'm2mEnroll')?.cli).toBe(true);
     expect(rows.find((row) => row.action === 'studentLessonPlayback')?.cli).toBe(false);
+    for (const action of ['createSignInClient', 'listSignInClients', 'rotateSignInClientSecret', 'disableSignInClient']) {
+      expect(rows.find((row) => row.action === action)?.cli, action).toBe(true);
+    }
     expect(rows.every((row) => row.area !== 'other')).toBe(true);
   }, 20_000);
 });

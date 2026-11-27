@@ -507,6 +507,7 @@ import { shopIntegrationRoutes } from './shop-integration-routes.js';
 import { shopSettingsRoutes } from './shop-settings-routes.js';
 import { shopProposalRoutes } from './shop-proposal-routes.js';
 import { registerChangeProposalRoutes } from './change-proposal-routes.js';
+import { registerSignInClientRoutes } from './sign-in-client-routes.js';
 import { registerShopMachineRoutes } from './shop-machine-auth.js';
 import {
   createNotificationEventStream,
@@ -1440,6 +1441,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerOrderFulfilmentRoutes(app, deps);
   registerStaffRefundRoutes(app, deps);
   registerChangeProposalRoutes(app, deps);
+  registerSignInClientRoutes(app, deps);
   registerOrderChangeRoutes(app, deps);
   registerShipxRoutes(app, deps);
   registerOrganizationRoutes(app, deps);

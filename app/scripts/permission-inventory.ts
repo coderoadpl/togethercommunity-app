@@ -259,6 +259,9 @@ const capabilityForRoute = (method: string, path: string): Capability | null => 
   if (path.endsWith('/progress-reset')) return 'member:progress:manage';
   if (path.startsWith('/api/members/') && method === 'DELETE') return 'member:remove';
   if (path === '/api/grants' || path.startsWith('/api/grants/')) return 'member:grant:write';
+  if (path === '/api/sign-in-clients' || path.startsWith('/api/sign-in-clients/')) {
+    return method === 'GET' ? 'sign-in-client:read' : 'sign-in-client:write';
+  }
   if (path === '/api/api-keys') return method === 'GET' ? 'api-key:read' : 'api-key:write';
   if (path.startsWith('/api/api-keys/')) return 'api-key:write';
   if (path === '/api/tenant-secrets') return method === 'GET' ? 'tenant:secret:read' : 'tenant:secret:write';
@@ -413,6 +416,7 @@ const beforeForRoute = (
   if (path === '/api/support/message') return tenantActors;
   if (path === '/api/platform/data-reset') return platformOwner;
   if (path === '/api/api-keys/:id/import-audit') return owner;
+  if (path === '/api/sign-in-clients' || path.startsWith('/api/sign-in-clients/')) return owner;
   if (path === '/api/api-keys/shop-management' || path.startsWith('/api/api-keys/shop-management/')) return owner;
   if (path === '/api/change-proposals' || path.startsWith('/api/change-proposals/')) return owner;
   if (path === '/api/posts/:postId/permanent') return staff;
@@ -1099,6 +1103,8 @@ export const renderPermissionTable = (inventory: PermissionInventory): string =>
     'The `organization-owner` and `organization-admin` principals come from an organization membership read on each request, never from a workspace grant, and no workspace principal holds an `organization:*` capability. A non-member receives `not_found` for an organization ID. `GET /api/organizations` lists only the caller\'s own memberships and is classified under `tenant:list-own`; the operator organization routes are classified under `tenant:provision`, like operator workspace provisioning. `tenant:organization:unlink` is listed for `owner`, and the use-case and the repository additionally require that owner role to come from a direct workspace grant: an owner derived from the organization is refused. The same direct-grant requirement applies to `api-keys.ts#createTenantApiKey`, `tenant-team.ts#addTenantAdmin` and `tenant-team.ts#removeTenantAdmin`, whose results outlive the request; shop management keys stay open to a derived owner because the key issuer\'s grant is re-read on every request.',
     '',
     'The workspace `owner` and `admin` principals in the rows below include organization-derived roles. In a workspace linked to an active organization, an organization `owner` holds the workspace `owner` principal and an organization `admin` the workspace `admin` principal; `findStaffGrant` returns the higher of the direct and the derived role with its source (`direct` or `organization`, a tie keeps `direct`), read on every request. A suspended organization derives no workspace role, and `authorizeOrganization` refuses every `organization:*` capability outside the read allow-list in `core/domain/authorization.ts` while the organization is suspended. Staff notification recipients and the team list\'s members come from direct grants only.',
+    '',
+    'All four `/api/sign-in-clients` routes require a verified owner in their own session with a direct workspace grant. Organization-derived grants, machine keys and impersonated views do not qualify.',
     '',
     `\`${SHOP_MANAGEMENT_KEY_PRINCIPAL}\` is the principal of every \`/api/m2m/shop\` route. Owner sessions are refused there; the caller is a shop management key acting as the owner who issued it, with the capabilities of its scopes (\`core/domain/shop-management-key.ts\`) intersected with that owner's capabilities, re-read on every request.`,
     '',

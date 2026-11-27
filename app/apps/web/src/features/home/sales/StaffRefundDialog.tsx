@@ -37,6 +37,9 @@ import {
   RefundPlainList,
   RefundSheetDialog,
   RefundSheetHandle,
+  RefundUnitChip,
+  RefundUnitName,
+  RefundUnitQuantity,
   WrapAnywhereText,
 } from '../../../theme.js';
 import { AccessIcon, InvoiceIcon, LockIcon, MailIcon, PackageIcon, RefundIcon, StatusIcon, TestModeIcon, TruckIcon } from './refund-icons.js';
@@ -126,10 +129,12 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
   const { currency, remainderCents, fullRefundOptions: options } = preview;
   const money = (cents: number) => formatMinorUnitsPrice(cents, currency, language);
   const remainder = money(remainderCents);
-  const returnableUnits = preview.returnableStock.filter((entry) => entry.quantity > 0).map((entry) => {
-    const name = order.lines?.find((line) => line.productId === entry.productId)?.name ?? order.productTitle;
-    return `${name} × ${String(entry.quantity)}`;
-  });
+  const returnableStock = preview.returnableStock.filter((entry) => entry.quantity > 0).map((entry) => ({
+    productId: entry.productId,
+    name: order.lines?.find((line) => line.productId === entry.productId)?.name ?? order.productTitle,
+    quantity: ` × ${String(entry.quantity)}`,
+  }));
+  const returnableUnits = returnableStock.map((unit) => `${unit.name}${unit.quantity}`);
   const restockVisible = options.restockOffered && returnableUnits.length > 0;
   const accessNames = order.lines === undefined
     ? [order.productTitle]
@@ -360,14 +365,24 @@ export const StaffRefundDialog = ({ open, order, preview, requestKey, onClose }:
                       <Stack useFlexGap spacing="0.5rem">
                         {restockVisible ? (
                           <FormControlLabel
-                            sx={{ alignItems: 'flex-start', m: 0 }}
+                            sx={{ alignItems: 'flex-start', m: 0, '& .MuiFormControlLabel-label': { minWidth: 0 } }}
                             control={<Checkbox checked={restock} disabled={partial || pending} onChange={(_, checked) => setRestock(checked)} sx={{ mt: '-0.4rem' }} data-testid="staff-refund-restock" />}
                             label={(
                               <Box>
                                 <Typography>{messages.restock}</Typography>
                                 <Typography variant="body2" color="textSecondary">{preview.hasShipment ? messages.restockHintShipped : messages.restockHintUnshipped}</Typography>
                                 <Stack direction="row" useFlexGap sx={{ flexWrap: 'wrap', gap: '0.35rem', mt: '0.35rem' }}>
-                                  {returnableUnits.map((unit) => <Chip key={unit} size="small" variant="outlined" icon={<PackageIcon />} label={unit} />)}
+                                  {returnableStock.map((unit) => (
+                                    <RefundUnitChip
+                                      key={unit.productId}
+                                      size="small"
+                                      variant="outlined"
+                                      icon={<PackageIcon />}
+                                      title={`${unit.name}${unit.quantity}`}
+                                      data-testid="staff-refund-unit"
+                                      label={<><RefundUnitName>{unit.name}</RefundUnitName><RefundUnitQuantity>{unit.quantity}</RefundUnitQuantity></>}
+                                    />
+                                  ))}
                                 </Stack>
                               </Box>
                             )}

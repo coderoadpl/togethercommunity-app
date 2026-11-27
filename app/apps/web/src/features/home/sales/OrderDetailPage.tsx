@@ -20,8 +20,10 @@ import { actions } from '../../../api.js';
 import { PanelPage, SectionCard } from '../../../components/layout/index.js';
 import { localizeInvoiceError, localizePanelError, useLanguage, useTranslations } from '../../../i18n/index.js';
 import { formatDateTime, formatPrice } from '../../../lib/format.js';
+import { OrderDetailValue } from '../../../theme.js';
 import { usePanelContext } from '../panel-context.js';
 import { PanelBackLink } from '../PanelBackLink.js';
+import { OrderMemberIdentity } from './OrderMemberIdentity.js';
 import { OrderShipment } from './OrderShipment.js';
 import { OrderRefundJob, RefundStatusChip } from './OrderRefundJob.js';
 import { OrderCancelledChip } from './OrderCancelledChip.js';
@@ -164,10 +166,10 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
     [t.sales.gclid, order.attribution?.gclid],
   ].filter(([, value]) => value !== undefined);
   const paidAt = order.paidAt ?? (order.status === 'paid' ? order.createdAt : null);
-  const rows = [
+  const rows: Array<[string, ReactNode]> = [
     [t.sales.placed, formatDateTime(order.createdAt, language, SALES_LINK_TIME_ZONE)],
     [t.sales.paid, paidAt === null ? '—' : formatDateTime(paidAt, language, SALES_LINK_TIME_ZONE)],
-    [t.sales.member, order.memberName ?? order.memberEmail],
+    [t.sales.member, <OrderMemberIdentity order={order} />],
     [t.sales.product, order.productTitle],
     [t.salesLinks.salesLink, order.salesLinkTitle ?? order.salesLinkId ?? '—'],
     [t.sales.kind, order.kind === 'one_time' ? t.sales.oneTime : t.sales.recurring],
@@ -233,7 +235,7 @@ export const OrderDetailPage = ({ orderId }: { orderId: string }) => {
               sx={{ justifyContent: 'space-between' }}
             >
               <Typography color="textSecondary">{label}</Typography>
-              <Typography>{value}</Typography>
+              <OrderDetailValue component="div">{value}</OrderDetailValue>
             </Stack>
           ))}
         </Stack>

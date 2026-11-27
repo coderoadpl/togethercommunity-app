@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   absoluteBrandingAssetUrl,
   DELETED_MEMBER_DISPLAY,
+  isMemberTombstone,
   isReservedTenantSlug,
+  memberTombstone,
   resolveInvoiceVat,
   resolveTenantLogo,
   resolveTenantSocial,
@@ -361,5 +363,14 @@ describe('sign-in notice settings', () => {
     expect(updateTenantSettingsInputSchema.parse({ signInNotice: { enabled: true, text: '  First line\nSecond line  ' } }).signInNotice)
       .toEqual({ enabled: true, text: 'First line\nSecond line' });
     expect(updateTenantSettingsInputSchema.safeParse({ signInNotice: { enabled: true, text: 'a'.repeat(601) } }).success).toBe(false);
+  });
+});
+
+describe('isMemberTombstone', () => {
+  it('recognises only the replacement address of that erased member', () => {
+    expect(isMemberTombstone({ memberId: 'm1', memberEmail: memberTombstone('m1').email })).toBe(true);
+    expect(isMemberTombstone({ memberId: 'm2', memberEmail: memberTombstone('m1').email })).toBe(false);
+    expect(isMemberTombstone({ memberId: 'm1', memberEmail: 'buyer@anonymized.invalid' })).toBe(false);
+    expect(isMemberTombstone({ memberId: 'm1', memberEmail: 'buyer@example.com' })).toBe(false);
   });
 });

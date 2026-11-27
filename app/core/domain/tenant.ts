@@ -421,6 +421,9 @@ export const memberTombstone = (memberId: string): { email: string; userId: stri
   userId: `deleted:${memberId}`,
 });
 
+export const isMemberTombstone = (member: { memberId: string; memberEmail: string }): boolean =>
+  member.memberEmail === memberTombstone(member.memberId).email;
+
 export const memberWithProductIdsSchema = z.object({
   id: z.string(),
   email: z.string().email(),

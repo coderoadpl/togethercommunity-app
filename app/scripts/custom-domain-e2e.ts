@@ -6,7 +6,7 @@ import { en } from '../apps/web/src/i18n/en.js';
 
 import { generate } from 'otplib';
 import pg from 'pg';
-import { chromium, type Browser, type BrowserContext } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { z } from 'zod';
 
 import {
@@ -356,6 +356,26 @@ const runCrossTenantVisitor = async (tenantBaseUrl: string): Promise<void> => {
   }
 };
 
+const addVirtualPasskeyAuthenticator = async (context: BrowserContext, page: Page) => {
+  page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
+  await page.addInitScript(
+    "Object.defineProperty(PublicKeyCredential, 'isConditionalMediationAvailable', { configurable: true, value: () => Promise.resolve(false) })",
+  );
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('WebAuthn.enable');
+  const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      isUserVerified: true,
+      automaticPresenceSimulation: true,
+    },
+  });
+  return { cdp, authenticatorId };
+};
+
 const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
   let browser: Browser | null = null;
   try {
@@ -363,22 +383,7 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     const context = await browser.newContext();
     await restrictBrowserToLocalRequests(context);
     const page = await context.newPage();
-    page.on('pageerror', (error) => console.log(`  [browser:pageerror] ${error.message}`));
-    await page.addInitScript(
-      "Object.defineProperty(PublicKeyCredential, 'isConditionalMediationAvailable', { configurable: true, value: () => Promise.resolve(false) })",
-    );
-    const cdp = await context.newCDPSession(page);
-    await cdp.send('WebAuthn.enable');
-    await cdp.send('WebAuthn.addVirtualAuthenticator', {
-      options: {
-        protocol: 'ctap2',
-        transport: 'internal',
-        hasResidentKey: true,
-        hasUserVerification: true,
-        isUserVerified: true,
-        automaticPresenceSimulation: true,
-      },
-    });
+    await addVirtualPasskeyAuthenticator(context, page);
 
     await page.goto(`${customBaseUrl}/login`, { waitUntil: 'networkidle' });
     await signInWithPassword(page, SMOKE_TENANT_CREATOR_EMAIL, CREATOR_PASSWORD);
@@ -416,6 +421,60 @@ const runCustomHostPasskey = async (customBaseUrl: string): Promise<void> => {
     await context.close();
   } finally {
     if (browser) await browser.close();
+  }
+};
+
+const submitPasskeyCeremony = async (page: Page, ceremony: 'registration' | 'authentication', testId: string) => {
+  const origin = new URL(page.url()).origin;
+  const verificationUrl = `${origin}/api/auth/passkey/verify-${ceremony}`;
+  const [response] = await Promise.all([
+    page.waitForResponse((candidate) => candidate.url() === verificationUrl && candidate.request().method() === 'POST', { timeout: 20000 }),
+    page.getByTestId(testId).click(),
+  ]);
+  assert(response.ok(), `passkey ${ceremony} at ${origin} returned HTTP ${response.status()}: ${await response.text()}`);
+};
+
+const runSharedWorkspacePasskey = async (workspaceBaseUrl: string, configuredBaseUrl: string): Promise<void> => {
+  const email = 'creator@together.dev';
+  const browser = await launchBrowser();
+  try {
+    const context = await browser.newContext();
+    await restrictBrowserToLocalRequests(context);
+    const page = await context.newPage();
+    const { cdp, authenticatorId } = await addVirtualPasskeyAuthenticator(context, page);
+
+    await page.goto(`${workspaceBaseUrl}/login`, { waitUntil: 'networkidle' });
+    await signInWithPassword(page, email, CREATOR_PASSWORD);
+    await page.waitForURL('**/start', { timeout: 20000 });
+    await page.goto(`${workspaceBaseUrl}/panel/settings#security`, { waitUntil: 'networkidle' });
+    await page.getByTestId('passkey-name').fill('Shared Workspace Passkey');
+    await page.getByTestId('passkey-proof-password').fill(CREATOR_PASSWORD);
+    await submitPasskeyCeremony(page, 'registration', 'add-passkey');
+    await page.locator('[data-testid^="toast-success-"]').first().waitFor({ state: 'visible', timeout: 20000 });
+    const { credentials } = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
+    assert(credentials.length === 1 && credentials[0]?.rpId === PLATFORM_BASE_DOMAIN, 'the virtual authenticator did not register one shared-RP passkey');
+
+    for (const baseUrl of [workspaceBaseUrl, configuredBaseUrl]) {
+      await page.getByTestId('user-menu').click();
+      await page.getByTestId('sign-out').click();
+      await page.getByTestId('signin-passkey').waitFor({ state: 'visible', timeout: 20000 });
+      await page.goto(`${baseUrl}/login`, { waitUntil: 'networkidle' });
+      const meUrl = `${baseUrl}${API_PATHS.me}`;
+      assert((await page.request.get(meUrl)).status() === 401, `a session remained before passkey sign-in at ${baseUrl}`);
+      await submitPasskeyCeremony(page, 'authentication', 'signin-passkey');
+      const me = await page.request.get(meUrl);
+      assert(me.ok(), `passkey sign-in at ${baseUrl} did not create a session (HTTP ${me.status()})`);
+      assert(verifiedMeSchema.parse(await me.json()).data.email === email, `passkey sign-in at ${baseUrl} resolved the wrong account`);
+      if (baseUrl === workspaceBaseUrl) {
+        await page.waitForURL('**/start', { timeout: 20000 });
+        await page.goto(`${workspaceBaseUrl}/panel`, { waitUntil: 'networkidle' });
+      }
+    }
+
+    console.log('custom-domain-e2e: one passkey registers and signs in on the second workspace and signs in on the configured host OK');
+    await context.close();
+  } finally {
+    await browser.close();
   }
 };
 
@@ -917,6 +976,7 @@ try {
   await runCrossTenantVisitor(tenantBaseUrl);
   await runCustomHostSignIn(customBaseUrl, tenantBaseUrl);
   await runCustomHostPasskey(customBaseUrl);
+  await runSharedWorkspacePasskey(`http://studio.${PLATFORM_BASE_DOMAIN}:${port}`, tenantBaseUrl);
   await runCustomDomainMagicLink(connectUrl, tenantBaseUrl);
   await runCustomDomainMagicLinkCrossOriginRejected(connectUrl, tenantBaseUrl);
   await runCustomDomainReturnTo(connectUrl, customBaseUrl);

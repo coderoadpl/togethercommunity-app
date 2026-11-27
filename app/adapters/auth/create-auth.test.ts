@@ -1211,13 +1211,13 @@ describe('host-scoped credentials', () => {
     auth: ReturnType<typeof buildAuth>['auth'],
     host: string,
     path: string,
-    init: { body?: unknown; cookie?: string; authorization?: string } = {},
+    init: { body?: unknown; cookie?: string; authorization?: string; transportOrigin?: string } = {},
   ) => auth.handler(new Request(`http://${host}/api/auth${path}`, {
     ...(init.body === undefined ? {} : { method: 'POST', body: JSON.stringify(init.body) }),
     headers: {
       'content-type': 'application/json',
       host,
-      origin: browserOrigin(host),
+      origin: init.transportOrigin ?? browserOrigin(host),
       'x-forwarded-for': nextHostScopeIp(),
       ...(init.cookie === undefined ? {} : { cookie: init.cookie }),
       ...(init.authorization === undefined ? {} : { authorization: init.authorization }),
@@ -1525,9 +1525,9 @@ describe('host-scoped credentials', () => {
       return { email, credential };
     };
 
-    const authenticatePasskey = async (
+    const passkeyAssertion = async (
       auth: ReturnType<typeof buildAuth>['auth'], host: string, expectedRpId: string,
-      credential: ReturnType<typeof createTestPasskey>, origin = browserOrigin(host),
+      credential: ReturnType<typeof createTestPasskey>, origin: string,
     ) => {
       const options = await call(auth, host, '/passkey/generate-authenticate-options');
       await expectOk(options);
@@ -1536,10 +1536,25 @@ describe('host-scoped credentials', () => {
       }).parse(await options.json());
       expect(rpId).toBe(expectedRpId);
       expect(userVerification).toBe('preferred');
-      return call(auth, host, '/passkey/verify-authentication', {
+      return {
         body: { response: credential.authenticate({ challenge, origin }) },
         cookie: requireCookie(options, 'better-auth-passkey'),
-      });
+      };
+    };
+
+    const authenticatePasskey = async (
+      auth: ReturnType<typeof buildAuth>['auth'], host: string, expectedRpId: string,
+      credential: ReturnType<typeof createTestPasskey>, origin = browserOrigin(host),
+      transportOrigin?: string,
+    ) => call(auth, host, '/passkey/verify-authentication', {
+      ...await passkeyAssertion(auth, host, expectedRpId, credential, origin),
+      ...(transportOrigin === undefined ? {} : { transportOrigin }),
+    });
+
+    const expectPasskeyRefused = async (response: Response) => {
+      expect(response.status, await response.clone().text()).toBe(400);
+      expect(await response.json()).toMatchObject({ code: 'AUTHENTICATION_FAILED' });
+      expect(response.headers.get('set-auth-token')).toBeNull();
     };
 
     it.each([
@@ -1566,9 +1581,7 @@ describe('host-scoped credentials', () => {
         [customHost, customHost, platform.credential],
         [platformHost, baseDomain, custom.credential],
       ] as const) {
-        const response = await authenticatePasskey(auth, host, rpId, credential);
-        expect(response.status).toBe(400);
-        expect(response.headers.get('set-auth-token')).toBeNull();
+        await expectPasskeyRefused(await authenticatePasskey(auth, host, rpId, credential));
       }
     });
 
@@ -1589,10 +1602,20 @@ describe('host-scoped credentials', () => {
     ] as const)('does not authenticate on %s with unlisted exact origin %s', async (host, origin) => {
       const { auth } = buildCeremonyAuth();
       const { credential } = await registerPasskey(auth, platformHost, baseDomain);
-      const response = await authenticatePasskey(auth, host, baseDomain, credential, origin);
+      await expectPasskeyRefused(await authenticatePasskey(
+        auth, host, baseDomain, credential, origin, browserOrigin(platformHost),
+      ));
+    });
 
-      expect(response.status).toBeGreaterThanOrEqual(400);
-      expect(response.status).toBeLessThan(500);
+    it('rejects an untrusted passkey transport origin before verification', async () => {
+      const { auth } = buildCeremonyAuth();
+      const { credential } = await registerPasskey(auth, platformHost, baseDomain);
+      const response = await authenticatePasskey(
+        auth, tenantHost, baseDomain, credential, browserOrigin(tenantHost), 'https://unverified.example',
+      );
+
+      expect(response.status, await response.clone().text()).toBe(403);
+      expect(await response.json()).toMatchObject({ code: 'INVALID_ORIGIN' });
       expect(response.headers.get('set-auth-token')).toBeNull();
     });
 
@@ -1607,12 +1630,27 @@ describe('host-scoped credentials', () => {
       const { credential } = await registerPasskey(auth, workspace, baseDomain);
       const context = await auth.$context;
       expect(context.trustedOrigins).toContain(portWildcard);
-      expect(context.trustedOrigins).not.toContain(browserOrigin(workspace));
       expect(context.isTrustedOrigin(browserOrigin(workspace))).toBe(true);
       expect(context.isTrustedOrigin(browserOrigin(tenantHost))).toBe(false);
       await expectOk(await authenticatePasskey(auth, workspace, baseDomain, credential));
-      const wrongPort = await authenticatePasskey(auth, workspace, baseDomain, credential, browserOrigin(tenantHost));
-      expect(wrongPort.status).toBe(400);
+      await expectPasskeyRefused(await authenticatePasskey(auth, workspace, baseDomain, credential, browserOrigin(tenantHost)));
+    });
+
+    it('keeps shared trusted origins unchanged after a server-side passkey verification', async () => {
+      const { auth } = buildCeremonyAuth();
+      const { email, credential } = await registerPasskey(auth, platformHost, baseDomain);
+      const workspaceOrigin = browserOrigin(tenantHost);
+      const { body, cookie } = await passkeyAssertion(auth, tenantHost, baseDomain, credential, workspaceOrigin);
+      const context = await auth.$context;
+      const initialOrigins = [...context.trustedOrigins];
+      expect(initialOrigins).not.toContain(workspaceOrigin);
+      const headers = new Headers({ origin: workspaceOrigin, cookie });
+      const request = new Request(`${workspaceOrigin}/api/auth/passkey/verify-authentication`, { method: 'POST', headers });
+
+      const verified = await auth.api.verifyPasskeyAuthentication({ request, headers, body });
+
+      expect(verified).toMatchObject({ user: { email } });
+      expect(context.trustedOrigins).toEqual(initialOrigins);
     });
 
     it('keeps exact workspace origins isolated when two passkey requests overlap', async () => {
@@ -1628,19 +1666,20 @@ describe('host-scoped credentials', () => {
           return origins;
         },
       });
-      const { credential } = await registerPasskey(auth, platformHost, baseDomain);
-      const origin = browserOrigin(otherWorkspaceHost);
+      const first = await registerPasskey(auth, platformHost, baseDomain);
+      const second = await registerPasskey(auth, platformHost, baseDomain);
+      const otherOrigin = browserOrigin(otherWorkspaceHost);
       const [notServing, serving] = await Promise.all([
-        authenticatePasskey(auth, tenantHost, baseDomain, credential, origin),
-        authenticatePasskey(auth, otherWorkspaceHost, baseDomain, credential, origin),
+        authenticatePasskey(auth, tenantHost, baseDomain, first.credential, otherOrigin),
+        authenticatePasskey(auth, otherWorkspaceHost, baseDomain, second.credential, otherOrigin),
       ]);
 
-      expect(notServing.status).toBe(400);
+      await expectPasskeyRefused(notServing);
       await expectOk(serving);
-      expect(origins).not.toContain(origin);
+      await expectPasskeyRefused(await authenticatePasskey(auth, tenantHost, baseDomain, first.credential, otherOrigin));
     });
 
-    it('does not use an already proven browser session after it leaves the session store', async () => {
+    it('retains the regression guard against using a revoked browser session for passkey registration', async () => {
       const { auth } = buildCeremonyAuth();
       const email = `stale-passkey-session-${crypto.randomUUID()}@example.test`;
       const password = passwordFixture('stale-passkey-session');
@@ -2029,6 +2068,48 @@ describe('legacy email verification links', () => {
 });
 
 describe('current email verification links', () => {
+  it('keeps platform signup successful when verification enqueue fails and queues a later resend', async () => {
+    const { auth, emailOutbox, emails, flushEmails } = buildAuth();
+    const email = `verification-retry-${crypto.randomUUID()}@example.test`;
+    const failure = 'Verification outbox unavailable';
+    const enqueue = vi.spyOn(emailOutbox, 'enqueue').mockResolvedValueOnce(err(unavailable(failure)));
+    const stderr = vi.spyOn(process.stderr, 'write');
+    const post = (path: string, body: object) => auth.handler(new Request(`${authBaseUrl}/api/auth${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: authBaseUrl,
+        'x-forwarded-for': `198.51.100.${signUpIpSuffix++}`,
+      },
+      body: JSON.stringify(body),
+    }));
+
+    try {
+      const signedUp = await post('/sign-up/email', { name: 'Ada', email, password: SIGN_UP_PASSWORD });
+
+      expect(signedUp.status, await signedUp.clone().text()).toBe(200);
+      const { internalAdapter } = await auth.$context;
+      expect((await internalAdapter.findUserByEmail(email))?.user).toMatchObject({ email, emailVerified: false });
+      expect(stderr).toHaveBeenCalledWith(expect.stringContaining(`[Better Auth] error: ${failure}`));
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      await flushEmails();
+      expect(await emails.findByRecipient(email)).toBeNull();
+
+      const resend = await post('/send-verification-email', { email });
+
+      expect(resend.status, await resend.clone().text()).toBe(200);
+      expect(enqueue).toHaveBeenCalledTimes(2);
+      expect(enqueue).toHaveBeenLastCalledWith(expect.objectContaining({
+        tenantId: null, to: email, payload: expect.objectContaining({ kind: 'verify-email' }),
+      }));
+      await flushEmails();
+      expect(await emails.findByRecipient(email)).toMatchObject({ subject: 'Verify your email address' });
+    } finally {
+      stderr.mockRestore();
+      enqueue.mockRestore();
+    }
+  });
+
   const issueLink = async (fixture: ReturnType<typeof buildAuth>, email: string) => {
     const signup = await signUp(fixture.auth, email);
     expect(signup.status).toBe(200);
@@ -2087,7 +2168,7 @@ describe('current email verification links', () => {
 });
 
 describe('lookup and session outcomes', () => {
-  it('keeps exact PostgreSQL account lookup distinct from a similarly named account', async () => {
+  it('retains the regression guard for distinct PostgreSQL account lookups', async () => {
     const { authPort } = buildAuth();
     const tag = crypto.randomUUID();
     const email = `account-${tag}@example.test`;
@@ -2100,7 +2181,7 @@ describe('lookup and session outcomes', () => {
     expect(await authPort.findUserByEmail(`account-${tag.slice(0, 8)}@example.test`)).toBeNull();
   });
 
-  it('deletes an expired verification value at lookup even within the cleanup interval', async () => {
+  it('retains the regression guard for expired-value cleanup at lookup', async () => {
     const { auth, db } = buildAuth();
     const { internalAdapter } = await auth.$context;
     const identifier = `expired-lookup-${crypto.randomUUID()}`;

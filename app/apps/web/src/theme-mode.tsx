@@ -61,7 +61,29 @@ export const persistedJsonPreference = <T,>(
       if (serialized !== undefined) localStorage.setItem(key, serialized);
     } catch {}
   },
+  clear: (): void => {
+    try { localStorage.removeItem(key); } catch {}
+  },
 });
+
+export const LIST_LAYOUT_STORAGE_PREFIX = 'together-list-layout:';
+
+const listLayoutCopyListeners = new Set<() => void>();
+
+export const onListLayoutCopiesCleared = (listener: () => void) => {
+  listLayoutCopyListeners.add(listener);
+  return () => { listLayoutCopyListeners.delete(listener); };
+};
+
+export const clearListLayoutCopies = (): void => {
+  listLayoutCopyListeners.forEach((listener) => listener());
+  try {
+    for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(LIST_LAYOUT_STORAGE_PREFIX)) localStorage.removeItem(key);
+    }
+  } catch {}
+};
 
 export const sessionFlag = (key: string) => ({
   load: (): boolean => {

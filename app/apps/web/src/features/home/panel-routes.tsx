@@ -177,6 +177,7 @@ export const PanelMarketingSettingsRedirectRoute = () => (
 );
 
 export const PanelSalesRoute = () => <SalesPanel />;
+export { validateOrdersSearch } from './sales/order-filters.js';
 export const PanelOrderVerificationRoute = () => {
   const params = useParams({ strict: false });
   return <OrderVerificationPage reference={params.token ?? ''} />;

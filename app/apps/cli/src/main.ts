@@ -1,4 +1,4 @@
-import { changeProposalListStatusSchema, deliveryMethodSchema, fulfilmentStatusSchema, orderFulfilmentDisplay, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
+import { changeProposalListStatusSchema, orderBillingFilterSchema, orderInvoiceFilterSchema, orderSortDirectionSchema, orderSortFieldSchema, deliveryMethodSchema, fulfilmentStatusSchema, orderFulfilmentDisplay, productPersonalizationSchema, shopManagementKeyModeSchema, shopManagementScopeSchema, type ChangeProposalEffect, type ChangeProposalGroupOwnerView, type ChangeProposalOwnerView, parcelTemplateSchema, shipxEnvironmentSchema, shipxSenderSchema, type ShipxOrderView, productComplianceSchema, shippingCarrierSchema, shippingRatesSchema, stripeModeSchema, variantGroupSchema, variantLabelSchema, stripeProbePermissionsInputSchema, type CheckoutShippingInput, type ShippingRate, type TenantSettings } from '#core/domain/index.js';
 import { consumerSalesRequestSchema } from '#core/contract/index.js';
 import { registerSalesLinkCommands } from './sales-link-commands.js';
 import { registerSurveyCommands } from './survey-commands.js';
@@ -338,6 +338,10 @@ const priceAddOptionsSchema = z.object({
   currency: currencySchema.optional(),
 });
 const ordersListOptionsSchema = z.object({
+  invoice: orderInvoiceFilterSchema.optional(),
+  billing: orderBillingFilterSchema.optional(),
+  sortBy: orderSortFieldSchema.optional(),
+  sortDirection: orderSortDirectionSchema.optional(),
   mode: stripeModeSchema.optional(),
   sourceExact: z.boolean().optional(),
   source: z.string().min(1).max(200).optional(),
@@ -359,6 +363,10 @@ const ordersListOptionsSchema = z.object({
     .optional(),
 });
 const ordersExportOptionsSchema = z.object({
+  invoice: orderInvoiceFilterSchema.optional(),
+  billing: orderBillingFilterSchema.optional(),
+  sortBy: orderSortFieldSchema.optional(),
+  sortDirection: orderSortDirectionSchema.optional(),
   sourceExact: z.boolean().optional(),
   source: z.string().min(1).max(200).optional(),
   format: z.enum(['csv', 'json']),
@@ -2091,6 +2099,10 @@ ordersCommand
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
+  .option('--invoice <state>', 'with or without an invoice record')
+  .option('--billing <request>', 'requested, company, private or none (invoice data the buyer gave at checkout)')
+  .option('--sort-by <field>', 'createdAt (default) or amountCents')
+  .option('--sort-direction <direction>', 'desc (default) or asc')
   .option('--page <n>')
   .option('--page-size <n>')
   .action(
@@ -2106,6 +2118,10 @@ ordersCommand
           ...(options.source === undefined ? {} : { source: options.source }),
           ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
           ...(options.search === undefined ? {} : { search: options.search }),
+          ...(options.invoice === undefined ? {} : { invoice: options.invoice }),
+          ...(options.billing === undefined ? {} : { billing: options.billing }),
+          ...(options.sortBy === undefined ? {} : { sortBy: options.sortBy }),
+          ...(options.sortDirection === undefined ? {} : { sortDirection: options.sortDirection }),
           ...(options.page === undefined ? {} : { page: options.page }),
           ...(options.pageSize === undefined ? {} : { pageSize: options.pageSize }),
         }),
@@ -2136,6 +2152,10 @@ ordersCommand
   .option('--source <utm_source|none>', 'filter by campaign source or no attribution')
   .option('--source-exact', 'treat --source literally, including the campaign source none')
   .option('--search <text>', 'search by member e-mail or name')
+  .option('--invoice <state>', 'with or without an invoice record')
+  .option('--billing <request>', 'requested, company, private or none (invoice data the buyer gave at checkout)')
+  .option('--sort-by <field>', 'createdAt (default) or amountCents')
+  .option('--sort-direction <direction>', 'desc (default) or asc')
   .option('--out <file>', 'write the export to a file instead of stdout')
   .action(
     withInput(z.tuple([ordersExportOptionsSchema]), async (ctx, [options]) => {
@@ -2149,6 +2169,10 @@ ordersCommand
         ...(options.source === undefined ? {} : { source: options.source }),
         ...(options.sourceExact === true ? { sourceMatch: 'exact' as const } : {}),
         ...(options.search === undefined ? {} : { search: options.search }),
+        ...(options.invoice === undefined ? {} : { invoice: options.invoice }),
+        ...(options.billing === undefined ? {} : { billing: options.billing }),
+        ...(options.sortBy === undefined ? {} : { sortBy: options.sortBy }),
+        ...(options.sortDirection === undefined ? {} : { sortDirection: options.sortDirection }),
       });
       if (result.ok && options.out !== undefined) {
         await writeFile(options.out, result.value.content);

@@ -338,8 +338,10 @@ invoices can be checked locally.
 - [@mui/types@9.4.0](https://github.com/mui/material-ui/tree/master/packages/mui-types) - MIT
 - [@mui/utils@9.2.0](https://github.com/mui/material-ui/tree/master/packages/mui-utils) - MIT
 - [@mui/utils@9.4.0](https://github.com/mui/material-ui/tree/master/packages/mui-utils) - MIT
+- [@mui/x-data-grid@9.15.0](https://mui.com/x/react-data-grid/) - MIT
 - [@mui/x-internals@9.15.0](https://mui.com/x/) - MIT
 - [@mui/x-tree-view@9.15.0](https://mui.com/x/react-tree-view/) - MIT
+- [@mui/x-virtualizer@0.7.3](https://mui.com) - MIT
 - [@napi-rs/wasm-runtime@1.1.6](https://napi.rs/) - MIT
 - [@neondatabase/serverless@1.1.0](https://neon.com) - MIT
 - [@noble/ciphers@2.2.0](https://paulmillr.com/noble/) - MIT
@@ -1156,6 +1158,7 @@ invoices can be checked locally.
 - [update-browserslist-db@1.2.3](https://github.com/browserslist/update-db#readme) - MIT
 - [uri-js@4.4.1](https://github.com/garycourt/uri-js) - BSD-2-Clause
 - [use-sync-external-store@1.6.0](https://github.com/facebook/react#readme) - MIT
+- [use-sync-external-store@1.7.0](https://github.com/facebook/react#readme) - MIT
 - [vite@7.3.7](https://vite.dev) - MIT
 - [vitest@4.1.12](https://vitest.dev) - MIT
 - [w3c-keyname@2.2.8](https://github.com/marijnh/w3c-keyname#readme) - MIT

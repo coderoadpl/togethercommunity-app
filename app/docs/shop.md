@@ -462,8 +462,10 @@ is shown below that line, see [Fulfilment](#fulfilment).
 The order detail page shows a **Delivery** card (option, price, locker,
 address, phone, and a **Locker not verified** warning for a pickup point stored
 with `verified: false`) and a fulfilment chip (**To pack**, **Label ready** or **Shipped**). The orders
-list has a **Fulfilment** filter (all orders, `to_pack` or `shipped`, sent as
-`fulfilmentStatus`) and a **Fulfilment** column with the same chips. CSV and
+list has a **Fulfilment** filter under **Add filter** (all orders, `to_pack` or
+`shipped`, sent as `fulfilmentStatus`), also offered in the **Fulfilment**
+column's menu while that grid column is visible, and shows the same chips in
+that column and on the phone order cards. CSV and
 JSON exports add the columns `shipping_rate`, `shipping_point`, `shipping_name`,
 `shipping_phone`, `shipping_address`, `shipping_postal_code`, `shipping_city`,
 `shipping_country` and `fulfilment_status`, followed by `client_reference`

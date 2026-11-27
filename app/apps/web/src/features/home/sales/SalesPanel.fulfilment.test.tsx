@@ -31,6 +31,15 @@ const order = (id: string, fulfilmentStatus: 'to_pack' | 'shipped' | null): Orde
 
 const panelContext = { tenant: { id: 't1', slug: 'acme', name: 'Acme', staffRole: 'owner' as const, memberId: 'm1' }, email: 'owner@example.com', emailVerified: true };
 
+const chooseFilter = async (label: string, option: string) => {
+  await userEvent.click(screen.getByRole('button', { name: en.dataGrid.addFilter }));
+  const dialog = await screen.findByRole('dialog', { name: en.dataGrid.addFilter });
+  await userEvent.click(within(dialog).getByRole('combobox', { name: label }));
+  await userEvent.click(await screen.findByRole('option', { name: option }));
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: en.dataGrid.addFilter })).toBeNull());
+};
+
 const renderAt = async (path: string, component: () => ReactElement, context: PanelContextValue = panelContext) => {
   const rootRoute = createRootRoute();
   const route = createRoute({ getParentRoute: () => rootRoute, path, component });
@@ -81,9 +90,9 @@ describe('sales fulfilment', () => {
     expect(chips.map((chip) => chip.textContent)).toEqual([en.shipping.fulfilmentStatuses.to_pack, en.shipping.fulfilmentStatuses.shipped]);
     expect(screen.getByRole('columnheader', { name: en.shipping.fulfilmentColumn })).toBeInTheDocument();
     expect(screen.queryByTestId('sales-packing-list')).toBeNull();
+    expect(screen.queryByText(en.shipping.packingListFilterHint)).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('combobox', { name: en.shipping.fulfilmentFilter }));
-    await userEvent.click(await screen.findByRole('option', { name: en.shipping.fulfilmentStatuses.to_pack }));
+    await chooseFilter(en.shipping.fulfilmentFilter, en.shipping.fulfilmentStatuses.to_pack);
     await waitFor(() => expect(listQueries.at(-1)?.get('fulfilmentStatus')).toBe('to_pack'));
     await waitFor(() => expect(screen.getAllByTestId('sales-row')).toHaveLength(1));
 
@@ -93,21 +102,21 @@ describe('sales fulfilment', () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('sales-packing-list-live-only')).toHaveTextContent(en.shipping.packingListLiveOnly);
 
-    await userEvent.click(screen.getByRole('combobox', { name: en.sales.mode }));
-    await userEvent.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
+    await chooseFilter(en.sales.mode, en.integrations.stripeTestMode);
     await waitFor(() => expect(listQueries.at(-1)?.get('mode')).toBe('test'));
     await userEvent.click(await screen.findByRole('button', { name: en.shipping.packingListDownload }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(2));
     expect(packingQueries.at(-1)?.get('mode')).toBe('test');
     expect(screen.queryByTestId('sales-packing-list-live-only')).toBeNull();
+    expect(screen.getByText(en.shipping.packingListFilterHint)).toBeVisible();
 
-    await userEvent.click(screen.getByRole('combobox', { name: en.sales.mode }));
-    await userEvent.click(await screen.findByRole('option', { name: en.integrations.stripeLiveMode }));
+    await chooseFilter(en.sales.mode, en.integrations.stripeLiveMode);
     await waitFor(() => expect(listQueries.at(-1)?.get('mode')).toBe('live'));
     await userEvent.click(await screen.findByRole('button', { name: en.shipping.packingListDownload }));
     await waitFor(() => expect(click).toHaveBeenCalledTimes(3));
     expect(packingQueries.at(-1)?.get('mode')).toBe('live');
     expect(screen.queryByTestId('sales-packing-list-live-only')).toBeNull();
+    expect(screen.getByText(en.shipping.packingListFilterHint)).toBeVisible();
   });
 });
 
@@ -367,8 +376,7 @@ it('shows a distinct label-ready chip while keeping the order in the to-pack fil
   const chips = await screen.findAllByTestId('sales-fulfilment-chip');
   expect(chips.map((chip) => chip.textContent)).toEqual(['To pack', 'Label ready', 'Shipped']);
   expect(chips[2]).toHaveClass('MuiChip-colorSuccess');
-  await userEvent.click(screen.getByRole('combobox', { name: en.shipping.fulfilmentFilter }));
-  await userEvent.click(await screen.findByRole('option', { name: en.shipping.fulfilmentStatuses.to_pack }));
+  await chooseFilter(en.shipping.fulfilmentFilter, en.shipping.fulfilmentStatuses.to_pack);
   await waitFor(() => expect(listQueries.at(-1)?.get('fulfilmentStatus')).toBe('to_pack'));
   await waitFor(() => expect(screen.getAllByTestId('sales-row')).toHaveLength(1));
   const row = screen.getByTestId('sales-row');

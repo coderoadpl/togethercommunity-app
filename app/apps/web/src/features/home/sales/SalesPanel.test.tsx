@@ -17,6 +17,7 @@ import { server } from '../../../test/server.js';
 import { sampleBundleOrder } from '../../../test/sales-link-fixtures.js';
 import { PanelContextProvider } from '../panel-context.js';
 import { SalesPanel } from './SalesPanel.js';
+import { heldInvoice } from './sales-test-fixtures.js';
 import { OrderDetailPage } from './OrderDetailPage.js';
 
 const renderOrderDetail = async () => {
@@ -155,28 +156,32 @@ describe('SalesPanel', () => {
     expect(screen.getByRole('link', { name: en.sales.openMemberAccount({ member: 'Ada (member@example.com)' }) }))
       .toHaveAttribute('href', '/panel/members/m1');
 
-    await user.click(screen.getByLabelText(en.sales.status));
+    await user.click(screen.getByRole('button', { name: en.dataGrid.addFilter }));
+    const filters = await screen.findByRole('dialog', { name: en.dataGrid.addFilter });
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.status }));
     await user.click(await screen.findByRole('option', { name: en.sales.paid }));
     await waitFor(() => expect(listQueries.some((query) => query.includes('status=paid'))).toBe(true));
 
-    await user.click(screen.getByLabelText(en.sales.coupon));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.coupon }));
     await user.click(await screen.findByRole('option', { name: 'PARTNER20' }));
     await waitFor(() =>
       expect(listQueries.some((query) => query.includes('couponId=coupon-1'))).toBe(true),
     );
 
-    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.source }));
     expect(await screen.findByRole('option', { name: 'newsletter' })).toBeInTheDocument();
     await user.click(screen.getByRole('option', { name: en.sales.noSource }));
     await waitFor(() => expect(listQueries.at(-1)).toContain('source=none'));
     expect(listQueries.at(-1)).not.toContain('sourceMatch=');
-    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.source }));
     await user.click(await screen.findByRole('option', { name: 'meta' }));
     await waitFor(() => expect(listQueries.at(-1)).toContain('source=meta'));
 
-    await user.click(screen.getByLabelText(en.sales.source));
+    await user.click(within(filters).getByRole('combobox', { name: en.sales.source }));
     await user.click(await screen.findByRole('option', { name: 'none' }));
     await waitFor(() => expect(listQueries.at(-1)).toContain('source=none&sourceMatch=exact'));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: en.dataGrid.addFilter })).toBeNull());
 
     await user.click(screen.getByTestId('sales-export-csv'));
     await waitFor(() => expect(exportQueries).toHaveLength(1));
@@ -233,7 +238,8 @@ describe('SalesPanel', () => {
     expect(await screen.findByTestId('sales-row')).toHaveTextContent('Workshop');
     expect(screen.getByTestId('sales-export-csv')).toBeEnabled();
 
-    await user.click(screen.getByLabelText(en.sales.mode));
+    await user.click(screen.getByRole('button', { name: en.dataGrid.addFilter }));
+    await user.click(within(await screen.findByRole('dialog', { name: en.dataGrid.addFilter })).getByRole('combobox', { name: en.sales.mode }));
     await user.click(await screen.findByRole('option', { name: en.integrations.stripeTestMode }));
 
     await waitFor(() => expect(listQueries.some((query) => query.includes('mode=test'))).toBe(true));
@@ -450,23 +456,6 @@ const heldOrder = (id: string) => ({
   provider: 'stripe', providerObjectIds: {}, couponId: null, discountCents: 0,
   billing: null, createdAt: '2026-07-28T09:00:00.000Z', memberEmail: 'member@example.com',
   memberName: 'Ada', productTitle: 'Workshop', couponCode: null, mode: 'test',
-});
-
-const heldInvoice = (orderId: string) => ({
-  id: `invoice-${orderId}`, tenantId: 't1', orderId, status: 'requested', provider: 'ksef',
-  providerInvoiceId: null, invoiceNumber: null, pdfUrl: null, error: null, issuedAt: null,
-  createdAt: '2026-07-28T09:00:00.000Z',
-  ksef: {
-    environment: 'test', credentialMode: 'test', schemaSystemCode: 'FA (3)', schemaVersion: '1-0E',
-    contextNip: '5555555555', sellerName: 'Acme', sellerAddress: 'Main Street 1',
-    p2: null, invoiceType: 'VAT', issueDate: null, xmlArtifactKey: null, xmlByteSize: null,
-    xmlSha256: null, state: 'held', authConfigVersion: 1, sessionReference: null,
-    invoiceReference: null, ksefNumber: null, lastStatusCode: null, lastStatusDescription: null,
-    lastStatusDetails: [], lastStatusExtensions: {}, lastPolledAt: null, acquisitionAt: null,
-    invoicingAt: null, permanentStorageAt: null, upoArtifactKey: null, upoSha256: null,
-    upoRetrievedAt: null, originalSessionReference: null, originalKsefNumber: null,
-    lastTransportError: null, retryAt: null, attempt: 0, correlationChecks: 0, version: 0,
-  },
 });
 
 describe('controlled KSeF submission', () => {

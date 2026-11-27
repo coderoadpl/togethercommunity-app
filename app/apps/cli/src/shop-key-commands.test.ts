@@ -331,6 +331,7 @@ describe('shop orders CLI', () => {
   it.each([
     [['shop', 'orders', 'list', '--mode', 'live', '--fulfilment', 'to_pack', '--page', '2', '--page-size', '50'], 'GET', '/api/m2m/shop/orders', '?fulfilmentStatus=to_pack&mode=live&page=2&pageSize=50', null],
     [['shop', 'orders', 'export', '--format', 'csv', '--status', 'paid'], 'GET', '/api/m2m/shop/orders/export', '?status=paid&format=csv', null],
+    [['shop', 'orders', 'list', '--invoice', 'with', '--billing', 'requested', '--sort-by', 'createdAt', '--sort-direction', 'asc'], 'GET', '/api/m2m/shop/orders', '?invoice=with&billing=requested&sortBy=createdAt&sortDirection=asc', null],
     [['shop', 'orders', 'packing-list', '--format', 'csv'], 'GET', '/api/m2m/shop/orders/packing-list', '?format=csv&mode=live', null],
     [['shop', 'orders', 'verify', 'order-1'], 'GET', '/api/m2m/shop/orders/verify/order-1', '', null],
     [['shop', 'orders', 'show', 'order-1'], 'GET', '/api/m2m/shop/orders/order-1', '', null],

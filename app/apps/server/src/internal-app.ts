@@ -11,6 +11,7 @@ import { registerOrderChangeRoutes } from './order-change-routes.js';
 import { registerShipxRoutes } from './shipx-routes.js';
 import { registerSalesLinkRoutes } from './sales-link-routes.js';
 import { registerSurveyRoutes } from './survey-routes.js';
+import { registerListLayoutRoutes } from './list-layout-routes.js';
 import { telemetryStoreInputSchema } from '#core/contract/index.js';
 import { campaignWithoutStatistics, sendWithoutEngagement } from '#core/domain/telemetry-report.js';
 import { telemetryDeliveryEngagementHidden, telemetryReportsHidden, getTelemetryStore, connectTelemetryStore, probeTelemetryStore, disconnectTelemetryStore } from '#core/server/usecases/telemetry-store.js';
@@ -1434,6 +1435,7 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
   registerSessionMarketingContactRoutes(app, deps);
   registerSessionMarketingSignupRoutes(app, deps);
   registerSurveyRoutes(app, deps);
+  registerListLayoutRoutes(app, deps);
   registerSalesLinkRoutes(app, deps);
   registerOrderVerificationRoutes(app, deps);
   registerMetaCapiRoutes(app, deps);
@@ -2961,6 +2963,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('fulfilmentStatus') === undefined ? {} : { fulfilmentStatus: c.req.query('fulfilmentStatus') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+      ...(c.req.query('invoice') === undefined ? {} : { invoice: c.req.query('invoice') }),
+      ...(c.req.query('billing') === undefined ? {} : { billing: c.req.query('billing') }),
+      ...(c.req.query('sortBy') === undefined ? {} : { sortBy: c.req.query('sortBy') }),
+      ...(c.req.query('sortDirection') === undefined ? {} : { sortDirection: c.req.query('sortDirection') }),
       ...(c.req.query('page') === undefined ? {} : { page: c.req.query('page') }),
       ...(c.req.query('pageSize') === undefined ? {} : { pageSize: c.req.query('pageSize') }),
     };
@@ -3006,6 +3012,10 @@ export const registerInternalRoutes = (app: Hono<AppVars>, deps: AppDeps): void 
       ...(c.req.query('couponId') === undefined ? {} : { couponId: c.req.query('couponId') }),
       ...(c.req.query('fulfilmentStatus') === undefined ? {} : { fulfilmentStatus: c.req.query('fulfilmentStatus') }),
       ...(c.req.query('search') === undefined ? {} : { search: c.req.query('search') }),
+      ...(c.req.query('invoice') === undefined ? {} : { invoice: c.req.query('invoice') }),
+      ...(c.req.query('billing') === undefined ? {} : { billing: c.req.query('billing') }),
+      ...(c.req.query('sortBy') === undefined ? {} : { sortBy: c.req.query('sortBy') }),
+      ...(c.req.query('sortDirection') === undefined ? {} : { sortDirection: c.req.query('sortDirection') }),
     };
     const parsed = ordersExportQuerySchema.safeParse(query);
     if (!parsed.success) return respond(err(validation('Invalid orders export query', parsed.error.flatten())));

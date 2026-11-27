@@ -265,6 +265,9 @@ Handlers that share a method, path, access and purpose — such as the two `GET 
 | `DELETE /api/surveys/:id` | authenticated | mutating | delete survey |
 | `GET /api/surveys/:id/results` | authenticated | read | get survey results |
 | `GET /api/surveys/:id/export` | authenticated | read | export survey responses |
+| `GET /api/panel/list-layouts/:listId` | authenticated | read | get list layout |
+| `PUT /api/panel/list-layouts/:listId` | authenticated | mutating | save list layout |
+| `DELETE /api/panel/list-layouts/:listId` | authenticated | mutating | reset list layout |
 | `GET /api/sales-links` | authenticated | read | list sales links |
 | `GET /api/sales-links/:id` | authenticated | read | get sales link |
 | `POST /api/sales-links` | authenticated | mutating | create sales link |

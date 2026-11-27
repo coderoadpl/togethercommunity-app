@@ -392,3 +392,39 @@ it.each(['csv', 'json'] as const)('preserves exact source matching across every 
   expect(h.queries).toHaveLength(3);
   expect(h.queries.every((query) => query.source === 'none' && query.sourceMatch === 'exact')).toBe(true);
 });
+
+describe('invoice, billing and sort parameters', () => {
+  it.each([
+    { invoice: 'with' }, { invoice: 'without' },
+    { billing: 'requested' }, { billing: 'company' }, { billing: 'private' }, { billing: 'none' },
+    { sortBy: 'createdAt', sortDirection: 'asc' }, { sortBy: 'amountCents', sortDirection: 'desc' },
+  ] as const)('passes %o through to the tenant repository', async (filter) => {
+    const h = harness();
+    expect(await listOrders({ identity: identity('owner') }, filter, h.deps)).toMatchObject({ ok: true });
+    expect(h.queries).toEqual([{ ...filter, page: 1, pageSize: 20 }]);
+  });
+
+  it('refuses values outside the declared sets', async () => {
+    const h = harness();
+    for (const query of [{ invoice: 'maybe' }, { billing: 'business' }, { sortBy: 'memberEmail' }, { sortDirection: 'up' }]) {
+      expect(await listOrders({ identity: identity('owner') }, query, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+      expect(await exportOrders({ identity: identity('owner') }, { ...query, format: 'csv' }, h.deps)).toMatchObject({ ok: false, error: { code: 'validation' } });
+    }
+    expect(h.queries).toEqual([]);
+  });
+
+  it.each(['csv', 'json'] as const)('exports %s with list filters and sorting but only live orders', async (format) => {
+    const filters = {
+      status: 'paid', productId: 'p1', kind: 'one_time', couponId: 'coupon-1', fulfilmentStatus: 'to_pack',
+      search: 'anna', source: 'none', sourceMatch: 'exact', invoice: 'without', billing: 'company',
+      sortBy: 'amountCents', sortDirection: 'asc',
+    } as const;
+    const h = harness();
+    await listOrders({ identity: identity('owner') }, filters, h.deps);
+    await exportOrders({ identity: identity('owner') }, { ...filters, format }, h.deps);
+    expect(h.queries).toEqual([
+      { ...filters, page: 1, pageSize: 20 },
+      { ...filters, mode: 'live', page: 1, pageSize: 100 },
+    ]);
+  });
+});

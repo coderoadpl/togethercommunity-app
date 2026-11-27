@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 
 import { actions } from '../../../api.js';
 import { forgetLoginIdentifier } from '../../../lib/login-identifier.js';
+import { clearListLayoutCopies } from '../../../theme-mode.js';
 
 export const useVisitorSignOut = () => {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ export const useVisitorSignOut = () => {
     ...actions.signOut,
     onSuccess: async () => {
       forgetLoginIdentifier();
+      clearListLayoutCopies();
       queryClient.clear();
       await navigate({ to: '/login' });
     },

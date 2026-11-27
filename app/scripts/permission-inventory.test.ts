@@ -17,8 +17,8 @@ const root = join(import.meta.dirname, '..');
 describe('permission inventory', () => {
   it('covers every runtime route and every exported Ctx use-case', () => {
     const inventory = collectPermissionInventory();
-    expect(inventory.routes).toHaveLength(559);
-    expect(inventory.useCases).toHaveLength(422);
+    expect(inventory.routes).toHaveLength(562);
+    expect(inventory.useCases).toHaveLength(425);
     expect(inventory.routes.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject).sort())
       .toEqual(Object.keys(KEY_MODE_ROUTES).sort());
     expect(inventory.useCases.filter((entry) => entry.modes !== undefined).map((entry) => entry.subject)).toEqual(

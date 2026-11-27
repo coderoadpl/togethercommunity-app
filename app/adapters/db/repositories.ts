@@ -227,6 +227,7 @@ import {
   salesLinks,
   products,
   spaces,
+  staffListLayouts,
   suppressions,
   spaceEventRsvps,
   spaceEvents,
@@ -3096,6 +3097,11 @@ export const createMemberErasureRepository = (db: Db, emailHmac: EmailHmac): Mem
         ),
       ));
 
+      await tx.delete(staffListLayouts).where(and(
+        eq(staffListLayouts.tenantId, tenantId),
+        eq(staffListLayouts.userId, member.userId),
+      ));
+
       await tx
         .update(members)
         .set({
@@ -3517,6 +3523,14 @@ export const createOrderRepository = (
       : sql`${orders.attribution}->>'utmSource' = ${query.source}`);
     if (query.couponId !== undefined) conditions.push(eq(orders.couponId, query.couponId));
     if (query.fulfilmentStatus !== undefined) conditions.push(eq(orders.fulfilmentStatus, query.fulfilmentStatus));
+    if (query.invoice !== undefined) {
+      const invoiced = sql`EXISTS (SELECT 1 FROM ${invoices} WHERE ${invoices.tenantId} = ${orders.tenantId} AND ${invoices.orderId} = ${orders.id})`;
+      conditions.push(query.invoice === 'with' ? invoiced : sql`NOT ${invoiced}`);
+    }
+    if (query.billing === 'requested') conditions.push(isNotNull(orders.billing));
+    if (query.billing === 'none') conditions.push(isNull(orders.billing));
+    if (query.billing === 'company') conditions.push(sql`${orders.billing} IS NOT NULL AND ${orders.billing}->>'nip' IS NOT NULL`);
+    if (query.billing === 'private') conditions.push(sql`${orders.billing} IS NOT NULL AND ${orders.billing}->>'nip' IS NULL`);
     if (query.search !== undefined) {
       const pattern = `%${query.search.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
       const search = or(
@@ -3681,9 +3695,11 @@ export const createOrderRepository = (
     },
     list: async (tenantId, query) => {
       const conditions = conditionsFor(tenantId, query);
+      const direction = query.sortDirection === 'asc' ? asc : desc;
+      const sortColumn = query.sortBy === 'amountCents' ? orders.amountCents : orders.createdAt;
       const rows = await selectListRows()
         .where(and(...conditions))
-        .orderBy(desc(orders.createdAt), desc(orders.id))
+        .orderBy(direction(sortColumn), ...(query.sortBy === 'amountCents' ? [direction(orders.createdAt)] : []), direction(orders.id))
         .limit(query.pageSize)
         .offset((query.page - 1) * query.pageSize);
       const totals = await db

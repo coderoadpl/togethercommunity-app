@@ -370,6 +370,26 @@ export interface Messages {
     nextPage: string;
     previousPage: string;
   };
+  dataGrid: {
+    loading: string;
+    loadFailed: string;
+    reloadPage: string;
+    columns: string;
+    columnsDialogTitle: string;
+    columnsDialogHint: string;
+    moveUp: (params: { column: string }) => string;
+    moveDown: (params: { column: string }) => string;
+    resetLayout: string;
+    done: string;
+    filter: string;
+    addFilter: string;
+    filterTitle: (params: { column: string }) => string;
+    filterChip: (params: { label: string; value: string }) => string;
+    removeFilter: (params: { filter: string }) => string;
+    clearAll: string;
+    activeFilters: string;
+    layoutSaveFailed: (params: { message: string }) => string;
+  };
   refresh: {
     failed: (params: { message: string }) => string;
   };
@@ -1033,6 +1053,7 @@ export interface Messages {
     packingListDownload: string;
     packingListDownloading: string;
     packingListLiveOnly: string;
+    packingListFilterHint: string;
     markShipped: string;
     shipCarrier: string;
     shipTracking: string;
@@ -1464,6 +1485,25 @@ export interface Messages {
       'requested' | 'queued' | 'submitting' | 'processing' | 'issued' | 'delivered' | 'failed' | 'conflict',
       string
     >;
+    invoiceStatusHints: Record<
+      'requested' | 'queued' | 'submitting' | 'processing' | 'issued' | 'delivered' | 'failed' | 'conflict',
+      string
+    >;
+    ksefStateHints: Record<
+      'held' | 'queued' | 'session_opened' | 'submitting' | 'processing' | 'awaiting_upo' | 'succeeded' | 'rejected' | 'numbering_conflict',
+      string
+    >;
+    orderCount: (params: { count: number }) => string;
+    invoiceColumn: string;
+    noInvoice: string;
+    noInvoiceHint: string;
+    invoiceAny: string;
+    invoiceWith: string;
+    invoiceWithout: string;
+    invoiceData: string;
+    billings: Record<'company' | 'private' | 'none', string>;
+    billingHints: Record<'company' | 'private' | 'none', string>;
+    withBillingData: string;
   };
   coupons: {
     title: string;

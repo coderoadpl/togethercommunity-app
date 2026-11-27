@@ -1037,12 +1037,12 @@ describe('staff refund history and ship anyway', () => {
     expect(screen.getAllByTestId('sales-staff-refund-chip')).toHaveLength(1);
   });
 
-  it('keeps a long buyer name on one line in the orders table with the name and e-mail in its title', async () => {
+  it('keeps a long buyer name on one line in the orders grid with the name and e-mail in its cell title', async () => {
     const memberName = 'Alexandra Konstantinopolitanczykiewicz-Smith';
     serveOrders([{ ...paidOrder, memberName }]);
     await renderAt('/panel/sales', SalesPanel);
     const member = await screen.findByRole('link', { name: en.sales.openMemberAccount({ member: `${memberName} (buyer@example.org)` }) });
-    expect(member.closest('td')).toHaveAttribute('title', `${memberName}\nbuyer@example.org`);
+    expect(member.closest('[title]')).toHaveAttribute('title', `${memberName}\nbuyer@example.org`);
   });
 
   describe('on a phone', () => {

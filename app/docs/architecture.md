@@ -43,3 +43,11 @@ accessible tree semantics and keyboard navigation. The application retains
 branch expansion, lesson links, access and progress indicators, and theme
 styles. Modules with exactly one chapter show lessons directly beneath the
 module; modules with multiple chapters retain their chapter rows.
+
+## Studio orders grid
+
+The Studio orders table uses the MIT-licensed `@mui/x-data-grid` Community
+edition. The desktop grid and its library load in a separate lazy chunk; the
+phone cards do not load that chunk. Studio implements its own column reordering,
+header filter menus and simultaneous server-side filters over Community's grid,
+without relying on the Pro column-reordering and multi-filter APIs.

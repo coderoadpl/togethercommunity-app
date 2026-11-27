@@ -452,6 +452,16 @@ literal campaign source `none` in lists and exports; without `--source-exact`,
 `source=none&sourceMatch=exact` for the literal value. CSV and JSON exports include seven additional
 fields named after the captured URL parameters, with empty values when absent.
 
+The orders list and its exports also filter by invoice record (`invoice=with|without`)
+and by recorded billing data (`billing=requested|company|private|none`;
+requested means any recorded billing data, company means data with a NIP, and private means
+data without one), and sort by
+`sortBy=createdAt|amountCents` with `sortDirection=asc|desc` (default: newest first).
+The CLI flags are `--invoice`, `--billing`, `--sort-by` and `--sort-direction`. On rollback to a
+server that predates these flags, session-authenticated routes ignore the new parameters.
+Shop-key routes validate the query strictly and reject the unknown parameters; omit
+these flags when using a shop key against the older server.
+
 Click IDs are advertising identifiers stored with the order. Member erasure
 clears attribution from that member's orders and their linked checkout snapshots.
 Creators should disclose campaign

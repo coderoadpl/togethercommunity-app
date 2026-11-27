@@ -461,6 +461,9 @@ describe('Creator panel routing', () => {
     commonHandlers();
     server.use(http.post('*', () => HttpResponse.json({ success: true })));
     window.sessionStorage.setItem('together-login-identifier', 'creator@together.dev');
+    const layoutKeys = ['together-list-layout:orders:t1:u1', 'together-list-layout:orders:t2:staff@example.com'];
+    for (const key of layoutKeys) window.localStorage.setItem(key, '{}');
+    window.localStorage.setItem('together-language', 'en');
 
     await renderPanelAt('/panel/products');
 
@@ -485,6 +488,8 @@ describe('Creator panel routing', () => {
 
     await waitFor(() =>
       expect(window.sessionStorage.getItem('together-login-identifier')).toBeNull());
+    for (const key of layoutKeys) expect(window.localStorage.getItem(key)).toBeNull();
+    expect(window.localStorage.getItem('together-language')).toBe('en');
   });
 
   it('opens the account menu from an avatar and repeats it above the name and e-mail', async () => {

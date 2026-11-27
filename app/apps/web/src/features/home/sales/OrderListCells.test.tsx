@@ -158,8 +158,8 @@ describe('SalesPanel row', () => {
     expect([...dateLink.children].map((child) => child.textContent)).toEqual(['25 Nov 2026', '09:44']);
     expect(within(withCoupon).getByTestId('sales-row-coupon')).toHaveTextContent('AUTUMN20');
     expect(within(withoutCoupon).getByTestId('sales-row-coupon')).toHaveTextContent('—');
-    expect(within(withCoupon).getByTestId('order-member-email').closest('td')).toHaveAttribute('title', 'Ada\nada@example.com');
-    const erasedCell = within(erased).getByTestId('order-member-erased').closest('td');
+    expect(within(withCoupon).getByTestId('order-member-email').closest('[title]')).toHaveAttribute('title', 'Ada\nada@example.com');
+    const erasedCell = within(erased).getByTestId('order-member-erased').closest('[title]');
     expect(erasedCell).toHaveAttribute('title', en.deletedContent.member);
     expect(erased).not.toHaveTextContent(memberTombstone('m3').email);
   });

@@ -69,6 +69,8 @@ import {
   marketingDirectoryContracts,
   marketingSignupContracts,
   surveyContracts,
+  LIST_LAYOUT_EXPECTED_USER_HEADER,
+  listLayoutContracts,
   salesLinkContracts,
   orderVerificationContracts,
   orderFulfilmentContracts,
@@ -763,6 +765,9 @@ export const createApiClient = (options: ApiClientOptions) => ({
   getPublicSurvey: (input: z.input<typeof surveyContracts.getPublicSurvey.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getPublicSurvey.path.replace(':slug', encodeURIComponent(input.slug)), surveyContracts.getPublicSurvey.output, undefined, signal),
   submitSurvey: (input: z.input<typeof surveyContracts.submitSurvey.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.submitSurvey.path.replace(':slug', encodeURIComponent(input.slug)), surveyContracts.submitSurvey.output, input, signal),
   previewSurveyEnding: (input: z.input<typeof surveyContracts.previewSurveyEnding.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.previewSurveyEnding.path, surveyContracts.previewSurveyEnding.output, input, signal),
+  getListLayout: (input: z.input<typeof listLayoutContracts.getListLayout.input>, signal?: AbortSignal) => request(options, API_ROUTES.getListLayout.method, API_ROUTES.getListLayout.path.replace(':listId', encodeURIComponent(input.listId)), listLayoutContracts.getListLayout.output, undefined, signal, { headers: { [LIST_LAYOUT_EXPECTED_USER_HEADER]: input.expectedUserId } }),
+  saveListLayout: (input: z.input<typeof listLayoutContracts.saveListLayout.input>, signal?: AbortSignal) => request(options, API_ROUTES.saveListLayout.method, API_ROUTES.saveListLayout.path.replace(':listId', encodeURIComponent(input.listId)), listLayoutContracts.saveListLayout.output, { layout: input.layout }, signal, { headers: { [LIST_LAYOUT_EXPECTED_USER_HEADER]: input.expectedUserId } }),
+  resetListLayout: (input: z.input<typeof listLayoutContracts.resetListLayout.input>, signal?: AbortSignal) => request(options, API_ROUTES.resetListLayout.method, API_ROUTES.resetListLayout.path.replace(':listId', encodeURIComponent(input.listId)), listLayoutContracts.resetListLayout.output, undefined, signal, { headers: { [LIST_LAYOUT_EXPECTED_USER_HEADER]: input.expectedUserId } }),
   listMarketingSignupForms: (input: z.input<typeof marketingSignupContracts.listMarketingSignupForms.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.listMarketingSignupForms.path, marketingSignupContracts.listMarketingSignupForms.output, undefined, signal),
   getMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.getMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'GET', API_ROUTES.getMarketingSignupForm.path.replace(':slug', encodeURIComponent(input.slug)), marketingSignupContracts.getMarketingSignupForm.output, undefined, signal),
   createMarketingSignupForm: (input: z.input<typeof marketingSignupContracts.createMarketingSignupForm.input>, signal?: AbortSignal) => request(options, 'POST', API_ROUTES.createMarketingSignupForm.path, marketingSignupContracts.createMarketingSignupForm.output, input, signal),
@@ -1453,6 +1458,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
+    if (input.invoice !== undefined) params.set('invoice', input.invoice);
+    if (input.billing !== undefined) params.set('billing', input.billing);
+    if (input.sortBy !== undefined) params.set('sortBy', input.sortBy);
+    if (input.sortDirection !== undefined) params.set('sortDirection', input.sortDirection);
     if (input.page !== undefined) params.set('page', String(input.page));
     if (input.pageSize !== undefined) params.set('pageSize', String(input.pageSize));
     const suffix = params.toString();
@@ -1556,6 +1565,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     if (input.search !== undefined) params.set('search', input.search);
     if (input.source !== undefined) params.set('source', input.source);
     if (input.sourceMatch !== undefined) params.set('sourceMatch', input.sourceMatch);
+    if (input.invoice !== undefined) params.set('invoice', input.invoice);
+    if (input.billing !== undefined) params.set('billing', input.billing);
+    if (input.sortBy !== undefined) params.set('sortBy', input.sortBy);
+    if (input.sortDirection !== undefined) params.set('sortDirection', input.sortDirection);
     return request(
       options,
       API_ROUTES.ordersExport.method,

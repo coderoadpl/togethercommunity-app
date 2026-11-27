@@ -4,6 +4,9 @@ import { setupServer } from 'msw/node';
 import pkg from '../../../../package.json' with { type: 'json' };
 
 export const server = setupServer(
+  http.get('*/api/panel/list-layouts/:listId', () => HttpResponse.json({ ok: true, data: { layout: null } })),
+  http.put('*/api/panel/list-layouts/:listId', async ({ request }) => HttpResponse.json({ ok: true, data: await request.json() })),
+  http.delete('*/api/panel/list-layouts/:listId', () => HttpResponse.json({ ok: true, data: { reset: true } })),
   http.get('*/api/me/meta-capi/consents', () => HttpResponse.json({ ok: true, data: { consents: [] } })),
   http.get('*/api/tenant-secrets', () => HttpResponse.json({ ok: true, data: { secrets: [], stripeMode: null, stripeWebhookUrl: 'https://example.org/api/webhooks/stripe' } })),
   http.get('*/api/my/products', () =>

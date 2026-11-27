@@ -57,6 +57,8 @@ const REQUEST_ORIGIN_ROUTES: readonly Entry[] = [
     API_ROUTES.createSurvey,
     API_ROUTES.updateSurvey,
     API_ROUTES.deleteSurvey,
+    API_ROUTES.saveListLayout,
+    API_ROUTES.resetListLayout,
     API_ROUTES.createSalesLink,
     API_ROUTES.updateSalesLink,
     API_ROUTES.deleteSalesLink,

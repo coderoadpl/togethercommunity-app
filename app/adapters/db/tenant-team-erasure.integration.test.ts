@@ -1,11 +1,12 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { DELETED_MEMBER_DISPLAY, memberTombstone } from '#core/domain/index.js';
+import { DELETED_MEMBER_DISPLAY, memberTombstone, type ListLayout } from '#core/domain/index.js';
 
 import { createOrganizationMemberRepository } from './organizations.js';
 import { createMemberErasureRepository, createTenantAccessReader } from './repositories.js';
 import { members, organizationMembers, organizations, tenantAdminInvitations, tenants, user } from './schema.js';
+import { createStaffListLayoutRepository } from './staff-list-layouts.js';
 import { createTestDatabase } from './test-database-name.js';
 
 let database: Awaited<ReturnType<typeof createTestDatabase>>;
@@ -111,6 +112,28 @@ describe('pending team invitation erasure', () => {
 });
 
 describe('auth user retention', () => {
+  it('erases the layout in the affected workspace, then removes the remaining layouts on final erasure', async () => {
+    const userId = 'former-staff';
+    const email = `${userId}@example.test`;
+    await database.db.insert(user).values({ id: userId, email, name: 'Former staff' });
+    await database.db.insert(members).values(['acme', 'studio'].map((tenantId) => ({
+      id: `${userId}-${tenantId}`, tenantId, userId, email, createdAt: now,
+    })));
+    const layouts = createStaffListLayoutRepository(database.db);
+    const layout: ListLayout = { version: 1, columns: [], sort: null, filters: { billing: 'requested' } };
+    for (const tenantId of ['acme', 'studio', 'org-workspace']) await layouts.put(tenantId, userId, 'orders', layout);
+    const repository = createMemberErasureRepository(database.db, { compute: (_, value) => value });
+
+    expect(await repository.pseudonymize('acme', erasureInput(`${userId}-acme`))).toMatchObject({ authUserErased: false });
+    expect(await layouts.get('acme', userId, 'orders')).toBeNull();
+    expect(await layouts.get('studio', userId, 'orders')).toEqual(layout);
+    expect(await layouts.get('org-workspace', userId, 'orders')).toEqual(layout);
+
+    expect(await repository.pseudonymize('studio', erasureInput(`${userId}-studio`))).toMatchObject({ authUserErased: true });
+    expect(await layouts.get('studio', userId, 'orders')).toBeNull();
+    expect(await layouts.get('org-workspace', userId, 'orders')).toBeNull();
+  });
+
   it('retains the auth user of an organization owner whose only workspace membership is erased', async () => {
     const repository = createMemberErasureRepository(database.db, { compute: (_, value) => value });
     expect(await repository.pseudonymize('buyer-workspace', erasureInput('org-owner-buyer'))).toMatchObject({

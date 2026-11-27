@@ -1616,12 +1616,12 @@ describe('host-scoped credentials', () => {
     });
 
     it('keeps exact workspace origins isolated when two passkey requests overlap', async () => {
-      const bothEntered = Promise.withResolvers<void>();
+      const bothEntered = Promise.withResolvers<undefined>();
       let pending = 0;
       const { auth } = buildCeremonyAuth({
         trustedOrigins: async (request) => {
           if (request && new URL(request.url).pathname.endsWith('/passkey/verify-authentication')) {
-            if (++pending === 2) bothEntered.resolve();
+            if (++pending === 2) bothEntered.resolve(undefined);
             await bothEntered.promise;
           }
           return origins;

@@ -1616,13 +1616,14 @@ describe('host-scoped credentials', () => {
     });
 
     it('keeps exact workspace origins isolated when two passkey requests overlap', async () => {
-      const bothEntered = Promise.withResolvers<undefined>();
+      let releaseRequests: () => void = () => undefined;
+      const bothEntered = new Promise<void>((resolve) => { releaseRequests = resolve; });
       let pending = 0;
       const { auth } = buildCeremonyAuth({
         trustedOrigins: async (request) => {
           if (request && new URL(request.url).pathname.endsWith('/passkey/verify-authentication')) {
-            if (++pending === 2) bothEntered.resolve(undefined);
-            await bothEntered.promise;
+            if (++pending === 2) releaseRequests();
+            await bothEntered;
           }
           return origins;
         },
@@ -1999,9 +2000,8 @@ describe('legacy email verification links', () => {
     const { auth, authPort, emailOutbox, emails, flushEmails } = buildAuth();
     const email = `legacy-verification-${crypto.randomUUID()}@example.test`;
     expect((await authPort.ensureUser(email)).created).toBe(true);
-    const { secret, options, internalAdapter } = await auth.$context;
-    const token = await signJWT({ email: email.toLowerCase(), updateTo: undefined },
-      secret, options.emailVerification?.expiresIn ?? 3600);
+    const { secret, internalAdapter } = await auth.$context;
+    const token = await signJWT({ email: email.toLowerCase(), updateTo: undefined }, secret, 3600);
     const link = new URL('/api/auth/verify-email', authBaseUrl);
     link.searchParams.set('token', token);
     const callback = `${authBaseUrl}/my`;

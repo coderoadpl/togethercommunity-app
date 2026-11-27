@@ -116,6 +116,7 @@ export const NON_DATA_PORTS: Readonly<Record<string, string>> = {
   ApiClientOptions: 'HTTP client callback configuration with no persistence access.',
   ShopManagementClientOptions: 'Shop management HTTP client configuration with no persistence access.',
   ApiKeyCrypto: 'Cryptographic primitive with no persistence access.',
+  SignInClientCrypto: 'Random identifier, secret and hash primitives with no persistence access.',
   AppDeps: 'Server composition callbacks with no direct persistence access.',
   AppErrorTelemetry: 'Request telemetry boundary with no persistence access.',
   AvatarImageProcessor: 'Image transform boundary operating on an already tenant-scoped storage configuration.',

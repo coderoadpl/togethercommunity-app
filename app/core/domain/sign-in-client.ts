@@ -6,6 +6,7 @@ const localSuffixes = ['localhost', 'local', 'internal', 'home.arpa'];
 export const signInClientHostSchema = z.string().max(253).refine((host) => {
   const labels = host.split('.');
   return labels.length >= 2
+    && !/\.[0-9]+$/u.test(host)
     && labels.every((label) => dnsLabel.test(label) && !label.startsWith('xn--'))
     && !localSuffixes.some((suffix) => host === suffix || host.endsWith(`.${suffix}`))
     && URL.parse(`https://${host}/`)?.hostname === host;

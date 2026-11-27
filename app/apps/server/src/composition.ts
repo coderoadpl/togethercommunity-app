@@ -1711,7 +1711,9 @@ export const createDeps = (
     importAuditEvents: createImportAuditEventRepository(db),
     shopManagementKeyEvents: createShopManagementKeyEventRepository(db),
     shopManagementKeys: createShopManagementKeyRepository(db),
-    signInClients: createSignInClientRepository(db, baseDomain),
+    signInClients: createSignInClientRepository(db, baseDomain, [
+      new URL(env.APP_BASE_URL).hostname, env.APP_CUSTOM_DOMAIN_TARGET,
+    ]),
     signInClientHosts: env.SIGN_IN_CLIENT_HOSTS,
     signInClientCrypto: createSignInClientCrypto(),
     shopManagementKeyRateLimits: createShopManagementKeyRateLimitRepository(db),

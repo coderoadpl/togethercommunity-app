@@ -43,10 +43,12 @@ beforeAll(async () => {
   await database.db.insert(tenants).values([workspaceA, workspaceB, listWorkspace, suspendedWorkspace].map<typeof tenants.$inferInsert>((id) => ({
     id, slug: id, name: id, createdAt: now, status: id === suspendedWorkspace ? 'suspended' : 'active',
   })));
-  left = createDb('node-postgres', database.url, { max: 1 });
-  right = createDb('node-postgres', database.url, { max: 1 });
   observer = new pg.Client({ connectionString: database.url });
   await observer.connect();
+  const databaseName = pg.escapeIdentifier(new URL(database.url).pathname.slice(1));
+  await observer.query(`ALTER DATABASE ${databaseName} SET default_transaction_isolation = 'repeatable read'`);
+  left = createDb('node-postgres', database.url, { max: 1 });
+  right = createDb('node-postgres', database.url, { max: 1 });
 });
 
 afterAll(async () => {
@@ -74,29 +76,38 @@ const eventsOf = (id: string) => database.db.query.signInClientEvents.findMany({
 });
 const reservationsFor = (host: string) => database.db.query.signInClientHostReservations.findMany({ where: (t, { eq }) => eq(t.hostname, host) });
 
-const contendAfterWrite = async <T>(
-  hold: (connection: Db) => Promise<void>,
-  contend: () => Promise<T>,
-  waitingQuery: string,
-): Promise<T> => {
-  let second: Promise<T> | undefined;
+const waitForLock = (queryFragment: string) => vi.waitFor(async () => {
+  await observer.query('SELECT pg_stat_clear_snapshot()');
+  const waiting = await observer.query(
+    "SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE $1",
+    [`%${queryFragment}%`],
+  );
+  expect(waiting.rowCount).toBe(1);
+});
+
+const contendAfterProjectionWrite = async <First, Second>(
+  startFirst: () => Promise<First>,
+  startSecond: () => Promise<Second>,
+  secondQueryFragment: string,
+) => {
+  let first: Promise<First> | undefined;
+  let second: Promise<Second> | undefined;
+  await observer.query('BEGIN');
   try {
-    await left.transaction(async (tx) => {
-      await hold(tx);
-      second = contend();
+    try {
+      await observer.query('LOCK TABLE sign_in_client_events IN SHARE MODE');
+      first = startFirst();
+      void first.catch(() => undefined);
+      await waitForLock('insert into "sign_in_client_events"');
+      second = startSecond();
       void second.catch(() => undefined);
-      await vi.waitFor(async () => {
-        const waiting = await observer.query(
-          "SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE $1",
-          [`%${waitingQuery}%`],
-        );
-        expect(waiting.rowCount).toBe(1);
-      });
-    });
-    if (second === undefined) throw new Error('The second transaction did not start');
-    return await second;
+      await waitForLock(secondQueryFragment);
+    } finally {
+      await observer.query('ROLLBACK');
+    }
+    return await Promise.all([first, second]);
   } finally {
-    await second?.catch(() => undefined);
+    await Promise.allSettled([first, second]);
   }
 };
 
@@ -126,9 +137,12 @@ it('chooses one owner of a contended host and stores no record or event for the 
   const host = 'contended.example.org';
   const first = draft(host);
   const second = draft(host);
-  const loser = await contendAfterWrite(async (tx) => {
-    expect(await repository(tx).create(workspaceA, first)).toMatchObject({ ok: true, value: { id: first.id } });
-  }, () => repository(right).create(workspaceB, second), '"sign_in_client_host_reservations"');
+  const [winner, loser] = await contendAfterProjectionWrite(
+    () => repository(left).create(workspaceA, first),
+    () => repository(right).create(workspaceB, second),
+    'insert into "sign_in_client_host_reservations"',
+  );
+  expect(winner).toMatchObject({ ok: true, value: { id: first.id } });
   expect(loser).toEqual(refused('host_unavailable'));
   expect(await reservationsFor(host)).toMatchObject([{ hostname: host, clientId: first.id }]);
   expect(await rowsOf(first.id)).toMatchObject([{ tenantId: workspaceA, redirectUris: first.redirectUris }]);
@@ -165,11 +179,14 @@ it('stores one concurrent rotation and its event, and does not overlap old and n
   const first = rotation();
   const second = rotation();
   expect(await repository(left).create(workspaceA, created)).toMatchObject({ ok: true });
-  const stale = await contendAfterWrite(async (tx) => {
-    expect(await repository(tx).rotate(workspaceA, created.id, first)).toMatchObject({ ok: true, value: {
-      credentialVersion: 2, secretExpiresAt: nextExpiry, secretRotatedAt: tomorrow,
-    } });
-  }, () => repository(right).rotate(workspaceA, created.id, second), 'for update');
+  const [rotated, stale] = await contendAfterProjectionWrite(
+    () => repository(left).rotate(workspaceA, created.id, first),
+    () => repository(right).rotate(workspaceA, created.id, second),
+    'for update',
+  );
+  expect(rotated).toMatchObject({ ok: true, value: {
+    credentialVersion: 2, secretExpiresAt: nextExpiry, secretRotatedAt: tomorrow,
+  } });
   expect(stale).toEqual(refused('credential_version_changed'));
   expect(await rowsOf(created.id)).toMatchObject([{ credentialVersion: 2, secretHash: first.secretHash, state: 'pending_activation' }]);
   expect(await eventsOf(created.id)).toMatchObject([
@@ -196,9 +213,12 @@ it('retirement wins over a waiting rotation, scrubs the projection, and cannot r
   const input = draft('retirement.example.org');
   const retiredAt = { at: tomorrow, eventId: 'retire-event' };
   expect(await repository(left).create(workspaceA, input)).toMatchObject({ ok: true });
-  const rotateOutcome = await contendAfterWrite(async (tx) => {
-    expect(await repository(tx).disable(workspaceA, input.id, retiredAt)).toMatchObject({ ok: true, value: { state: 'retired' } });
-  }, () => repository(right).rotate(workspaceA, input.id, rotation(2)), 'for update');
+  const [disableOutcome, rotateOutcome] = await contendAfterProjectionWrite(
+    () => repository(left).disable(workspaceA, input.id, retiredAt),
+    () => repository(right).rotate(workspaceA, input.id, rotation(2)),
+    'for update',
+  );
+  expect(disableOutcome).toMatchObject({ ok: true, value: { state: 'retired' } });
   expect(rotateOutcome).toEqual(refused('client_retired'));
   const retired = await repository(left).findById(workspaceA, input.id);
   expect(retired).toMatchObject({ state: 'retired', name: null, redirectUris: [], secretExpiresAt: null, retiredAt: tomorrow, credentialVersion: 2 });
@@ -209,6 +229,43 @@ it('retirement wins over a waiting rotation, scrubs the projection, and cannot r
   ]);
   expect(await reservationsFor(input.redirectHost)).toMatchObject([{ clientId: input.id }]);
   expect(await repository(right).create(workspaceB, draft(input.redirectHost))).toEqual(refused('host_unavailable'));
+});
+
+it('returns the same retired client from both concurrent disables and stores one retirement event', async () => {
+  const input = draft('repeated-disable.example.org');
+  const first = { at: tomorrow, eventId: 'first-concurrent-disable' };
+  const second = { at: nextExpiry, eventId: 'second-concurrent-disable' };
+  expect(await repository(left).create(workspaceA, input)).toMatchObject({ ok: true });
+  const [retired, repeated] = await contendAfterProjectionWrite(
+    () => repository(left).disable(workspaceA, input.id, first),
+    () => repository(right).disable(workspaceA, input.id, second),
+    'for update',
+  );
+  expect(retired).toMatchObject({ ok: true, value: { state: 'retired', retiredAt: tomorrow, credentialVersion: 2 } });
+  expect(repeated).toEqual(retired);
+  expect(await eventsOf(input.id)).toMatchObject([
+    { kind: 'created', credentialVersion: 1 }, { id: first.eventId, kind: 'retired', credentialVersion: 2 },
+  ]);
+});
+
+it('retires at the next version when a rotation commits first', async () => {
+  const input = draft('rotation-before-disable.example.org');
+  const first = rotation();
+  const second = { at: nextExpiry, eventId: 'disable-after-rotation' };
+  expect(await repository(left).create(workspaceA, input)).toMatchObject({ ok: true });
+  const [rotated, retired] = await contendAfterProjectionWrite(
+    () => repository(left).rotate(workspaceA, input.id, first),
+    () => repository(right).disable(workspaceA, input.id, second),
+    'for update',
+  );
+  expect(rotated).toMatchObject({ ok: true, value: { state: 'pending_activation', credentialVersion: 2 } });
+  expect(retired).toMatchObject({ ok: true, value: { state: 'retired', retiredAt: nextExpiry, credentialVersion: 3 } });
+  expect(await rowsOf(input.id)).toMatchObject([{ state: 'retired', credentialVersion: 3, secretHash: null }]);
+  expect(await eventsOf(input.id)).toMatchObject([
+    { kind: 'created', credentialVersion: 1 },
+    { id: first.eventId, kind: 'secret_rotated', credentialVersion: 2 },
+    { id: second.eventId, kind: 'retired', credentialVersion: 3 },
+  ]);
 });
 
 it('cascades workspace deletion to the client and its events but retains the hostname', async () => {

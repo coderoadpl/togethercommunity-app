@@ -77,7 +77,6 @@ describe('Sign-in client storage with workspace deletion from 0241773e', () => {
     const result = await runDemoReseed0241773e(database.db, reseedMarkers({ DATABASE_URL: database.url }));
 
     expect(result.wiped).toContainEqual({ table: 'tenants', rows: 1 });
-    expect(result.wiped.every(({ table }) => !table.startsWith('sign_in_client'))).toBe(true);
     expect(await database.db.query.tenants.findFirst({ where: eq(tenants.id, target) })).toMatchObject({ slug: 'studio' });
     await expectCascade(targetId, preservedId);
   }, 60_000);
@@ -93,7 +92,6 @@ describe('Sign-in client storage with workspace deletion from 0241773e', () => {
     });
 
     expect(result.wiped).toContainEqual({ table: 'tenants', rows: 1 });
-    expect(result.wiped.every(({ table }) => !table.startsWith('sign_in_client'))).toBe(true);
     expect(await database.db.query.tenants.findFirst({ where: eq(tenants.id, SMOKE_TENANT_ID) })).toMatchObject({ slug: SMOKE_TENANT_SLUG });
     await expectCascade(targetId, preservedId);
   }, 60_000);

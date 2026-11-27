@@ -68,9 +68,16 @@ const withoutBoundValues = async <T>(query: () => Promise<T>): Promise<T> => {
   }
 };
 
-export const createSignInClientRepository = (db: Db, baseDomain: string): SignInClientRepository => ({
+export const createSignInClientRepository = (
+  db: Db,
+  baseDomain: string,
+  additionalPlatformHosts: readonly (string | undefined)[] = [],
+): SignInClientRepository => ({
   create: async (tenantId, input) => {
-    if (isSignInClientPlatformHost(input.redirectHost, baseDomain)) return err('host_unavailable');
+    if (isSignInClientPlatformHost(input.redirectHost, baseDomain)
+      || additionalPlatformHosts.some((host) => host?.toLowerCase().replace(/\.$/u, '') === input.redirectHost)) {
+      return err('host_unavailable');
+    }
     return withoutBoundValues(() => db.transaction(async (tx) => {
       const [workspace] = await tx.select({ id: tenants.id, status: tenants.status })
         .from(tenants).where(eq(tenants.id, tenantId)).for('share');
@@ -97,7 +104,7 @@ export const createSignInClientRepository = (db: Db, baseDomain: string): SignIn
       if (row === undefined) throw new Error('Sign-in client insert returned no row');
       await appendEvent(tx, tenantId, row.id, 'created', row.credentialVersion, input);
       return ok(parsePublic(row));
-    }));
+    }, { isolationLevel: 'read committed' }));
   },
   findById: async (tenantId, id) => withoutBoundValues(async () => {
     const [row] = await db.select(publicColumns).from(signInClients).where(scopedClient(tenantId, id));
@@ -132,7 +139,7 @@ export const createSignInClientRepository = (db: Db, baseDomain: string): SignIn
     if (row === undefined) throw new Error('Locked sign-in client could not be rotated');
     await appendEvent(tx, tenantId, id, 'secret_rotated', row.credentialVersion, input);
     return ok(parsePublic(row));
-  })),
+  }, { isolationLevel: 'read committed' })),
   disable: async (tenantId, id, input) => withoutBoundValues(() => db.transaction(async (tx) => {
     const scope = scopedClient(tenantId, id);
     const [locked] = await tx.select(publicColumns).from(signInClients).where(scope).for('update');
@@ -146,5 +153,5 @@ export const createSignInClientRepository = (db: Db, baseDomain: string): SignIn
     if (row === undefined) throw new Error('Locked sign-in client could not be retired');
     await appendEvent(tx, tenantId, id, 'retired', row.credentialVersion, input);
     return ok(parsePublic(row));
-  })),
+  }, { isolationLevel: 'read committed' })),
 });

@@ -21,7 +21,7 @@ import type { SignInClientCredential, TenantApiKeyScope } from '#core/domain/ind
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
-import { envSchema } from './env.js';
+import { envSchema, type Env } from './env.js';
 import { publicRouteManifestEntry } from './public-route-manifest.js';
 import { requestOriginPolicy } from './request-origin-policy.js';
 
@@ -47,12 +47,14 @@ const machineCredentials = new Map<string, Record<string, string>>();
 const spanExporter = new InMemorySpanExporter();
 const tracerProvider = new NodeTracerProvider({ spanProcessors: [new SimpleSpanProcessor(spanExporter)] });
 
-const setup = (hosts = '') => createDeps(envSchema.parse({
-  NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
-  APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost', OPERATOR_SECRET: operatorSecret,
-  AUTH_TRUSTED_PROXY_HEADER: 'x-test-client-ip',
-  BETTER_AUTH_SECRET: 'registry-test-signing-secret-at-least-32-characters', SIGN_IN_CLIENT_HOSTS: hosts,
-}), { db: database.db, clock: { nowIso: () => now } });
+const setup = (hosts = '', deploymentHosts: Partial<Pick<Env, 'APP_BASE_URL' | 'APP_CUSTOM_DOMAIN_TARGET'>> = {}) =>
+  createDeps(envSchema.parse({
+    NODE_ENV: 'test', DATABASE_URL: database.url, REALTIME_TRANSPORT: 'in-process',
+    APP_BASE_URL: baseUrl, APP_BASE_DOMAIN: 'localhost', OPERATOR_SECRET: operatorSecret,
+    AUTH_TRUSTED_PROXY_HEADER: 'x-test-client-ip',
+    BETTER_AUTH_SECRET: 'registry-test-signing-secret-at-least-32-characters', SIGN_IN_CLIENT_HOSTS: hosts,
+    ...deploymentHosts,
+  }), { db: database.db, clock: { nowIso: () => now } });
 
 const session = (kind: AccountKind): Session => {
   const found = sessions.get(kind);
@@ -195,7 +197,7 @@ describe('Dormant sign-in client HTTP management', () => {
     expect(await readRegistry()).toEqual(before);
   });
 
-  it('refuses every machine credential on all four operations, including as a bearer', async () => {
+  it('requires a session on all four routes even when a machine credential is sent, including as a bearer', async () => {
     const before = await readRegistry();
     for (const [kind, headers] of machineCredentials) {
       const secret = z.string().parse(Object.values(headers)[0]);
@@ -264,6 +266,22 @@ describe('Dormant sign-in client HTTP management', () => {
     expect(await readRegistry()).toEqual(before);
   });
 
+  it.each(['application.example.test', 'custom-target.example.test'])(
+    'refuses the configured platform host %s even if its pair is approved', async (host) => {
+      const configured = buildApp(setup(`acme=${host}`, {
+        APP_BASE_URL: 'https://application.example.test:9443',
+        APP_CUSTOM_DOMAIN_TARGET: 'CUSTOM-TARGET.EXAMPLE.TEST.',
+      }));
+      const before = await readRegistry();
+      const response = await request(configured, 'POST', listPath, owner(), {
+        name: 'Deployment hostname fixture', redirectUris: [`https://${host}/return`],
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { code: 'conflict', details: { reason: 'host_unavailable' } } });
+      expect(await readRegistry()).toEqual(before);
+    },
+  );
+
   it('allows a same-origin browser to issue and rotate once, keeping raw secrets out of reads and refusals', async () => {
     spanExporter.reset();
     const spies = (['log', 'info', 'warn', 'error'] as const).map((level) =>
@@ -289,16 +307,23 @@ describe('Dormant sign-in client HTTP management', () => {
       const page = z.object({ data: signInClientPageSchema }).parse(JSON.parse(raw)).data;
       expect(page.clients).toHaveLength(1);
       expect(page.nextCursor).toBe(page.clients[0]?.id);
+      expect([pending.client.id, client.id]).toContain(page.nextCursor);
+      const secondClient = page.nextCursor === client.id ? pending.client : replacement.client;
       const next = await request(app, 'GET', `${listPath}?limit=1&cursor=${page.nextCursor ?? ''}`, owner());
-      expect((await data(next, signInClientPageSchema)).clients[0]?.id).not.toBe(page.nextCursor);
+      expect(await data(next, signInClientPageSchema)).toEqual({ clients: [secondClient], nextCursor: null });
       await tracerProvider.forceFlush();
       const spans = spanExporter.getFinishedSpans();
       expect(spans.some((span) => span.attributes['http.route'] === listPath)).toBe(true);
-      const observed = JSON.stringify({ logs: spies.flatMap((spy) => spy.mock.calls), spans: spans.map(({ attributes, events }) => ({ attributes, events })) });
+      const observed = JSON.stringify({
+        logs: spies.flatMap((spy) => spy.mock.calls),
+        spans: spans.map(({ attributes, events, name, status }) => ({ attributes, events, name, status })),
+      });
       for (const plaintext of [secret, replacement.secret]) {
+        const digest = deps.signInClientCrypto.hash(plaintext);
         expect(observed.includes(plaintext)).toBe(false);
-        expect(observed.includes(deps.signInClientCrypto.hash(plaintext))).toBe(false);
+        expect(observed.includes(digest)).toBe(false);
         expect(errorText).not.toContain(plaintext);
+        expect(errorText).not.toContain(digest);
         expect(raw).not.toContain(plaintext);
         expect(JSON.stringify(await readRegistry())).not.toContain(plaintext);
       }
@@ -323,7 +348,7 @@ describe('Dormant sign-in client HTTP management', () => {
     expect((await data(disabled, signInClientDisableOutputSchema)).client).toMatchObject({ id, state: 'retired' });
   });
 
-  it('refuses the issued credential on the registry, existing key routes, and auth alias', async () => {
+  it('refuses the issued credential on the registry and existing key routes', async () => {
     const headers = { [API_KEY_HEADER]: pending.secret };
     const routes = [
       ['GET', listPath, undefined],
@@ -339,8 +364,11 @@ describe('Dormant sign-in client HTTP management', () => {
     expect((await request(app, 'GET', SHOP_CATALOG_ROUTES.listProducts.path, shop)).status).toBe(200);
     const legacy = machineCredentials.get('legacy key') ?? {};
     expect((await request(app, 'POST', API_ROUTES.m2mEnroll.path, legacy, {})).status).toBe(400);
-    const alias = await request(app, 'GET', `${BETTER_AUTH_API_PATH_PATTERN.slice(0, -1)}sign-in-clients`, owner());
-    expect(alias.status).toBe(404);
+  });
+
+  it('registers no sign-in client route under the authentication prefix', () => {
+    const authPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
+    expect(app.routes.filter(({ path }) => path.startsWith(authPrefix) && path.split('/').includes('sign-in-clients'))).toEqual([]);
   });
 
   it('still permits terminal disable while empty and returns the same scrubbed record on repeat', async () => {

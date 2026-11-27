@@ -211,6 +211,25 @@ pnpm --silent run cli --tenant acme order refund order-id --amount 12.50 --remai
 pnpm --silent run cli --tenant acme --json order refund order-id --remainder 40.99 --request-key refund-2026-11-23-1 --yes
 ```
 
+## Sign-in clients
+
+Select the workspace and sign in as a verified direct owner. The deployment
+must allow that workspace and return host before creation or rotation.
+
+```bash
+pnpm --silent run cli --tenant acme sign-in-clients create 'External application' --redirect-uri https://callback.example.test/return --redirect-uri https://callback.example.test/alternate
+pnpm --silent run cli --tenant acme sign-in-clients list --limit 20
+pnpm --silent run cli --tenant acme sign-in-clients rotate-secret <id> --if-version <number>
+pnpm --silent run cli --tenant acme sign-in-clients disable <id>
+```
+
+Create and rotate print the new secret once. With `--json` it is in `data.secret`
+in the single output envelope. Keep that output out of logs and shell recordings.
+List includes the current version and prints a cursor when there is another page;
+pass it back with `list --cursor <id>`. Disable cannot be undone and the host
+cannot be registered again. The [registry](sign-in-clients.md) is dormant:
+none of these commands enables external sign-in.
+
 ## CLI parity inventory
 
 Run `pnpm run cli-parity` to list every method in the `core/client` API client

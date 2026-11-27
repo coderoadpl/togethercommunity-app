@@ -1137,6 +1137,30 @@ with `shop:integrations:write`, its payment configuration, until the key
 expires or is revoked; the owner accepted this risk. See
 [Shop management keys](shop-management-keys.md) for the procedure.
 
+## Sign-in client secrets
+
+A sign-in client secret (`tc_sc_…`) belongs to one external application and
+one workspace. This registry does not accept it as a credential. A future
+issuer would use it to authenticate the registered application only; it would
+not grant a user session, workspace management, platform or operator access,
+or any shop, billing, or entitlement permission. The registry does not add
+a scope to any existing key or grant.
+
+Creation, listing, rotation, and terminal disable require a verified owner
+in their own session with a direct workspace grant. The exact deployment
+allow-list `SIGN_IN_CLIENT_HOSTS` governs creation and rotation only; it does
+not prove host control or activate a client. A return host stays reserved
+for the life of the deployment, including after disable and workspace deletion.
+
+The server generates 32 random bytes for each secret and stores only a
+versioned, domain-separated SHA-256 digest. Only the successful create and
+rotate responses contain the fresh value, with `Cache-Control: no-store`.
+A lost value is replaced by rotating, not recovered. The record stores a
+90-day expiry; rotation replaces the previous digest without overlap. Events
+hold no secret, digest, name, return address, or person identifier.
+
+See [sign-in clients](sign-in-clients.md) for the lifecycle and limits.
+
 ## Public newsletter signup
 
 `POST /api/public/marketing/forms/:slug/submit` resolves the tenant from the

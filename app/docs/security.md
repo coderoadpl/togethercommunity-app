@@ -21,19 +21,29 @@ Passkey registration and sign-in accept the configured platform origin and
 origins trusted explicitly for the request. On a host one label under the base
 domain, they also accept that host's own origin at the configured scheme and
 port when an existing workspace wildcard already covers it. A wildcard does
-not make other workspace origins eligible for that ceremony. A verified custom
-domain's own origin is trusted explicitly; it does not receive a workspace
-origin. WebAuthn verifies the relying-party ID as well as the origin, so a
-credential for the shared base-domain relying party cannot be used for a custom
-domain's relying party, or the other way around.
+not make other workspace origins eligible for that ceremony. The added entry
+comes from the host of the request being served, not the `Origin` header or the
+origin the credential reports. A verified custom domain's own origin is trusted
+explicitly; no workspace origin is synthesized for that request. WebAuthn
+verifies the relying-party ID as well as the origin, so a credential for the
+shared base-domain relying party cannot be used for a custom domain's relying
+party, or the other way around.
 
-Verification links for ordinary sign-up and resend confirm the account they
-were issued for. Links already issued without an account ID remain usable until
-they expire. The library's change-of-address flow is disabled.
+An ordinary sign-up or resend verification link carrying an account ID is
+refused if that ID does not match the account holding the address when the link
+is opened. Links already issued without an account ID remain usable until they
+expire. On a rollback to Better Auth 1.7.15, the account-ID check is not applied
+to outstanding links. They retain their original expiry: one hour from issue,
+the [library default](https://github.com/better-auth/better-auth/blob/v1.7.28/packages/better-auth/src/api/routes/email-verification.ts#L17-L27),
+which this app does not override. The library's change-of-address flow is disabled.
 
-A remembered sign-in clears any stale session-only marker. Revoking the current
-session or all sessions clears the browser's session cookie using the same
-scope and security attributes as when it was issued.
+A remembered sign-in clears any stale session-only marker. The authentication
+library's revocation routes expire the browser's session cookie when revoking
+the current session or all sessions, using the same scope and security attributes
+as when it was issued. The web account pages use the application's own
+session-management routes (`apps/server/src/internal-app.ts:1987-2004`). Those
+routes revoke the stored sessions through `adapters/auth/create-auth.ts:1103-1110`
+and do not send an expiry cookie; that behaviour is unchanged.
 
 ## Session tokens and browsers
 

@@ -15,7 +15,7 @@ import {
   BETTER_AUTH_SIGN_OUT_PATH,
   BETTER_AUTH_TWO_FACTOR_TOTP_PATH,
 } from '#adapters/auth/create-auth.js';
-import { AUTH_EMAIL_VERIFICATION_PATH } from '#adapters/auth/e2e-http.js';
+import { AUTH_EMAIL_VERIFICATION_PATH, AUTH_GOOGLE_CALLBACK_PATH } from '#adapters/auth/e2e-http.js';
 import { uniqueTestDatabaseName } from '#adapters/db/test-database-name.js';
 import { API_PATHS } from '#core/contract/index.js';
 import { SMOKE_TENANT_CREATOR_EMAIL, SMOKE_TENANT_MEMBER_EMAIL } from '#core/domain/index.js';
@@ -30,6 +30,7 @@ import {
   tsxBin,
 } from './server-harness.js';
 import { assertSafeE2eDatabaseReset, resolveE2eDatabaseUrl } from './e2e-config.js';
+import { GOOGLE_FAKE_SERVER_ENTRY, createGoogleSigner, googleFakeEnv } from './google-fake.js';
 import { requestMagicLink, signInWithPassword } from './login-flow.js';
 import { prepareWelcomePurchases, restrictBrowserToLocalRequests, runWelcomePurchases } from './purchase-welcome-e2e.js';
 
@@ -945,6 +946,105 @@ const runStudioDomainStatus = async (tenantBaseUrl: string): Promise<void> => {
   }
 };
 
+const runGoogleAccountLinking = async (databaseUrl: string): Promise<void> => {
+  const port = await ephemeralPort();
+  const connectUrl = `http://127.0.0.1:${port}`;
+  const host = `${TENANT_HOST}:${port}`;
+  const origin = `http://${host}`;
+  const callbackURL = `${origin}/login`;
+  const redirectUri = `${origin}${AUTH_GOOGLE_CALLBACK_PATH}`;
+  const clientId = 'account-link-e2e.apps.googleusercontent.com';
+  const clientSecret = 'account-link-e2e-fake-secret';
+  const code = 'account-link-e2e-code';
+  const identity = { subject: 'account-link-e2e-user', email: SMOKE_TENANT_CREATOR_EMAIL, name: 'Account Linking Fixture' };
+  const signer = createGoogleSigner(clientId);
+  const server = await bootServer({
+    port,
+    healthUrl: `${connectUrl}/api/health`,
+    entry: GOOGLE_FAKE_SERVER_ENTRY,
+    env: {
+      DATABASE_URL: databaseUrl,
+      APP_BASE_URL: origin,
+      APP_BASE_DOMAIN: PLATFORM_BASE_DOMAIN,
+      EMAIL_PROVIDER: 'dev',
+      SIMULATED_PAYMENTS: 'true',
+      GOOGLE_CLIENT_ID: clientId,
+      GOOGLE_CLIENT_SECRET: clientSecret,
+      ...googleFakeEnv({ clientId, clientSecret, redirectUri, jwk: signer.jwk, idTokensByCode: { [code]: signer.idToken(identity) } }),
+    },
+  });
+  const db = new pg.Client({ connectionString: databaseUrl });
+  try {
+    await db.connect();
+    const post = (path: string, body: object, cookie?: string) => requestWithHost(connectUrl, path, host, {
+      method: 'POST',
+      headers: { origin, 'content-type': 'application/json', ...(cookie === undefined ? {} : { cookie }) },
+      body: JSON.stringify(body),
+    });
+    const legacyLinkSchema = z.object({ email: z.string(), userId: z.string() });
+    const currentStateSchema = z.looseObject({
+      link: legacyLinkSchema.extend({ encryptedSessionToken: z.string().min(1) }),
+    });
+    const hasLinkedAccount = async () => {
+      const linked = await db.query(
+        `SELECT 1 FROM account JOIN "user" ON "user".id = account.user_id
+         WHERE account.provider_id = 'google' AND account.account_id = $1 AND "user".email = $2`,
+        [identity.subject, identity.email],
+      );
+      return linked.rowCount === 1;
+    };
+
+    for (const flow of ['revoked-session', 'legacy-state'] as const) {
+      const signIn = await post('/api/auth/sign-in/email', { email: identity.email, password: CREATOR_PASSWORD });
+      assert(signIn.status === 200, `account-link sign-in returned HTTP ${signIn.status}`);
+      const session = sessionCookiePair(signIn.headers);
+      const started = await post('/api/auth/link-social', { provider: 'google', callbackURL, disableRedirect: true }, session);
+      assert(started.status === 200, `account-link start returned HTTP ${started.status}`);
+      const { url } = z.object({ url: z.url() }).parse(parseJson(started.body));
+      const state = new URL(url).searchParams.get('state');
+      assert(state !== null, 'account-link start omitted its state');
+      const stateCookie = setCookieValues(started.headers).find((entry) => entry.startsWith('better-auth.state='))?.split(';', 1)[0];
+      assert(stateCookie !== undefined, 'account-link start omitted its state cookie');
+      const stored = await db.query(
+        `SELECT id, value, extract(epoch FROM expires_at - created_at)::float AS lifetime
+         FROM verification WHERE identifier = $1`,
+        [`auth-state:${state}`],
+      );
+      assert(stored.rowCount === 1, 'account-link start did not store one verification row');
+      const row = z.object({ id: z.string(), value: z.string(), lifetime: z.number() }).parse(stored.rows[0]);
+      assert(row.lifetime >= 590 && row.lifetime <= 610, 'stored account-link state does not last ten minutes');
+      const parsed = currentStateSchema.safeParse(parseJson(row.value));
+      assert(parsed.success, 'stored account-link state has no encrypted initiating-session reference');
+      assert(parsed.data.link.email === identity.email, 'stored account-link state names the wrong account');
+
+      if (flow === 'revoked-session') {
+        const signedOut = await post(BETTER_AUTH_SIGN_OUT_PATH, {}, session);
+        assert(signedOut.status === 200, `account-link session revocation returned HTTP ${signedOut.status}`);
+      } else {
+        const legacyState = { ...parsed.data, link: legacyLinkSchema.parse(parsed.data.link) };
+        await db.query('UPDATE verification SET value = $1 WHERE id = $2', [JSON.stringify(legacyState), row.id]);
+      }
+
+      const query = new URLSearchParams({ code, state });
+      const returned = await requestWithHost(connectUrl, `${AUTH_GOOGLE_CALLBACK_PATH}?${query}`, host, {
+        headers: { cookie: flow === 'revoked-session' ? stateCookie : `${stateCookie}; ${session}` },
+      });
+      assert(returned.status === 302 && returned.headers.location !== undefined, `account-link callback did not redirect (HTTP ${returned.status})`);
+      if (flow === 'revoked-session') {
+        assert(new URL(returned.headers.location, origin).searchParams.get('error') === 'unable_to_link_account', 'account link did not refuse a revoked initiating session');
+        assert(!await hasLinkedAccount(), 'account link persisted after its initiating session was revoked');
+      } else {
+        assert(returned.headers.location === callbackURL, 'legacy account-link state did not complete');
+        assert(await hasLinkedAccount(), 'legacy account-link state did not persist the link');
+      }
+    }
+    console.log('custom-domain-e2e: stored account linking requires a live initiating session and accepts legacy state OK');
+  } finally {
+    await db.end();
+    await killServer(server);
+  }
+};
+
 const startedAt = Date.now();
 let server: ChildProcess | null = null;
 try {
@@ -1000,6 +1100,9 @@ try {
   });
   await runStudioDomainStatus(tenantBaseUrl);
   await runSelfServeAdd({ tenantBaseUrl, connectUrl, databaseUrl: e2eDatabaseUrl });
+  await killServer(server);
+  server = null;
+  await runGoogleAccountLinking(e2eDatabaseUrl);
   console.log(`\ncustom-domain-e2e: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof E2eFailure ? error.message : String(error);

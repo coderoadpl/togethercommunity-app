@@ -177,6 +177,21 @@ it('stores one concurrent rotation and its event, and does not overlap old and n
   ]);
 });
 
+it('preserves the original credential and projection when rotate or disable cannot append an event', async () => {
+  const input = draft('failed-transition.example.org');
+  const repo = repository(left);
+  const created = await repo.create(workspaceA, input);
+  expect(created).toMatchObject({ ok: true });
+  await expect(repo.rotate(workspaceA, input.id, { ...rotation(), eventId: input.eventId }))
+    .rejects.toHaveProperty('message', 'Sign-in client registry database operation failed');
+  await expect(repo.disable(workspaceA, input.id, { at: tomorrow, eventId: input.eventId }))
+    .rejects.toHaveProperty('message', 'Sign-in client registry database operation failed');
+  expect(await rowsOf(input.id)).toMatchObject([{
+    state: 'pending_activation', credentialVersion: 1, secretHash: input.secretHash, name: input.name, redirectUris: input.redirectUris,
+  }]);
+  expect(await eventsOf(input.id)).toMatchObject([{ id: input.eventId, kind: 'created', credentialVersion: 1 }]);
+});
+
 it('retirement wins over a waiting rotation, scrubs the projection, and cannot release the host', async () => {
   const input = draft('retirement.example.org');
   const retiredAt = { at: tomorrow, eventId: 'retire-event' };
@@ -192,6 +207,21 @@ it('retirement wins over a waiting rotation, scrubs the projection, and cannot r
   expect(await eventsOf(input.id)).toMatchObject([
     { kind: 'created', credentialVersion: 1 }, { id: retiredAt.eventId, kind: 'retired', credentialVersion: 2 },
   ]);
+  expect(await reservationsFor(input.redirectHost)).toMatchObject([{ clientId: input.id }]);
+  expect(await repository(right).create(workspaceB, draft(input.redirectHost))).toEqual(refused('host_unavailable'));
+});
+
+it('cascades workspace deletion to the client and its events but retains the hostname', async () => {
+  const tenantId = 'workspace-to-delete';
+  await database.db.insert(tenants).values({ id: tenantId, slug: tenantId, name: 'Workspace to delete', createdAt: now });
+  const input = draft('workspace-deleted.example.org');
+  expect(await repository(left).create(tenantId, input)).toMatchObject({ ok: true });
+  expect(await eventsOf(input.id)).toHaveLength(1);
+
+  const deleted = await observer.query('DELETE FROM tenants WHERE id = $1', [tenantId]);
+  expect(deleted.rowCount).toBe(1);
+  expect(await rowsOf(input.id)).toEqual([]);
+  expect(await eventsOf(input.id)).toEqual([]);
   expect(await reservationsFor(input.redirectHost)).toMatchObject([{ clientId: input.id }]);
   expect(await repository(right).create(workspaceB, draft(input.redirectHost))).toEqual(refused('host_unavailable'));
 });

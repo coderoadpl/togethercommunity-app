@@ -3,7 +3,14 @@ import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { BETTER_AUTH_API_PATH_PATTERN, BETTER_AUTH_PASSWORD_SIGN_IN_PATH, BETTER_AUTH_SIGN_UP_PATH } from '#adapters/auth/create-auth.js';
+import {
+  BETTER_AUTH_API_PATH_PATTERN,
+  BETTER_AUTH_EMAIL_VERIFICATION_PATH,
+  BETTER_AUTH_MAGIC_LINK_PATH,
+  BETTER_AUTH_PASSWORD_RESET_PATH,
+  BETTER_AUTH_PASSWORD_SIGN_IN_PATH,
+  BETTER_AUTH_SIGN_UP_PATH,
+} from '#adapters/auth/create-auth.js';
 import { members, organizationMembers, organizations, tenantAdmins, tenants } from '#adapters/db/schema.js';
 import { createTestDatabase } from '#adapters/db/test-database-name.js';
 import {
@@ -366,9 +373,18 @@ describe('Dormant sign-in client HTTP management', () => {
     expect((await request(app, 'POST', API_ROUTES.m2mEnroll.path, legacy, {})).status).toBe(400);
   });
 
-  it('registers no sign-in client route under the authentication prefix', () => {
+  it('registers only the existing authentication routes under the authentication prefix', () => {
     const authPrefix = BETTER_AUTH_API_PATH_PATTERN.slice(0, -1);
-    expect(app.routes.filter(({ path }) => path.startsWith(authPrefix) && path.split('/').includes('sign-in-clients'))).toEqual([]);
+    const authRoutes = app.routes.filter(({ path }) => path.startsWith(authPrefix))
+      .map(({ method, path }) => `${method} ${path}`).sort();
+    expect(authRoutes).toEqual([
+      `GET ${BETTER_AUTH_API_PATH_PATTERN}`,
+      `POST ${BETTER_AUTH_API_PATH_PATTERN}`,
+      `POST ${BETTER_AUTH_PASSWORD_RESET_PATH}`,
+      `POST ${BETTER_AUTH_EMAIL_VERIFICATION_PATH}`,
+      `POST ${BETTER_AUTH_MAGIC_LINK_PATH}`,
+      `POST ${BETTER_AUTH_SIGN_UP_PATH}`,
+    ]);
   });
 
   it('still permits terminal disable while empty and returns the same scrubbed record on repeat', async () => {

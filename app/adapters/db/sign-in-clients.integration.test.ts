@@ -243,6 +243,11 @@ it('returns the same retired client from both concurrent disables and stores one
   );
   expect(retired).toMatchObject({ ok: true, value: { state: 'retired', retiredAt: tomorrow, credentialVersion: 2 } });
   expect(repeated).toEqual(retired);
+  const rows = await rowsOf(input.id);
+  expect(rows).toMatchObject([{
+    state: 'retired', credentialVersion: 2, secretHash: null, name: null, redirectUris: [],
+  }]);
+  expect(Date.parse(rows[0]?.retiredAt ?? '')).toBe(Date.parse(first.at));
   expect(await eventsOf(input.id)).toMatchObject([
     { kind: 'created', credentialVersion: 1 }, { id: first.eventId, kind: 'retired', credentialVersion: 2 },
   ]);

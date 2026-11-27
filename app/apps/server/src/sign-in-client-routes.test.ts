@@ -293,6 +293,8 @@ describe('Dormant sign-in client HTTP management', () => {
     spanExporter.reset();
     const spies = (['log', 'info', 'warn', 'error'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(() => undefined));
+    const generateSecret = vi.spyOn(deps.signInClientCrypto, 'generateSecret');
+    const hash = vi.spyOn(deps.signInClientCrypto, 'hash');
     try {
       const headers = { cookie: session('owner').cookie, origin: workspaceOrigin, 'sec-fetch-site': 'same-origin' };
       const created = await request(app, 'POST', listPath, headers, browserInput);
@@ -325,16 +327,24 @@ describe('Dormant sign-in client HTTP management', () => {
         logs: spies.flatMap((spy) => spy.mock.calls),
         spans: spans.map(({ attributes, events, name, status }) => ({ attributes, events, name, status })),
       });
-      for (const plaintext of [secret, replacement.secret]) {
-        const digest = deps.signInClientCrypto.hash(plaintext);
-        expect(observed.includes(plaintext)).toBe(false);
-        expect(observed.includes(digest)).toBe(false);
-        expect(errorText).not.toContain(plaintext);
-        expect(errorText).not.toContain(digest);
-        expect(raw).not.toContain(plaintext);
-        expect(JSON.stringify(await readRegistry())).not.toContain(plaintext);
+      const plaintexts = generateSecret.mock.results.map(({ value }) => z.string().min(1).parse(value));
+      expect(plaintexts).toHaveLength(3);
+      expect(plaintexts[0] === secret && plaintexts[1] === replacement.secret).toBe(true);
+      expect(hash.mock.calls).toHaveLength(plaintexts.length);
+      expect(hash.mock.calls.every(([plaintext], index) => plaintext === plaintexts[index])).toBe(true);
+      const digests = hash.mock.results.map(({ value }) => z.string().min(1).parse(value));
+      const stored = JSON.stringify(await readRegistry());
+      for (const [index, credential] of [...plaintexts, ...digests].entries()) {
+        expect(observed.includes(credential), `telemetry contains credential material ${index}`).toBe(false);
+        expect(errorText.includes(credential), `refusal contains credential material ${index}`).toBe(false);
+      }
+      for (const plaintext of plaintexts) {
+        expect(raw.includes(plaintext)).toBe(false);
+        expect(stored.includes(plaintext)).toBe(false);
       }
     } finally {
+      generateSecret.mockRestore();
+      hash.mockRestore();
       for (const spy of spies) spy.mockRestore();
     }
   });

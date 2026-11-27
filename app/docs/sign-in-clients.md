@@ -27,8 +27,8 @@ application URL host, the configured custom-domain target, and any already
 verified custom workspace domain cannot be registered. There is no edit or
 transfer and the host cannot be assigned again, even after workspace deletion.
 
-The registry does not refuse later custom-domain verification for a reserved
-host. Activation is not implemented; any later activation must re-check the host.
+Registry reservations and custom-domain verification are independent.
+Any future activation must re-check the host.
 
 The list returns metadata with a 50-item default and 100-item maximum page
 size, ordered by creation time then ID. Use the returned cursor to continue.
